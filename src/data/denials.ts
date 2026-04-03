@@ -62,7 +62,7 @@ export interface DenialRecord {
   state: DenialState
   status: DenialStatus
   assignedTo: TeamMember | null
-  nextAction: string
+  nextAction?: string
   needsAttention: boolean
   relatedDenialIds?: string[]
   needsAttentionReasons: string[]
