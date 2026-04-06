@@ -3388,12 +3388,14 @@ function IntakeReviewPanel({
   onAccept,
   onDismiss,
   onWillNotAppeal,
+  onViewClaim,
 }: {
   denial: DenialRecord
   assignedTo: TeamMember | null
   onAccept: (denialType: string, assignee: TeamMember | null, notes: string) => void
   onDismiss: () => void
   onWillNotAppeal: () => void
+  onViewClaim?: () => void
 }) {
   const [localType, setLocalType] = useState(denial.denialType)
   const [localAssigneeId, setLocalAssigneeId] = useState<string>(assignedTo?.id ?? '')
@@ -3451,8 +3453,14 @@ function IntakeReviewPanel({
           </Paper>
 
           <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-            <Box sx={{ px: 2, py: 1.25, bgcolor: 'background.default', borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ px: 2, py: 1.25, bgcolor: 'background.default', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="overline" sx={{ fontSize: '0.6875rem', color: 'text.secondary' }}>Denial Codes</Typography>
+              {onViewClaim && (
+                <Button size="small" variant="text" onClick={onViewClaim} startIcon={<ArticleOutlined sx={{ fontSize: 13 }} />}
+                  sx={{ fontSize: '0.6875rem', p: 0, minWidth: 0, color: 'secondary.main', fontWeight: 600 }}>
+                  View Claim
+                </Button>
+              )}
             </Box>
             <Box sx={{ px: 2, py: 0.5 }}>
               <IntakeInfoRow
@@ -3845,6 +3853,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
         <IntakeReviewPanel
           denial={denial}
           assignedTo={assignedTo}
+          onViewClaim={CLAIM_DATA_837[denialId] ? () => setClaim837Open(true) : undefined}
           onAccept={(newType, newAssignee, intakeNotes) => {
             const newEngine = getResolutionEngine(newType)
             applyTransition('Active', getDefaultActiveStatus(newEngine), {
