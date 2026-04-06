@@ -65,7 +65,7 @@ import {
 import { SEED_DENIALS, TEAM_MEMBERS, type TeamMember, type DenialRecord, type ActiveStatus, type ResolvedStatus, type DenialStatus } from '../data/denials'
 import {
   CARC_DESCRIPTIONS, RARC_DESCRIPTIONS,
-  REMIT_DATA, TIMELINE_EVENTS, SUBMISSION_EPISODES,
+  REMIT_DATA, CLAIM_DATA_837, TIMELINE_EVENTS, SUBMISSION_EPISODES,
   DENIAL_OUTCOMES, UNDERPAYMENT_DATA, type DenialOutcome, type OutcomeDisposition,
   type TimelineEvent, type TimelineEventType,
   type SubmissionEpisode, type DeliveryMethod,
@@ -316,6 +316,156 @@ function RemitModal({ denialId, onClose }: { denialId: string; onClose: () => vo
             </Table>
           </TableContainer>
         </Box>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── 837 Claim Modal ──────────────────────────────────────────────────────────
+
+const ADMISSION_TYPES: Record<string, string> = { '1': 'Elective', '2': 'Urgent', '3': 'Emergency', '4': 'Newborn' }
+const ADMISSION_SOURCES: Record<string, string> = { '1': 'Physician referral', '2': 'Clinic referral', '4': 'Transfer from hospital', '7': 'Emergency room', '9': 'Information not available' }
+const DISCHARGE_STATUS: Record<string, string> = { '01': 'Discharged home', '02': 'Discharged to short-term hospital', '03': 'Discharged to skilled nursing facility', '20': 'Expired', '30': 'Still patient' }
+const TOB_DESCRIPTIONS: Record<string, string> = { '111': 'Hospital Inpatient — Admit Through Discharge', '131': 'Hospital Outpatient — Admit Through Discharge', '121': 'Hospital Inpatient — Interim', }
+
+function Claim837Modal({ denialId, onClose }: { denialId: string; onClose: () => void }) {
+  const claim = CLAIM_DATA_837[denialId]
+  if (!claim) return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ pr: 6 }}>837 Claim
+        <IconButton onClick={onClose} size="small" sx={{ position: 'absolute', right: 12, top: 12 }}><CloseOutlined fontSize="small" /></IconButton>
+      </DialogTitle>
+      <DialogContent><Typography variant="body2" color="text.secondary">No 837 claim data available for this denial.</Typography></DialogContent>
+    </Dialog>
+  )
+
+  const tob = TOB_DESCRIPTIONS[claim.typeOfBill] ?? `Type ${claim.typeOfBill}`
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth slotProps={{ paper: { sx: { borderRadius: 2 } } }}>
+      <DialogTitle sx={{ pb: 1 }}>
+        <Typography variant="h6">837 Institutional Claim</Typography>
+        <Typography variant="body2" color="text.secondary">{claim.billingProviderName} · {claim.claimId}</Typography>
+        <IconButton onClick={onClose} size="small" sx={{ position: 'absolute', right: 12, top: 12 }}>
+          <CloseOutlined fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers sx={{ p: 0 }}>
+
+        {/* Claim header */}
+        <Box sx={{ px: 3, py: 2, bgcolor: 'background.default', borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em' }}>Claim Header</Typography>
+          <Box sx={{ display: 'flex', gap: 4, mt: 0.75, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Type of Bill', value: `${claim.typeOfBill} — ${tob}` },
+              { label: 'Billing NPI', value: claim.billingProviderNPI },
+              { label: 'Tax ID', value: claim.billingProviderTaxId },
+              { label: 'Admission', value: formatDate(claim.admissionDate) },
+              { label: 'Discharge', value: formatDate(claim.dischargeDate) },
+              { label: 'LOS', value: `${Math.round((new Date(claim.dischargeDate).getTime() - new Date(claim.admissionDate).getTime()) / 86400000)} days` },
+            ].map(({ label, value }) => (
+              <Box key={label}>
+                <Typography variant="caption" color="text.secondary">{label}</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 500, fontFamily: 'monospace', fontSize: '0.8rem' }}>{value}</Typography>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+
+        {/* Admission details */}
+        <Box sx={{ px: 3, py: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em' }}>Admission</Typography>
+          <Box sx={{ display: 'flex', gap: 4, mt: 0.75, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Type', value: `${claim.admissionType} — ${ADMISSION_TYPES[claim.admissionType] ?? claim.admissionType}` },
+              { label: 'Source', value: `${claim.admissionSource} — ${ADMISSION_SOURCES[claim.admissionSource] ?? claim.admissionSource}` },
+              { label: 'Discharge Status', value: `${claim.dischargeStatus} — ${DISCHARGE_STATUS[claim.dischargeStatus] ?? claim.dischargeStatus}` },
+              ...(claim.drgClaimed ? [{ label: 'DRG Claimed', value: claim.drgClaimed }] : []),
+            ].map(({ label, value }) => (
+              <Box key={label}>
+                <Typography variant="caption" color="text.secondary">{label}</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>{value}</Typography>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+
+        {/* Subscriber */}
+        <Box sx={{ px: 3, py: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em' }}>Subscriber</Typography>
+          <Box sx={{ display: 'flex', gap: 4, mt: 0.75, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Name', value: claim.subscriberName },
+              { label: 'Insurance ID', value: claim.subscriberInsuranceId },
+              { label: 'Group Number', value: claim.subscriberGroupNumber },
+              { label: 'Date of Birth', value: formatDate(claim.patientDob) },
+            ].map(({ label, value }) => (
+              <Box key={label}>
+                <Typography variant="caption" color="text.secondary">{label}</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 500, fontFamily: 'monospace', fontSize: '0.8rem' }}>{value}</Typography>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+
+        {/* Diagnoses */}
+        <Box sx={{ px: 3, py: 2, bgcolor: 'background.default', borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', mb: 1, display: 'block' }}>ICD-10 Diagnoses</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'baseline' }}>
+              <Chip label="PDX" size="small" sx={{ height: 18, fontSize: '0.65rem', fontWeight: 700, bgcolor: 'primary.light', color: 'primary.dark', '& .MuiChip-label': { px: 0.75 }, flexShrink: 0 }} />
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.8rem', flexShrink: 0 }}>{claim.principalDiagnosis.code}</Typography>
+              <Typography variant="body2" color="text.secondary">{claim.principalDiagnosis.description}</Typography>
+            </Box>
+            {claim.secondaryDiagnoses.map((dx, i) => (
+              <Box key={i} sx={{ display: 'flex', gap: 1.5, alignItems: 'baseline' }}>
+                <Chip label={`SDX${i + 1}`} size="small" sx={{ height: 18, fontSize: '0.65rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 }, flexShrink: 0 }} />
+                <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', flexShrink: 0 }}>{dx.code}</Typography>
+                <Typography variant="body2" color="text.secondary">{dx.description}</Typography>
+              </Box>
+            ))}
+            {claim.principalProcedure && (
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'baseline', mt: 0.5 }}>
+                <Chip label="PPX" size="small" sx={{ height: 18, fontSize: '0.65rem', fontWeight: 700, bgcolor: 'success.light', color: 'success.dark', '& .MuiChip-label': { px: 0.75 }, flexShrink: 0 }} />
+                <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.8rem', flexShrink: 0 }}>{claim.principalProcedure.code}</Typography>
+                <Typography variant="body2" color="text.secondary">{claim.principalProcedure.description}</Typography>
+              </Box>
+            )}
+          </Box>
+        </Box>
+
+        {/* Service lines */}
+        <Box sx={{ px: 3, py: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 1 }}>
+            <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em' }}>Revenue Lines</Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+              Total billed: {formatCurrency(claim.totalBilledAmount)}
+            </Typography>
+          </Box>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  {['Rev Code', 'Description', 'DOS', 'Units', 'Billed'].map(h => (
+                    <TableCell key={h} sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'text.secondary', py: 0.75 }}>{h}</TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {claim.serviceLines.map((line, i) => (
+                  <TableRow key={i}>
+                    <TableCell sx={{ py: 0.75, fontFamily: 'monospace', fontWeight: 600, fontSize: '0.8rem' }}>{line.revenueCode}</TableCell>
+                    <TableCell sx={{ py: 0.75 }}>{line.revenueDescription}</TableCell>
+                    <TableCell sx={{ py: 0.75 }}>{formatDate(line.dos)}</TableCell>
+                    <TableCell sx={{ py: 0.75 }}>{line.units}</TableCell>
+                    <TableCell sx={{ py: 0.75, fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{formatCurrency(line.billedAmount)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+
       </DialogContent>
     </Dialog>
   )
@@ -790,10 +940,11 @@ Date of Service: ${denial.dos}</p>
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ denial, denialId, onViewRemit, onOpenAttachment, events, episodes, onAddFile, assignedTo, onChangeAssignee }: {
+function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachment, events, episodes, onAddFile, assignedTo, onChangeAssignee }: {
   denial: DenialRecord
   denialId: string
   onViewRemit: () => void
+  onViewClaim: () => void
   onOpenAttachment: (a: EpisodeAttachment) => void
   events: TimelineEvent[]
   episodes: SubmissionEpisode[]
@@ -807,6 +958,7 @@ function OverviewTab({ denial, denialId, onViewRemit, onOpenAttachment, events, 
   const [assigneeAnchor, setAssigneeAnchor] = useState<HTMLElement | null>(null)
   const carcInfo = CARC_DESCRIPTIONS[denial.carc]
   const rarcInfo = denial.rarc ? RARC_DESCRIPTIONS[denial.rarc] : null
+  const claim837 = CLAIM_DATA_837[denialId]
 
   return (
     <Box sx={{ display: 'flex', gap: 3, p: 3, height: '100%', overflow: 'auto' }}>
@@ -956,21 +1108,29 @@ function OverviewTab({ denial, denialId, onViewRemit, onOpenAttachment, events, 
 
           {/* CARC / RARC */}
           <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em' }}>Adjustment Codes</Typography>
-              {remit && (
-                <Button size="small" variant="text" onClick={onViewRemit} startIcon={<InfoOutlined sx={{ fontSize: 13 }} />}
-                  sx={{ fontSize: '0.6875rem', p: 0, minWidth: 0, color: 'secondary.main', fontWeight: 600 }}>
-                  View Remit
-                </Button>
-              )}
-            </Box>
+            <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 1 }}>Adjustment Codes</Typography>
             <Box sx={{ display: 'flex', gap: 0.75, mb: 0.75, flexWrap: 'wrap' }}>
               <Chip label={denial.carc} size="small" sx={{ fontWeight: 700, fontSize: '0.75rem', bgcolor: 'error.light', color: 'error.dark', height: 22 }} />
               {denial.rarc && <Chip label={denial.rarc} size="small" sx={{ fontWeight: 600, fontSize: '0.75rem', height: 22 }} />}
             </Box>
             {carcInfo && <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.4 }}>{carcInfo.short}</Typography>}
             {rarcInfo && <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block', mt: 0.25 }}>{rarcInfo.short}</Typography>}
+            {(claim837 || remit) && (
+              <Box sx={{ display: 'flex', gap: 1.5, mt: 1 }}>
+                {claim837 && (
+                  <Button size="small" variant="text" onClick={onViewClaim} startIcon={<ArticleOutlined sx={{ fontSize: 13 }} />}
+                    sx={{ fontSize: '0.6875rem', p: 0, minWidth: 0, color: 'secondary.main', fontWeight: 600 }}>
+                    View Claim
+                  </Button>
+                )}
+                {remit && (
+                  <Button size="small" variant="text" onClick={onViewRemit} startIcon={<InfoOutlined sx={{ fontSize: 13 }} />}
+                    sx={{ fontSize: '0.6875rem', p: 0, minWidth: 0, color: 'secondary.main', fontWeight: 600 }}>
+                    View Remit
+                  </Button>
+                )}
+              </Box>
+            )}
           </Box>
 
           {/* Key dates */}
@@ -3451,6 +3611,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
   const denialId = denial.id
   const [tab, setTab] = useState(0)
   const [remitOpen, setRemitOpen] = useState(false)
+  const [claim837Open, setClaim837Open] = useState(false)
   const [previewAttachment, setPreviewAttachment] = useState<EpisodeAttachment | null>(null)
 
   function handleOpenAttachment(a: EpisodeAttachment) {
@@ -3699,7 +3860,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
 
       {/* ── Tab content ───────────────────────────────────────────────────────── */}
       {denial.state !== 'Intake' && <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'background.default' }}>
-        {tab === 0 && <OverviewTab denial={denial} denialId={denialId} onViewRemit={() => setRemitOpen(true)} onOpenAttachment={handleOpenAttachment} events={events} episodes={episodes} onAddFile={handleAddFile} assignedTo={assignedTo} onChangeAssignee={setAssignedTo} />}
+        {tab === 0 && <OverviewTab denial={denial} denialId={denialId} onViewRemit={() => setRemitOpen(true)} onViewClaim={() => setClaim837Open(true)} onOpenAttachment={handleOpenAttachment} events={events} episodes={episodes} onAddFile={handleAddFile} assignedTo={assignedTo} onChangeAssignee={setAssignedTo} />}
         {tab === 1 && engine === 'appeal'          && <AppealTab denial={denial} denialId={denialId} denialState={denial.state} appealLetterPdf={appealLetterPdf} setAppealLetterPdf={setAppealLetterPdf} supportingDocs={supportingDocs} setSupportingDocs={setSupportingDocs} priorCorrespondence={priorCorrespondence} setPriorCorrespondence={setPriorCorrespondence} onSubmit={() => applyTransition('Submitted', 'Awaiting Payer Decision')} onSubmitSuccess={(channel, payer, patientName) => {
           const channelLabel = CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG]?.label ?? channel
           const newEvent: TimelineEvent = {
@@ -3982,6 +4143,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
 
       {/* Remit modal */}
       {remitOpen && <RemitModal denialId={denialId} onClose={() => setRemitOpen(false)} />}
+      {claim837Open && <Claim837Modal denialId={denialId} onClose={() => setClaim837Open(false)} />}
       {/* Document preview modal */}
       {previewAttachment && <DocumentPreviewModal attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} />}
 

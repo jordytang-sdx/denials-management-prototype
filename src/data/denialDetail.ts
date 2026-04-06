@@ -1473,3 +1473,220 @@ export const SUBMISSION_EPISODES: Record<string, SubmissionEpisode[]> = {
     },
   ],
 }
+
+// ─── 837 Claim Data ───────────────────────────────────────────────────────────
+
+export interface Claim837ServiceLine {
+  revenueCode: string
+  revenueDescription: string
+  procedureCode?: string
+  dos: string
+  units: number
+  billedAmount: number
+}
+
+export interface Claim837Data {
+  denialId: string
+  claimId: string
+  typeOfBill: string                              // e.g. '111' = inpatient hospital
+  billingProviderName: string
+  billingProviderNPI: string
+  billingProviderTaxId: string
+  subscriberName: string
+  subscriberInsuranceId: string
+  subscriberGroupNumber: string
+  patientDob: string
+  admissionDate: string
+  dischargeDate: string
+  admissionType: string                           // '1' Elective, '2' Urgent, '3' Emergency
+  admissionSource: string
+  dischargeStatus: string                         // '01' Home, '20' Expired, etc.
+  totalBilledAmount: number
+  principalDiagnosis: { code: string; description: string }
+  secondaryDiagnoses: { code: string; description: string }[]
+  principalProcedure?: { code: string; description: string }
+  drgClaimed?: string
+  serviceLines: Claim837ServiceLine[]
+}
+
+export const CLAIM_DATA_837: Record<string, Claim837Data> = {
+
+  // ── DN-2026-0412: BCBS DRG Downgrade — Margaret Holloway ─────────────────
+  'DN-2026-0412': {
+    denialId: 'DN-2026-0412',
+    claimId: 'CLM-8847291',
+    typeOfBill: '111',
+    billingProviderName: 'Memorial Health System',
+    billingProviderNPI: '1234567890',
+    billingProviderTaxId: '47-1234567',
+    subscriberName: 'Margaret Holloway',
+    subscriberInsuranceId: 'BCB-774112-MH',
+    subscriberGroupNumber: 'GRP-4821-MHS',
+    patientDob: '1952-03-14',
+    admissionDate: '2026-02-11',
+    dischargeDate: '2026-02-15',
+    admissionType: '2',
+    admissionSource: '7',
+    dischargeStatus: '01',
+    totalBilledAmount: 18450.00,
+    drgClaimed: 'MS-DRG 291 — Heart Failure & Shock w/ MCC',
+    principalDiagnosis: { code: 'I50.43', description: 'Acute on chronic combined systolic and diastolic heart failure' },
+    secondaryDiagnoses: [
+      { code: 'I10',    description: 'Essential (primary) hypertension' },
+      { code: 'E11.9',  description: 'Type 2 diabetes mellitus without complications' },
+      { code: 'N18.3',  description: 'Chronic kidney disease, stage 3' },
+      { code: 'J96.00', description: 'Acute respiratory failure, unspecified whether with hypoxia or hypercapnia' },
+    ],
+    principalProcedure: { code: '5A1935Z', description: 'Respiratory ventilation, >96 consecutive hours' },
+    serviceLines: [
+      { revenueCode: '0120', revenueDescription: 'Room & Board — Semi-Private',        dos: '2026-02-11', units: 4, billedAmount: 9200.00 },
+      { revenueCode: '0130', revenueDescription: 'Intensive Care Unit',                dos: '2026-02-11', units: 1, billedAmount: 3800.00 },
+      { revenueCode: '0250', revenueDescription: 'Pharmacy',                           dos: '2026-02-11', units: 1, billedAmount: 1840.00 },
+      { revenueCode: '0301', revenueDescription: 'Laboratory — Chemistry',             dos: '2026-02-12', units: 1, billedAmount: 620.00  },
+      { revenueCode: '0481', revenueDescription: 'Cardiology — Echocardiography',      dos: '2026-02-12', units: 1, billedAmount: 1450.00 },
+      { revenueCode: '0270', revenueDescription: 'Medical/Surgical Supplies',          dos: '2026-02-11', units: 1, billedAmount: 890.00  },
+      { revenueCode: '0710', revenueDescription: 'Recovery Room',                      dos: '2026-02-11', units: 1, billedAmount: 650.00  },
+    ],
+  },
+
+  // ── DN-2026-0389: Aetna Med Nec — Raymond Castellano ─────────────────────
+  'DN-2026-0389': {
+    denialId: 'DN-2026-0389',
+    claimId: 'CLM-9920441',
+    typeOfBill: '111',
+    billingProviderName: 'Memorial Health System',
+    billingProviderNPI: '1234567890',
+    billingProviderTaxId: '47-1234567',
+    subscriberName: 'Raymond Castellano',
+    subscriberInsuranceId: 'AET-881033-RC',
+    subscriberGroupNumber: 'GRP-7710-EMPL',
+    patientDob: '1968-07-22',
+    admissionDate: '2026-02-15',
+    dischargeDate: '2026-02-20',
+    admissionType: '3',
+    admissionSource: '1',
+    dischargeStatus: '01',
+    totalBilledAmount: 31200.00,
+    drgClaimed: 'MS-DRG 177 — Respiratory Infections & Inflammations w/ MCC',
+    principalDiagnosis: { code: 'J18.1', description: 'Lobar pneumonia, unspecified organism' },
+    secondaryDiagnoses: [
+      { code: 'J96.01', description: 'Acute respiratory failure with hypoxia' },
+      { code: 'I10',    description: 'Essential (primary) hypertension' },
+      { code: 'E11.65', description: 'Type 2 diabetes mellitus with hyperglycemia' },
+      { code: 'R65.20', description: 'Severe sepsis without septic shock' },
+    ],
+    serviceLines: [
+      { revenueCode: '0120', revenueDescription: 'Room & Board — Semi-Private',     dos: '2026-02-15', units: 5,  billedAmount: 11500.00 },
+      { revenueCode: '0130', revenueDescription: 'Intensive Care Unit',             dos: '2026-02-15', units: 2,  billedAmount: 7600.00  },
+      { revenueCode: '0250', revenueDescription: 'Pharmacy',                        dos: '2026-02-15', units: 1,  billedAmount: 4820.00  },
+      { revenueCode: '0260', revenueDescription: 'IV Therapy',                      dos: '2026-02-15', units: 1,  billedAmount: 2100.00  },
+      { revenueCode: '0301', revenueDescription: 'Laboratory — Chemistry',          dos: '2026-02-16', units: 1,  billedAmount: 1440.00  },
+      { revenueCode: '0320', revenueDescription: 'Radiology — Diagnostic',          dos: '2026-02-15', units: 1,  billedAmount: 2180.00  },
+      { revenueCode: '0270', revenueDescription: 'Medical/Surgical Supplies',       dos: '2026-02-15', units: 1,  billedAmount: 1560.00  },
+    ],
+  },
+
+  // ── DN-2026-0401: Cigna Coding Error — Vivienne Okafor ───────────────────
+  'DN-2026-0401': {
+    denialId: 'DN-2026-0401',
+    claimId: 'CLM-7723019',
+    typeOfBill: '111',
+    billingProviderName: 'Memorial Health System',
+    billingProviderNPI: '1234567890',
+    billingProviderTaxId: '47-1234567',
+    subscriberName: 'Vivienne Okafor',
+    subscriberInsuranceId: 'CGN-448821-VO',
+    subscriberGroupNumber: 'GRP-3310-CORP',
+    patientDob: '1979-11-05',
+    admissionDate: '2026-02-26',
+    dischargeDate: '2026-03-01',
+    admissionType: '2',
+    admissionSource: '4',
+    dischargeStatus: '01',
+    totalBilledAmount: 8920.00,
+    drgClaimed: 'MS-DRG 470 — Major Joint Replacement w/o MCC',
+    principalDiagnosis: { code: 'M16.11', description: 'Unilateral primary osteoarthritis, right hip' },
+    secondaryDiagnoses: [
+      { code: 'Z96.641', description: 'Presence of right artificial hip joint' },
+      { code: 'I10',     description: 'Essential (primary) hypertension' },
+    ],
+    principalProcedure: { code: '0SRB019', description: 'Replacement of right hip joint with metal synthetic substitute, cemented, open approach' },
+    serviceLines: [
+      { revenueCode: '0120', revenueDescription: 'Room & Board — Semi-Private',     dos: '2026-02-26', units: 3, billedAmount: 3900.00 },
+      { revenueCode: '0360', revenueDescription: 'Operating Room Services',         dos: '2026-02-26', units: 1, billedAmount: 2450.00 },
+      { revenueCode: '0270', revenueDescription: 'Medical/Surgical Supplies',       dos: '2026-02-26', units: 1, billedAmount: 1320.00 },
+      { revenueCode: '0250', revenueDescription: 'Pharmacy',                        dos: '2026-02-26', units: 1, billedAmount: 680.00  },
+      { revenueCode: '0420', revenueDescription: 'Physical Therapy',                dos: '2026-02-27', units: 2, billedAmount: 570.00  },
+    ],
+  },
+
+  // ── DN-2026-0388: Cigna Med Nec — Rafael Torres ───────────────────────────
+  'DN-2026-0388': {
+    denialId: 'DN-2026-0388',
+    claimId: 'CLM-6612847',
+    typeOfBill: '111',
+    billingProviderName: 'Memorial Health System',
+    billingProviderNPI: '1234567890',
+    billingProviderTaxId: '47-1234567',
+    subscriberName: 'Rafael Torres',
+    subscriberInsuranceId: 'CGN-229471-RT',
+    subscriberGroupNumber: 'GRP-3310-CORP',
+    patientDob: '1971-04-18',
+    admissionDate: '2026-03-28',
+    dischargeDate: '2026-03-31',
+    admissionType: '3',
+    admissionSource: '1',
+    dischargeStatus: '01',
+    totalBilledAmount: 12840.00,
+    drgClaimed: 'MS-DRG 194 — Simple Pneumonia & Pleurisy w/ MCC',
+    principalDiagnosis: { code: 'J18.9', description: 'Pneumonia, unspecified organism' },
+    secondaryDiagnoses: [
+      { code: 'J96.01', description: 'Acute respiratory failure with hypoxia' },
+      { code: 'E11.9',  description: 'Type 2 diabetes mellitus without complications' },
+      { code: 'I25.10', description: 'Atherosclerotic heart disease of native coronary artery without angina pectoris' },
+    ],
+    serviceLines: [
+      { revenueCode: '0120', revenueDescription: 'Room & Board — Semi-Private',     dos: '2026-03-28', units: 3, billedAmount: 6900.00 },
+      { revenueCode: '0250', revenueDescription: 'Pharmacy',                        dos: '2026-03-28', units: 1, billedAmount: 2310.00 },
+      { revenueCode: '0301', revenueDescription: 'Laboratory — Chemistry',          dos: '2026-03-29', units: 1, billedAmount: 880.00  },
+      { revenueCode: '0320', revenueDescription: 'Radiology — Diagnostic',          dos: '2026-03-28', units: 1, billedAmount: 1440.00 },
+      { revenueCode: '0260', revenueDescription: 'IV Therapy',                      dos: '2026-03-28', units: 1, billedAmount: 1310.00 },
+    ],
+  },
+
+  // ── DN-2026-0292: Humana Med Nec — Franklin Pierce ────────────────────────
+  'DN-2026-0292': {
+    denialId: 'DN-2026-0292',
+    claimId: 'CLM-0087213',
+    typeOfBill: '111',
+    billingProviderName: 'Memorial Health System',
+    billingProviderNPI: '1234567890',
+    billingProviderTaxId: '47-1234567',
+    subscriberName: 'Franklin Pierce',
+    subscriberInsuranceId: 'HUM-899002-FP',
+    subscriberGroupNumber: 'GRP-5521-HUM',
+    patientDob: '1955-09-03',
+    admissionDate: '2026-03-17',
+    dischargeDate: '2026-03-24',
+    admissionType: '2',
+    admissionSource: '2',
+    dischargeStatus: '03',
+    totalBilledAmount: 24600.00,
+    drgClaimed: 'MS-DRG 291 — Heart Failure & Shock w/ MCC',
+    principalDiagnosis: { code: 'I50.41', description: 'Acute combined systolic and diastolic heart failure' },
+    secondaryDiagnoses: [
+      { code: 'N18.4',  description: 'Chronic kidney disease, stage 4' },
+      { code: 'E11.65', description: 'Type 2 diabetes mellitus with hyperglycemia' },
+      { code: 'I48.19', description: 'Persistent atrial fibrillation, unspecified' },
+      { code: 'J96.01', description: 'Acute respiratory failure with hypoxia' },
+      { code: 'E87.5',  description: 'Hyperkalemia' },
+    ],
+    serviceLines: [
+      { revenueCode: '0120', revenueDescription: 'Room & Board — Semi-Private',     dos: '2026-03-17', units: 7, billedAmount: 16100.00 },
+      { revenueCode: '0250', revenueDescription: 'Pharmacy',                        dos: '2026-03-17', units: 1, billedAmount: 3480.00  },
+      { revenueCode: '0301', revenueDescription: 'Laboratory — Chemistry',          dos: '2026-03-18', units: 1, billedAmount: 1220.00  },
+      { revenueCode: '0481', revenueDescription: 'Cardiology — Echocardiography',   dos: '2026-03-18', units: 1, billedAmount: 1950.00  },
+      { revenueCode: '0270', revenueDescription: 'Medical/Surgical Supplies',       dos: '2026-03-17', units: 1, billedAmount: 1850.00  },
+    ],
+  },
+}

@@ -5,7 +5,7 @@ import {
   ListItemButton, ListItemText, ListItemAvatar, Checkbox,
   Divider, RadioGroup, FormControlLabel, Radio, TextField,
   Button, FormGroup, Dialog, DialogTitle, DialogContent, DialogActions,
-  Tabs, Tab,
+  Tabs, Tab, InputAdornment,
 } from '@mui/material'
 import {
   WarningAmberOutlined,
@@ -19,6 +19,8 @@ import {
   StickyNote2Outlined,
   TrendingUpOutlined,
   AccessTimeOutlined,
+  SearchOutlined,
+  CloseOutlined,
 } from '@mui/icons-material'
 import { TEAM_MEMBERS, type DenialRecord, type TeamMember, type DenialState } from '../data/denials'
 
@@ -211,6 +213,9 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
   // Notes modal
   const [notesModal, setNotesModal] = useState<{ denialId: string; draft: string } | null>(null)
 
+  // Search
+  const [searchQuery, setSearchQuery] = useState('')
+
   // ── State tab handler ───────────────────────────────────────────────────────
 
   function handleStateChange(_: React.SyntheticEvent, newState: WorklistActiveTab) {
@@ -236,6 +241,16 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
 
   const displayed = useMemo(() => {
     let rows = [...inState]
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase()
+      rows = rows.filter(r =>
+        r.patient.name.toLowerCase().includes(q) ||
+        r.claimId.toLowerCase().includes(q) ||
+        r.payer.toLowerCase().includes(q) ||
+        r.denialType.toLowerCase().includes(q)
+      )
+    }
 
     if (filters.status.length > 0) {
       rows = rows.filter(r => filters.status.includes(r.status))
@@ -264,7 +279,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
     }
 
     return rows
-  }, [inState, filters, sort])
+  }, [inState, filters, sort, searchQuery])
 
 
   // ── Column popover handlers ─────────────────────────────────────────────────
@@ -448,6 +463,31 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
           ))}
         </Tabs>
 
+      </Box>
+
+      {/* Search toolbar */}
+      <Box sx={{ px: 2, py: 1, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+        <TextField
+          size="small"
+          placeholder="Search by patient, claim ID, payer, or denial type…"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery ? (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')} sx={{ p: 0.25 }}>
+                  <CloseOutlined sx={{ fontSize: 14 }} />
+                </IconButton>
+              </InputAdornment>
+            ) : undefined,
+          }}
+          sx={{ width: 380, '& .MuiInputBase-input': { fontSize: '0.8125rem', py: 0.625 } }}
+        />
       </Box>
 
       {/* Table */}
