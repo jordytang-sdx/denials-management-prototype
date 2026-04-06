@@ -246,7 +246,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
       const q = searchQuery.trim().toLowerCase()
       rows = rows.filter(r =>
         r.patient.name.toLowerCase().includes(q) ||
-        r.claimId.toLowerCase().includes(q) ||
+        r.claim.claimId.toLowerCase().includes(q) ||
         r.payer.toLowerCase().includes(q) ||
         r.denialType.toLowerCase().includes(q)
       )
