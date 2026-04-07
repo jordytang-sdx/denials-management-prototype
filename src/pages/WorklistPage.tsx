@@ -23,6 +23,7 @@ import {
   CloseOutlined,
 } from '@mui/icons-material'
 import { TEAM_MEMBERS, type DenialRecord, type TeamMember, type DenialState } from '../data/denials'
+import { getDenialTypeConfig } from '../data/denialTypeConfig'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -543,6 +544,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
               const days = daysUntil(denial.deadline)
               const stateStyle = STATE_COLORS[denial.state]
 
+              const typeConfig = getDenialTypeConfig(denial.denialType)
               return (
                 <TableRow
                   key={denial.id}
@@ -550,19 +552,27 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                   onClick={() => onSelectDenial(denial.id)}
                   sx={{
                     cursor: 'pointer',
-                    borderLeft: denial.needsAttention ? '3px solid' : '3px solid transparent',
-                    borderLeftColor: denial.needsAttention ? 'warning.main' : 'transparent',
-                    '& td:first-of-type': { pl: denial.needsAttention ? '13px' : '16px' },
+                    borderLeft: `4px solid ${typeConfig.color}`,
+                    '& td:first-of-type': { pl: '12px' },
                   }}
                 >
                   {/* Patient */}
                   <TableCell sx={{ py: 1.25 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
-                      {denial.patient.name}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      {denial.patient.mrn}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      {denial.needsAttention && (
+                        <Tooltip title={denial.needsAttentionReasons.join(' · ')} placement="top">
+                          <WarningAmberOutlined sx={{ fontSize: 14, color: 'warning.main', flexShrink: 0 }} />
+                        </Tooltip>
+                      )}
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
+                          {denial.patient.name}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          {denial.patient.mrn}
+                        </Typography>
+                      </Box>
+                    </Box>
                   </TableCell>
 
                   {/* Claim ID + HAR */}
@@ -582,12 +592,22 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
 
                   {/* Denial Type / Subtype */}
                   <TableCell sx={{ py: 1.25 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
-                      {denial.denialType}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      {denial.denialSubtype}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Box sx={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        width: 24, height: 24, borderRadius: 1, bgcolor: typeConfig.bg, flexShrink: 0,
+                      }}>
+                        <typeConfig.Icon sx={{ fontSize: 14, color: typeConfig.color }} />
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3, color: typeConfig.color }}>
+                          {denial.denialType}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          {denial.denialSubtype}
+                        </Typography>
+                      </Box>
+                    </Box>
                   </TableCell>
 
                   {/* Denied Amount */}

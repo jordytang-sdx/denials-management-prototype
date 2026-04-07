@@ -68,6 +68,7 @@ import {
   RemoveCircleOutlineOutlined,
 } from '@mui/icons-material'
 import { SEED_DENIALS, TEAM_MEMBERS, type TeamMember, type DenialRecord, type ActiveStatus, type ResolvedStatus, type DenialStatus, type AppealRound, type AppealRoundType } from '../data/denials'
+import { getDenialTypeConfig } from '../data/denialTypeConfig'
 import {
   CARC_DESCRIPTIONS, RARC_DESCRIPTIONS,
   REMIT_DATA, CLAIM_DATA_837, TIMELINE_EVENTS, SUBMISSION_EPISODES,
@@ -3992,7 +3993,17 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
           <Typography variant="caption" color="text.disabled">·</Typography>
           <Typography variant="body2" color="text.secondary">{denial.payer}</Typography>
           <Typography variant="caption" color="text.disabled">·</Typography>
-          <Typography variant="body2" color="text.secondary">{denial.denialType}</Typography>
+          {(() => {
+            const tc = getDenialTypeConfig(denial.denialType)
+            return (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 0.75, bgcolor: tc.bg }}>
+                  <tc.Icon sx={{ fontSize: 13, color: tc.color }} />
+                </Box>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: tc.color }}>{denial.denialType}</Typography>
+              </Box>
+            )
+          })()}
           <Typography variant="caption" color="text.disabled">—</Typography>
           <Typography variant="body2" color="text.secondary">{denial.denialSubtype}</Typography>
           <Typography variant="caption" color="text.disabled">·</Typography>
