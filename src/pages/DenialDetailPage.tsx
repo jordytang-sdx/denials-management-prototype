@@ -2044,6 +2044,9 @@ function AppealTab({ denial, denialId, denialState, appealLetterPdf, setAppealLe
       {/* ── Right rail ──────────────────────────────────────────────────────── */}
       <Box sx={{ width: 280, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: 'background.default' }}>
 
+      {/* Scrollable top content */}
+      <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+
         {/* Template selector */}
         <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', flexShrink: 0 }}>
           <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 0.75 }}>Template</Typography>
@@ -2101,7 +2104,7 @@ function AppealTab({ denial, denialId, denialState, appealLetterPdf, setAppealLe
           </Box>
         )}
 
-        <Box sx={{ flex: 1 }} />
+      </Box>{/* end scrollable top content */}
 
         {/* Channel + submit */}
         <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', flexShrink: 0 }}>
