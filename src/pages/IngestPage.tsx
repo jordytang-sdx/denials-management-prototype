@@ -123,6 +123,38 @@ interface StagedRecord extends Omit<RawExtraction, 'uncertainFields'> {
   suggestedEngine: string
   uncertainFields: string[]
   possibleMatches: FuzzyMatch[]
+  rawContent?: string
+}
+
+// ─── Update outcome options ───────────────────────────────────────────────────
+
+interface OutcomeOption {
+  label: string
+  sublabel: string
+  state: DenialState
+  status: DenialStatus
+}
+
+const UPDATE_OUTCOMES: Partial<Record<NonNullable<UpdateProposal['updateType']>, OutcomeOption[]>> = {
+  payment_full: [
+    { label: 'Resolved — Full Payment', sublabel: 'Mark case as fully resolved', state: 'Resolved', status: 'Overturned — Full Payment' },
+  ],
+  payment_partial: [
+    { label: 'Resolved — Accept Partial', sublabel: 'Close case, accept the recovered amount', state: 'Resolved', status: 'Overturned — Partial Payment' },
+    { label: 'Active — Pursue Remaining Balance', sublabel: 'Continue appealing for the outstanding difference', state: 'Active', status: 'In Progress' },
+  ],
+  denial_upheld: [
+    { label: 'Active — Escalate to L2 / IRO', sublabel: 'Continue to the next available appeal level', state: 'Active', status: 'In Progress' },
+    { label: 'Closed — Will Not Appeal', sublabel: 'Close case, denial stands', state: 'Closed', status: 'Will Not Appeal' },
+  ],
+  denial_new_reason: [
+    { label: 'Active — Reassess Strategy', sublabel: 'Reopen and rework with updated denial reason', state: 'Active', status: 'In Progress' },
+    { label: 'Closed — Will Not Appeal', sublabel: 'Close case given change in denial reason', state: 'Closed', status: 'Will Not Appeal' },
+  ],
+  recoupment: [
+    { label: 'Active — Dispute Recoupment', sublabel: 'Open a dispute for the recoupment amount', state: 'Active', status: 'In Progress' },
+    { label: 'Closed — Recoupment Accepted', sublabel: 'Accept the recoupment and close case', state: 'Closed', status: 'Closed' },
+  ],
 }
 
 // ─── Engine classification ────────────────────────────────────────────────────
@@ -418,6 +450,24 @@ const SEED_STAGED: SeedEntry[] = [
       episodeResultLabel: 'Appeal Overturned — Full Payment Authorized',
       episodeResultDescription: 'BCBS 835 remit confirms full $4,210 payment. MS-DRG 291 reinstated. Case resolved.',
     },
+    rawContent: `ISA*00*          *00*          *ZZ*BCBSIL         *ZZ*RMCPROVIDER    *260214*1200*^*00501*000018847*0*P*:~
+GS*HP*BCBSIL*RMCPROVIDER*20260214*1200*18847*X*005010X221A1~
+ST*835*0001~
+BPR*I*4210.00*C*ACH*CTX*01*BCBS*DA*072400052*9800000001*01*RMCPROVIDER*DA*123456789*20260214~
+TRN*1*835-BCBS-18847*1234567890~
+REF*EV*BCBS-RMT-18847~
+DTM*405*20260214~
+N1*PR*BLUE CROSS BLUE SHIELD OF ILLINOIS*XV*60054~
+N1*PE*REGIONAL MEDICAL CENTER*XX*1982736450~
+CLP*CLM-8847291*1*4210.00*4210.00**13*BCBS-ADJ-88210*11*1~
+NM1*QC*1*HOLLOWAY*MARGARET****MI*MRN104823~
+NM1*82*1*PATEL*SUNITA MD****XX*1234567893~
+SVC*HC:99285*4210.00*4210.00**2~
+DTM*472*20260214~
+CAS*CO*253*0.00~
+SE*15*0001~
+GE*1*18847~
+IEA*1*000018847~`,
   },
 
   // 2 — UPDATE: Partial payment received — decision required (accept partial or continue)
@@ -449,6 +499,24 @@ const SEED_STAGED: SeedEntry[] = [
       episodeResultLabel: 'Partial Payment Received',
       episodeResultDescription: 'Aetna remit shows $2,820 paid on $5,640 claim — 50% recovered. Consider whether to accept partial or escalate for remaining balance.',
     },
+    rawContent: `ISA*00*          *00*          *ZZ*AETNA          *ZZ*RMCPROVIDER    *260318*0900*^*00501*000022091*0*P*:~
+GS*HP*AETNA*RMCPROVIDER*20260318*0900*22091*X*005010X221A1~
+ST*835*0001~
+BPR*I*2820.00*C*ACH*CTX*01*AETNA*DA*011000015*8800000012*01*RMCPROVIDER*DA*987654321*20260318~
+TRN*1*835-AETNA-22091*1357924680~
+DTM*405*20260318~
+N1*PR*AETNA HEALTH PLANS*XV*60001~
+N1*PE*REGIONAL MEDICAL CENTER*XX*1982736450~
+CLP*CLM-2209115*1*5640.00*2820.00**13*AETNA-ADJ-22091*11*1~
+CAS*CO*4*2820.00~
+NM1*QC*1*REYES*TIMOTHY****MI*MRN701023~
+SVC*HC:47562*5640.00*2820.00**1~
+DTM*472*20260312~
+CAS*CO*4*2820.00~
+REF*6R*AETNA-DRG-REVIEW-470~
+SE*14*0001~
+GE*1*22091~
+IEA*1*000022091~`,
   },
 
   // 3 — UPDATE: L1 appeal upheld — reopen for escalation decision
@@ -480,6 +548,44 @@ const SEED_STAGED: SeedEntry[] = [
       episodeResultLabel: 'L1 Appeal Upheld by Payer',
       episodeResultDescription: 'UnitedHealthcare upheld the authorization denial. L1 appeal reviewed and denied. Level 2 external review available within 60 days.',
     },
+    rawContent: `UNITEDHEALTHCARE
+APPEAL REVIEW DECISION NOTICE
+
+Date: April 1, 2026
+Reference: UHC-APPEAL-2026-66348
+Provider: Regional Medical Center
+NPI: 1982736450
+
+Patient: James Okafor
+Member ID: MRN318740
+Date of Service: March 1, 2026
+Claim Number: CLM-6634882
+
+RE: FIRST LEVEL APPEAL DECISION — UPHELD
+
+Dear Provider Relations,
+
+UnitedHealthcare has completed its review of the first level appeal submitted for the above-referenced
+claim. After review by our medical director, the original coverage determination has been upheld.
+
+DENIAL REASON:
+Services billed under CPT procedure code(s) were rendered without prior authorization on file. Per
+the member's benefit plan, services require prior authorization to be eligible for coverage.
+Denial Code: CARC-15 / RARC N130.
+
+YOUR FURTHER APPEAL RIGHTS:
+You may request a Level 2 external independent review within 60 days of this notice. To initiate
+an external review, submit a written request to:
+
+  UnitedHealthcare External Review Unit
+  PO Box 30880, Salt Lake City, UT 84130
+
+Amount at issue: $6,750.00
+
+If you have questions, contact Provider Services at 1-877-842-3210.
+
+Sincerely,
+Dr. R. Ellison, MD — UnitedHealthcare Medical Director`,
   },
 
   // 4 — UPDATE: Payer changed denial reason on re-adjudication — strategy change needed
@@ -512,6 +618,24 @@ const SEED_STAGED: SeedEntry[] = [
       episodeResultLabel: 'Payer Changed Denial Reason on Re-adjudication',
       episodeResultDescription: 'Cigna re-adjudicated from Medical Necessity (CARC-50) to Authorization (CARC-15). In-progress appeal strategy needs to change — auth denial requires retro-auth pathway, not clinical criteria argument.',
     },
+    rawContent: `ISA*00*          *00*          *ZZ*CIGNA          *ZZ*RMCPROVIDER    *260407*1015*^*00501*000033213*0*P*:~
+GS*HP*CIGNA*RMCPROVIDER*20260407*1015*33213*X*005010X221A1~
+ST*835*0001~
+BPR*I*0.00*C*ACH*CTX*01*CIGNA*DA*021000021*4400000031*01*RMCPROVIDER*DA*111222333*20260407~
+TRN*1*835-CIGNA-33213*1928374650~
+DTM*405*20260407~
+N1*PR*CIGNA HEALTH AND LIFE INSURANCE CO*XV*60052~
+N1*PE*REGIONAL MEDICAL CENTER*XX*1982736450~
+CLP*CLM-5521334*4*3210.75*0.00**13*CIGNA-ADJ-33213*11*1~
+CAS*CO*15*3210.75~
+NM1*QC*1*BRANDT*CAROLYN****MI*MRN447129~
+SVC*HC:93458*3210.75*0.00**1~
+DTM*472*20260310~
+CAS*CO*15*3210.75~
+REF*6R*CIGNA-READJ-55213~
+SE*14*0001~
+GE*1*33213~
+IEA*1*000033213~`,
   },
 
   // ── NEW RECORDS: 835 batch — clean extractions ───────────────────────────
@@ -530,6 +654,24 @@ const SEED_STAGED: SeedEntry[] = [
     deniedAmount: 8920, paidAmount: 0, adjustmentAmount: 8920,
     dos: '2026-03-15', deadline: addDays(TODAY, 26),
     uncertainFields: [],
+    rawContent: `ISA*00*          *00*          *ZZ*UHCINSURANCE    *ZZ*RMCPROVIDER    *260403*1100*^*00501*000044001*0*P*:~
+GS*HP*UHCINSURANCE*RMCPROVIDER*20260403*1100*44001*X*005010X221A1~
+ST*835*0001~
+BPR*I*0.00*C*ACH*CTX*01*UHC*DA*091000019*9900000041*01*RMCPROVIDER*DA*444555666*20260403~
+TRN*1*835-UHC-44001*1029384756~
+DTM*405*20260403~
+N1*PR*UNITEDHEALTHCARE INSURANCE CO*XV*60006~
+N1*PE*REGIONAL MEDICAL CENTER*XX*1982736450~
+CLP*CLM-NEW-5001*4*8920.00*0.00**13*UHC-ADJ-44001*11*1~
+CAS*CO*50*8920.00~
+NM1*QC*1*SIMMONDS*DOROTHY****MI*MRN8821~
+SVC*HC:99234*8920.00*0.00**1~
+DTM*472*20260315~
+CAS*CO*50*8920.00~
+REF*LU*N386~
+SE*14*0001~
+GE*1*44001~
+IEA*1*000044001~`,
   },
 
   // 6 — NEW: 835 batch, DRG Downgrade with partial payment
@@ -546,6 +688,24 @@ const SEED_STAGED: SeedEntry[] = [
     deniedAmount: 2140, paidAmount: 5200, adjustmentAmount: 2140,
     dos: '2026-03-10', deadline: addDays(TODAY, 52),
     uncertainFields: [],
+    rawContent: `ISA*00*          *00*          *ZZ*AETNA          *ZZ*RMCPROVIDER    *260403*1100*^*00501*000044002*0*P*:~
+GS*HP*AETNA*RMCPROVIDER*20260403*1100*44002*X*005010X221A1~
+ST*835*0002~
+BPR*I*5200.00*C*ACH*CTX*01*AETNA*DA*011000015*8800000012*01*RMCPROVIDER*DA*987654321*20260403~
+TRN*1*835-AETNA-44002*1357924681~
+DTM*405*20260403~
+N1*PR*AETNA HEALTH PLANS*XV*60001~
+N1*PE*REGIONAL MEDICAL CENTER*XX*1982736450~
+CLP*CLM-9901234*1*7340.00*5200.00**13*AETNA-ADJ-44002*11*1~
+CAS*CO*4*2140.00~
+NM1*QC*1*NGUYEN*HAROLD****MI*MRN558821~
+SVC*HC:99234*7340.00*5200.00**1~
+DTM*472*20260310~
+CAS*CO*4*2140.00~
+REF*LU*N115~
+SE*14*0002~
+GE*1*44002~
+IEA*1*000044002~`,
   },
 
   // 7 — NEW: 835 batch, Timely Filing defense needed
@@ -562,6 +722,23 @@ const SEED_STAGED: SeedEntry[] = [
     deniedAmount: 3120, paidAmount: 0, adjustmentAmount: 3120,
     dos: '2025-12-15', deadline: addDays(TODAY, 12),
     uncertainFields: [],
+    rawContent: `ISA*00*          *00*          *ZZ*AETNA          *ZZ*RMCPROVIDER    *260403*1100*^*00501*000044003*0*P*:~
+GS*HP*AETNA*RMCPROVIDER*20260403*1100*44003*X*005010X221A1~
+ST*835*0003~
+BPR*I*0.00*C*ACH*CTX*01*AETNA*DA*011000015*8800000012*01*RMCPROVIDER*DA*987654321*20260403~
+TRN*1*835-AETNA-44003*1357924682~
+DTM*405*20260403~
+N1*PR*AETNA HEALTH PLANS*XV*60001~
+N1*PE*REGIONAL MEDICAL CENTER*XX*1982736450~
+CLP*CLM-9901235*4*3120.00*0.00**13*AETNA-ADJ-44003*11*1~
+CAS*CO*29*3120.00~
+NM1*QC*1*PARK*LUCINDA****MI*MRN441902~
+SVC*HC:99234*3120.00*0.00**1~
+DTM*472*20251215~
+CAS*CO*29*3120.00~
+SE*13*0003~
+GE*1*44003~
+IEA*1*000044003~`,
   },
 
   // 8 — NEW: 835 batch, Eligibility / COB issue
@@ -578,6 +755,23 @@ const SEED_STAGED: SeedEntry[] = [
     deniedAmount: 4480, paidAmount: 0, adjustmentAmount: 4480,
     dos: '2026-03-08', deadline: addDays(TODAY, 40),
     uncertainFields: [],
+    rawContent: `ISA*00*          *00*          *ZZ*MEDICARE       *ZZ*RMCPROVIDER    *260403*1100*^*00501*000044004*0*P*:~
+GS*HP*MEDICARE*RMCPROVIDER*20260403*1100*44004*X*005010X221A1~
+ST*835*0001~
+BPR*I*0.00*C*ACH*CTX*01*MEDICARE*DA*021030004*3700000044*01*RMCPROVIDER*DA*777888999*20260403~
+TRN*1*835-MCR-44004*2938475610~
+DTM*405*20260403~
+N1*PR*CENTERS FOR MEDICARE AND MEDICAID SERVICES*XV*00001~
+N1*PE*REGIONAL MEDICAL CENTER*XX*1982736450~
+CLP*CLM-9901236*4*4480.00*0.00**13*MCR-ADJ-44004*11*1~
+CAS*CO*31*4480.00~
+NM1*QC*1*VASQUEZ*ELENA****MI*MRN771203~
+SVC*HC:99234*4480.00*0.00**1~
+DTM*472*20260308~
+CAS*CO*31*4480.00~
+SE*13*0001~
+GE*1*44004~
+IEA*1*000044004~`,
   },
 
   // ── NEW RECORDS: PDF/letter extractions — uncertain fields ───────────────
@@ -598,6 +792,38 @@ const SEED_STAGED: SeedEntry[] = [
     levelOfCare: 'Surgical procedure — medical necessity questioned per policy',
     dos: '2026-03-22', deadline: addDays(TODAY, 33),
     uncertainFields: ['carc', 'har', 'deniedAmount'],
+    rawContent: `CIGNA HEALTH AND LIFE INSURANCE COMPANY
+CLINICAL REVIEW — NOTIFICATION OF ADVERSE DETERMINATION
+
+Date: March 27, 2026
+Cigna Reference: CGN-CLN-2026-88234
+Fax Received: Regional Medical Center — Revenue Cycle
+
+Patient Name: Daniel Forsythe
+Member ID: U81209034
+Date of Service: March 22, 2026
+
+RE: NOTIFICATION OF NON-COVERAGE — LUMBAR SPINAL FUSION (CPT 22630, 22612)
+
+Dear Provider,
+
+Following clinical review by Dr. Patricia Wells, MD, Cigna Clinical Review, the above-referenced
+procedure has been determined NOT MEDICALLY NECESSARY per Cigna's coverage policy for
+Lumbar Spinal Fusion (Policy #MED.00030).
+
+CRITERIA APPLIED: MCG Surgical Criteria — Lumbar Fusion (A-0581)
+The submitted documentation does not meet criteria for surgical intervention, specifically:
+  - Conservative treatment (physical therapy, epidural injections) not documented for minimum 6 months
+  - Functional status assessment (Oswestry Disability Index) not included
+
+YOU HAVE THE RIGHT TO APPEAL THIS DECISION.
+Submit appeal documentation within 180 days to:
+  Cigna Health and Life Insurance Co. — Appeal Review Unit
+  PO Box 188011, Chattanooga, TN 37422
+
+For questions, call: 1-800-244-6224 (Provider Services)
+
+Patricia Wells, MD — Cigna Clinical Review Medical Director`,
   },
 
   // 10 — NEW: ADR letter, uncertain claim ID + HAR, medium fuzzy match
@@ -614,6 +840,41 @@ const SEED_STAGED: SeedEntry[] = [
     recordsRequested: 'H&P, operative note, discharge summary, pre-op conservative treatment documentation (6 months)',
     submissionDeadline: addDays(TODAY, 36),
     uncertainFields: ['har', 'claimId'],
+    rawContent: `PALMETTO GBA — MEDICARE ADMINISTRATIVE CONTRACTOR
+ADDITIONAL DOCUMENTATION REQUEST (ADR)
+PREPAYMENT REVIEW
+
+Date: March 15, 2026
+ADR Reference: PGR-ADR-2026-09247
+Provider: Regional Medical Center (NPI: 1982736450)
+
+Beneficiary: Raymond Castellano
+HIC Number: MRN-091247
+Date of Service: February 18, 2026
+MS-DRG: 470 — Major Joint Replacement or Reattachment of Lower Extremity
+
+RE: REQUEST FOR MEDICAL RECORDS — PREPAYMENT REVIEW
+
+This claim has been selected for prepayment medical review. Payment is suspended pending
+receipt of the requested documentation. Please submit the following within 45 days:
+
+RECORDS REQUIRED:
+  1. History & Physical (H&P) — dated within 30 days of procedure
+  2. Operative report (full, signed)
+  3. Discharge summary
+  4. Pre-operative imaging reports (X-ray, MRI)
+  5. Documentation of conservative treatment (minimum 6 months) — physical therapy notes,
+     injection records, or equivalent non-surgical management
+
+SUBMISSION INSTRUCTIONS:
+  Submit records via fax to: 1-855-820-9522 (Palmetto GBA ADR Unit)
+  Or mail to: Palmetto GBA, P.O. Box 100306, Columbia, SC 29202
+  Reference ADR Number: PGR-ADR-2026-09247 on all submissions.
+
+DEADLINE: Records must be received within 45 days of this notice.
+Failure to respond will result in claim denial.
+
+Palmetto GBA Medical Review Department`,
   },
 
   // 11 — NEW: Auth denial letter, uncertain amount + HAR, HIGH fuzzy match
@@ -631,6 +892,39 @@ const SEED_STAGED: SeedEntry[] = [
     serviceRequiringAuth: 'Diagnostic Cardiac Catheterization (CPT 93458)',
     dos: '2026-03-28', deadline: addDays(TODAY, 45),
     uncertainFields: ['deniedAmount', 'har', 'authNumber'],
+    rawContent: `CIGNA HEALTH AND LIFE INSURANCE COMPANY
+EXPLANATION OF BENEFITS / NOTICE OF NON-COVERED SERVICES
+
+Date: April 2, 2026
+Document Reference: CGN-EOB-2026-55204
+Provider: Regional Medical Center
+
+Patient Name: Carolyn Brandt
+Member ID: U44712900
+Date of Service: March 28, 2026
+Service: Diagnostic Cardiac Catheterization (CPT 93458)
+
+CLAIM STATUS: DENIED
+
+REASON FOR DENIAL:
+  CARC 15 — Claim/service denied. The submitted service required prior authorization which
+  is not on file with Cigna at the time of adjudication.
+  RARC N30 — No prior authorization was obtained for this service.
+
+NOTE: Our records do not show a prior authorization request for CPT 93458 for this member
+on the date of service. Please verify authorization records. If authorization was obtained
+in error, submit corrected claim with authorization number.
+
+AMOUNT BILLED: [Not legible — see claim file]
+AMOUNT COVERED: $0.00
+PATIENT RESPONSIBILITY: $0.00 (provider adjustment)
+
+APPEAL RIGHTS:
+You may appeal this determination within 180 days. Submit to:
+  Cigna Appeals & Grievances — Provider Division
+  PO Box 188011, Chattanooga, TN 37422
+
+Questions: 1-800-244-6224`,
   },
 
   // 12 — NEW: Underpayment EOB — contracted rate dispute
@@ -647,6 +941,30 @@ const SEED_STAGED: SeedEntry[] = [
     deniedAmount: 3180, paidAmount: 6840, adjustmentAmount: 3180,
     dos: '2026-03-05', deadline: addDays(TODAY, 55),
     uncertainFields: [],
+    rawContent: `HUMANA HEALTH PLAN
+EXPLANATION OF BENEFITS
+
+Date: April 3, 2026
+Humana Reference: HUM-EOB-2026-66291
+Provider: Regional Medical Center (NPI: 1982736450)
+
+Patient: Michael Torres
+Member ID: HUM662910
+Date of Service: March 5, 2026
+
+CPT Code: 27447 — Total Knee Arthroplasty (Bilateral)
+Billed Amount: $10,020.00
+Contracted Rate (per agreement): $10,020.00
+Amount Paid: $6,840.00
+Adjustment: $3,180.00
+  CARC 45 — Charge exceeds fee schedule / maximum allowable
+
+NOTE: Payment was issued at the non-facility rate (POS 11) rather than the
+contracted facility rate (POS 21). Please verify place of service coding.
+If facility rate applies, submit a corrected claim with correct POS code for
+re-adjudication at contracted facility rate.
+
+Questions regarding this payment: 1-800-457-4708 (Humana Provider Services)`,
   },
 
   // ── DUPLICATE: already in the system ─────────────────────────────────────
@@ -663,6 +981,29 @@ const SEED_STAGED: SeedEntry[] = [
     deniedAmount: 4820, paidAmount: 8430, adjustmentAmount: 4820,
     dos: '2026-02-18', deadline: '2026-04-28',
     uncertainFields: [],
+    rawContent: `UNITEDHEALTHCARE
+EXPLANATION OF BENEFITS
+
+Date: March 12, 2026
+UHC Reference: UHC-EOB-2026-99218
+Provider: Regional Medical Center (NPI: 1982736450)
+
+Patient: Harold Simmons
+Member ID: UHC109432
+Date of Service: February 18, 2026
+Claim Number: CLM-9921847
+
+CPT Code: 27447 — Total Knee Arthroplasty
+Billed Amount: $13,250.00
+Contracted Rate: $13,250.00
+Amount Paid: $8,430.00
+Adjustment: $4,820.00
+  CARC 45 — Charge exceeds fee schedule / maximum allowable (implant pricing dispute)
+
+NOTE: This EOB was previously received on March 5, 2026. This document appears to be a
+re-transmission of the same EOB. Claim CLM-9921847 is already on file.
+
+Questions: 1-800-842-3210 (UHC Provider Services)`,
   },
 ]
 
@@ -780,6 +1121,15 @@ function RecordDrawer({
   hasRaw: boolean
   matchedDenial?: DenialRecord
 }) {
+  const [selectedOutcome, setSelectedOutcome] = useState(0)
+
+  // Reset selection when the record changes
+  const prevTempId = useRef<string | null>(null)
+  if (record && record.tempId !== prevTempId.current) {
+    prevTempId.current = record.tempId
+    setSelectedOutcome(0)
+  }
+
   if (!record) return null
   const u = record.uncertainFields
   const isUpdate = record.status === 'update'
@@ -788,6 +1138,11 @@ function RecordDrawer({
   const isAppealResponse = st === 'appeal-upheld' || st === 'appeal-overturned'
   const isAdr = st === 'adr'
   const is835 = st === 'edi-835'
+
+  const outcomeOptions = record.updateProposal?.updateType
+    ? (UPDATE_OUTCOMES[record.updateProposal.updateType] ?? [])
+    : []
+  const chosenOutcome = outcomeOptions[selectedOutcome] ?? outcomeOptions[0]
 
   return (
     <Drawer
@@ -910,12 +1265,47 @@ function RecordDrawer({
                 </TableBody>
               </Table>
             </Paper>
-            <Chip
-              icon={<AutoFixHighOutlined sx={{ fontSize: 13, ml: '4px !important' }} />}
-              label={`Suggested: ${record.updateProposal.suggestedState} / ${record.updateProposal.suggestedStatus}`}
-              size="small"
-              sx={{ bgcolor: '#fffbeb', color: '#92400e', fontSize: '0.7rem', fontWeight: 600 }}
-            />
+            {/* Outcome selector */}
+            <Box sx={{ mt: 0.5 }}>
+              <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.07em', display: 'block', mb: 1 }}>
+                How would you like to record this?
+              </Typography>
+              {outcomeOptions.length === 1 ? (
+                <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 1.5, bgcolor: '#F0FDF4', borderColor: '#86EFAC' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#166534' }}>{outcomeOptions[0]!.label}</Typography>
+                  <Typography variant="caption" sx={{ color: '#166534' }}>{outcomeOptions[0]!.sublabel}</Typography>
+                </Paper>
+              ) : (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                  {outcomeOptions.map((opt, i) => (
+                    <Paper
+                      key={i}
+                      variant="outlined"
+                      onClick={() => setSelectedOutcome(i)}
+                      sx={{
+                        p: 1.25, borderRadius: 1.5, cursor: 'pointer',
+                        borderColor: selectedOutcome === i ? 'primary.main' : 'divider',
+                        bgcolor: selectedOutcome === i ? 'primary.50' : 'background.paper',
+                        transition: 'border-color 0.15s, background-color 0.15s',
+                        '&:hover': { borderColor: 'primary.light' },
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                        <Box sx={{
+                          mt: 0.25, width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
+                          border: '2px solid', borderColor: selectedOutcome === i ? 'primary.main' : 'text.disabled',
+                          bgcolor: selectedOutcome === i ? 'primary.main' : 'transparent',
+                        }} />
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', lineHeight: 1.3 }}>{opt.label}</Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>{opt.sublabel}</Typography>
+                        </Box>
+                      </Box>
+                    </Paper>
+                  ))}
+                </Box>
+              )}
+            </Box>
           </Box>
         )}
 
@@ -1098,35 +1488,34 @@ function RecordDrawer({
           </>
         )}
 
-        {/* ── Classification — not for adr/appeal (engine is predetermined) ── */}
-        {!isAdr && !isAppealResponse && (
+        {/* ── Classification — only for uncertain new records ── */}
+        {!isUpdate && !isAdr && !isAppealResponse && record.suggestedEngine === '?' && (
           <>
             <Divider />
             <Box>
-              <SectionHeading>Classification</SectionHeading>
+              <SectionHeading>Classification Required</SectionHeading>
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
+                Denial type could not be determined from the source. Select the correct type before importing.
+              </Typography>
               <FormControl fullWidth size="small">
-                <InputLabel sx={{ fontSize: '0.875rem' }}>Resolution Engine</InputLabel>
+                <InputLabel sx={{ fontSize: '0.875rem' }}>Denial Type</InputLabel>
                 <Select
-                  value={record.suggestedEngine === '?' ? '' : record.suggestedEngine}
-                  label="Resolution Engine"
-                  onChange={e => onUpdate('suggestedEngine', e.target.value)}
-                  displayEmpty
-                  sx={{ fontSize: '0.875rem', bgcolor: record.suggestedEngine === '?' ? '#fffbeb' : 'background.paper' }}
+                  value={record.denialType ?? ''}
+                  label="Denial Type"
+                  onChange={e => {
+                    onUpdate('denialType', e.target.value)
+                    onUpdate('suggestedEngine', ENGINE_FROM_TYPE[e.target.value] ?? '?')
+                  }}
+                  sx={{ fontSize: '0.875rem', bgcolor: '#fffbeb' }}
                 >
-                  {ALL_ENGINES.map(e => (
-                    <MenuItem key={e} value={e} sx={{ fontSize: '0.875rem' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <EngineChip engine={e} />
-                      </Box>
-                    </MenuItem>
+                  {Object.keys(ENGINE_FROM_TYPE).filter(t => t !== 'ADR').map(t => (
+                    <MenuItem key={t} value={t} sx={{ fontSize: '0.875rem' }}>{t}</MenuItem>
                   ))}
                 </Select>
-                {record.suggestedEngine === '?' && (
-                  <Typography variant="caption" sx={{ color: '#d97706', fontSize: '0.7rem', mt: 0.25, display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                    <WarningAmberOutlined sx={{ fontSize: 11 }} />
-                    Select the appropriate engine before importing
-                  </Typography>
-                )}
+                <Typography variant="caption" sx={{ color: '#d97706', fontSize: '0.7rem', mt: 0.25, display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                  <WarningAmberOutlined sx={{ fontSize: 11 }} />
+                  Required before importing
+                </Typography>
               </FormControl>
             </Box>
           </>
@@ -1142,7 +1531,7 @@ function RecordDrawer({
               onClick={onViewRaw}
               sx={{ fontSize: '0.7rem', color: 'text.secondary', py: 0.25, minWidth: 0 }}
             >
-              View raw
+              View source file
             </Button>
           )}
         </Box>
@@ -1155,22 +1544,17 @@ function RecordDrawer({
             <Button fullWidth variant="outlined" onClick={onClose} sx={{ color: 'text.secondary', borderColor: 'divider' }}>Ignore</Button>
             <Button
               fullWidth variant="contained" disableElevation
-              color={record.updateProposal?.updateType === 'payment_full' || record.updateProposal?.updateType === 'payment_partial' ? 'success' : 'warning'}
+              color={chosenOutcome?.state === 'Resolved' || chosenOutcome?.state === 'Closed' ? 'success' : 'warning'}
               onClick={() => {
                 onApplyUpdate(record.updateProposal!, {
-                  state: record.updateProposal!.suggestedState,
-                  status: record.updateProposal!.suggestedStatus,
+                  state: chosenOutcome?.state ?? record.updateProposal!.suggestedState,
+                  status: chosenOutcome?.status ?? record.updateProposal!.suggestedStatus,
                   ...record.updateProposal!.updates,
                 })
                 onClose()
               }}
             >
-              {record.updateProposal?.updateType === 'payment_full'    ? 'Apply — Mark Overturned'
-               : record.updateProposal?.updateType === 'payment_partial' ? 'Apply — Record Partial Payment'
-               : record.updateProposal?.updateType === 'denial_upheld'   ? 'Apply — Record Payer Response'
-               : record.updateProposal?.updateType === 'denial_new_reason' ? 'Apply — Update Denial'
-               : record.updateProposal?.updateType === 'recoupment'      ? 'Apply — Record Recoupment'
-               : 'Apply Update'}
+              Apply — {chosenOutcome?.label ?? 'Apply Update'}
             </Button>
           </>
         ) : (
@@ -1584,7 +1968,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
         onClose={() => setDrawerId(null)}
         onUpdate={(key, value) => drawerId && updateField(drawerId, key, value)}
         onApplyUpdate={handleApplyUpdate}
-        hasRaw={Boolean(drawerRecord && rawFiles[drawerRecord.sourceFile])}
+        hasRaw={Boolean(drawerRecord && (rawFiles[drawerRecord.sourceFile] || drawerRecord.rawContent))}
         onViewRaw={() => drawerRecord && setRawViewFile(drawerRecord.sourceFile)}
         matchedDenial={drawerMatchedDenial ?? undefined}
       />
@@ -1598,7 +1982,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
           <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>Raw File</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>Source File</Typography>
             <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>{rawViewFile}</Typography>
           </Box>
           <IconButton size="small" onClick={() => setRawViewFile(null)}>
@@ -1616,7 +2000,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
               height: '100%', overflow: 'auto',
             }}
           >
-            {rawViewFile ? (rawFiles[rawViewFile] ?? '(No content — file could not be read)') : ''}
+            {rawViewFile ? (rawFiles[rawViewFile] ?? staged.find(r => r.sourceFile === rawViewFile)?.rawContent ?? '(No content — file could not be read)') : ''}
           </Box>
         </DialogContent>
       </Dialog>
