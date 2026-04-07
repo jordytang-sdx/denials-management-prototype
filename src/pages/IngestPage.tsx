@@ -386,148 +386,75 @@ const TYPE_EXTRACTIONS: Record<string, RawExtraction[]> = {
 type SeedEntry = Omit<StagedRecord, 'possibleMatches'>
 
 const SEED_STAGED: SeedEntry[] = [
-  // 1 — New, clean, 835 EDI: Dorothy Simmonds / UHC / Medical Necessity
-  {
-    tempId: 'seed-1', selected: true, status: 'new',
-    sourceFile: '835_UHC_DorothySimmonds.edi', suggestedEngine: 'Appeal',
-    sourceType: 'edi-835',
-    patientName: 'Dorothy Simmonds', mrn: 'MRN-8821',
-    claimId: 'CLM-NEW-5001', har: 'HAR-NEW-5001',
-    payer: 'UnitedHealthcare',
-    denialType: 'Medical Necessity', denialSubtype: 'Inpatient Stay — COPD Exacerbation',
-    carc: 'CARC-50', rarc: 'N386',
-    deniedAmount: 8920, paidAmount: 0, adjustmentAmount: 8920,
-    dos: '2026-03-15', deadline: addDays(TODAY, 26),
-    uncertainFields: [],
-  },
 
-  // 2 — New, uncertain fields: Daniel Forsythe / Cigna / Medical Necessity denial letter
-  {
-    tempId: 'seed-2', selected: true, status: 'new',
-    sourceFile: 'DenialLetter_Cigna_DanielForsythe.pdf', suggestedEngine: 'Appeal',
-    sourceType: 'med-nec-denial',
-    patientName: 'Daniel Forsythe', mrn: 'MRN-9034',
-    claimId: 'CLM-NEW-5002', har: '',
-    payer: 'Cigna',
-    denialType: 'Medical Necessity', denialSubtype: 'Lumbar Spinal Fusion — L4-L5',
-    carc: '', rarc: '', deniedAmount: 0,
-    clinicalCriteria: 'MCG Surgical Criteria — Lumbar Fusion (A-0581)',
-    reviewingPhysician: 'Dr. Patricia Wells, MD — Cigna Clinical Review',
-    levelOfCare: 'Surgical procedure — medical necessity questioned per policy',
-    dos: '2026-03-22', deadline: addDays(TODAY, 33),
-    uncertainFields: ['carc', 'har', 'deniedAmount'],
-  },
+  // ── UPDATES: payer responses to existing cases ────────────────────────────
 
-  // 3 — New, uncertain + MEDIUM fuzzy match: Raymond Castellano / Palmetto ADR
-  //     MRN-091247 matches existing Aetna Med Nec denial DN-2026-0389 (different payer)
+  // 1 — UPDATE: Appeal overturned, full payment
+  //     Margaret Holloway / BCBS 835 → DN-2026-0412 (Active, Appeal Drafting)
   {
-    tempId: 'seed-3', selected: true, status: 'new',
-    sourceFile: 'ADR_Palmetto_RaymondCastellano.pdf', suggestedEngine: 'Records Request',
-    sourceType: 'adr',
-    patientName: 'Raymond Castellano', mrn: 'MRN-091247',
-    claimId: 'CLM-NEW-5003', har: '',
-    payer: 'Palmetto GBA (Medicare)',
-    denialType: 'ADR', denialSubtype: 'Prepayment Review — Total Hip Arthroplasty (MS-DRG 470)',
-    dos: '2026-02-18', deadline: addDays(TODAY, 36),
-    recordsRequested: 'H&P, operative note, discharge summary, pre-op conservative treatment documentation (6 months)',
-    submissionDeadline: addDays(TODAY, 36),
-    uncertainFields: ['har', 'claimId'],
-  },
-
-  // 4 — New, no uncertain, HIGH fuzzy match: Carolyn Brandt / Cigna Auth denial
-  //     MRN-447129 + Cigna matches existing Cigna Med Nec denial DN-2026-0358 (same patient + payer)
-  {
-    tempId: 'seed-4', selected: true, status: 'new',
-    sourceFile: 'AuthDenial_Cigna_CarolynBrandt.pdf', suggestedEngine: 'Appeal',
-    sourceType: 'auth-denial',
-    patientName: 'Carolyn Brandt', mrn: 'MRN-447129',
-    claimId: 'CLM-NEW-5004', har: '',
-    payer: 'Cigna',
-    denialType: 'Authorization', denialSubtype: 'No Prior Authorization — Cardiac Catheterization',
-    carc: 'CARC-15', rarc: 'N30', deniedAmount: 0,
-    authNumber: '',
-    serviceRequiringAuth: 'Diagnostic Cardiac Catheterization (CPT 93458)',
-    dos: '2026-03-28', deadline: addDays(TODAY, 45),
-    uncertainFields: ['deniedAmount', 'har', 'authNumber'],
-  },
-
-  // 5 — Update (partial payment): Margaret Holloway / BCBS 835 → DN-2026-0412
-  {
-    tempId: 'seed-5', selected: false, status: 'update',
-    sourceFile: '835_BCBS_MargaretHolloway_adjusted.edi', suggestedEngine: 'Appeal',
+    tempId: 'seed-1', selected: false, status: 'update',
+    sourceFile: '835_BCBS_MargaretHolloway_overturned.edi', suggestedEngine: 'Appeal',
     sourceType: 'edi-835',
     patientName: 'Margaret Holloway', mrn: 'MRN-104823',
     claimId: 'CLM-8847291', har: 'HAR-774112',
     payer: 'Blue Cross Blue Shield',
     denialType: 'DRG Downgrade', denialSubtype: 'MS-DRG 291 → 292',
     carc: 'CARC-4', rarc: 'N115',
-    deniedAmount: 2105, paidAmount: 2105, adjustmentAmount: 2105,
+    deniedAmount: 0, paidAmount: 4210, adjustmentAmount: 0,
     dos: '2026-02-14', deadline: addDays(TODAY, 4),
     uncertainFields: [],
     updateProposal: {
       existingDenialId: 'DN-2026-0412',
-      label: 'Partial Payment Received',
-      updateType: 'payment_partial',
-      episodeResultLabel: 'Partial Payment Received',
-      episodeResultDescription: 'BCBS remit shows $2,105 paid. Original denied amount was $4,210 — 50% recovered. Case closed as partial.',
+      label: 'Appeal Overturned — Full Payment',
+      updateType: 'payment_full',
       suggestedState: 'Resolved',
-      suggestedStatus: 'Overturned — Partial Payment',
-      updates: { deniedAmount: 2105 },
+      suggestedStatus: 'Overturned — Full Payment',
+      updates: {},
       diffs: [
-        { field: 'deniedAmount', label: 'Denied Amount',    from: '$4,210.00', to: '$2,105.00 (partial)' },
-        { field: 'status',       label: 'Suggested Status', from: 'Appeal Drafting', to: 'Overturned — Partial Payment' },
-        { field: 'state',        label: 'Suggested State',  from: 'Active', to: 'Resolved' },
+        { field: 'state',  label: 'Suggested State',  from: 'Active',          to: 'Resolved' },
+        { field: 'status', label: 'Suggested Status', from: 'Appeal Drafting', to: 'Overturned — Full Payment' },
+        { field: 'amount', label: 'Payment',           from: '—',               to: '$4,210.00 paid in full' },
       ],
+      episodeResultLabel: 'Appeal Overturned — Full Payment Authorized',
+      episodeResultDescription: 'BCBS 835 remit confirms full $4,210 payment. MS-DRG 291 reinstated. Case resolved.',
     },
   },
 
-  // 6 — Duplicate: Harold Simmons / UHC underpayment EOB → CLM-9921847 = DN-2026-0521
+  // 2 — UPDATE: Partial payment received — decision required (accept partial or continue)
+  //     Timothy Reyes / Aetna 835 → DN-2026-0318 (Active, Appeal Drafting)
   {
-    tempId: 'seed-6', selected: false, status: 'duplicate',
-    sourceFile: 'EOB_UHC_HaroldSimmons_CLM9921847.pdf', suggestedEngine: 'Payment Dispute',
-    sourceType: 'underpayment',
-    patientName: 'Harold Simmons', mrn: 'MRN-109432',
-    claimId: 'CLM-9921847', har: 'HAR-773290',
-    payer: 'UnitedHealthcare',
-    denialType: 'Underpayment', denialSubtype: 'Contracted Rate Dispute',
-    deniedAmount: 4820, paidAmount: 8430, adjustmentAmount: 4820,
-    dos: '2026-02-18', deadline: '2026-04-28',
-    uncertainFields: [],
-  },
-
-  // 7 — New, clean, 835 batch: Harold Nguyen / Aetna / Medical Necessity
-  {
-    tempId: 'seed-7', selected: true, status: 'new',
-    sourceFile: '835_Aetna_batch_20260403.edi', suggestedEngine: 'Appeal',
+    tempId: 'seed-2', selected: false, status: 'update',
+    sourceFile: '835_Aetna_TimothyReyes_partial.edi', suggestedEngine: 'Appeal',
     sourceType: 'edi-835',
-    patientName: 'Harold Nguyen', mrn: 'MRN-558821',
-    claimId: 'CLM-9901234', har: 'HAR-882001',
+    patientName: 'Timothy Reyes', mrn: 'MRN-701023',
+    claimId: 'CLM-2209115', har: 'HAR-108334',
     payer: 'Aetna',
-    denialType: 'Medical Necessity', denialSubtype: 'Inpatient Level of Care',
-    carc: 'CARC-50', rarc: 'N386',
-    deniedAmount: 7340, paidAmount: 0, adjustmentAmount: 7340,
-    dos: '2026-03-10', deadline: addDays(TODAY, 52),
+    denialType: 'DRG Downgrade', denialSubtype: 'MS-DRG 470 → 483',
+    carc: 'CARC-4', rarc: 'N115',
+    deniedAmount: 2820, paidAmount: 2820, adjustmentAmount: 2820,
+    dos: '2026-03-12', deadline: addDays(TODAY, 28),
     uncertainFields: [],
+    updateProposal: {
+      existingDenialId: 'DN-2026-0318',
+      label: 'Partial Payment Received',
+      updateType: 'payment_partial',
+      suggestedState: 'Resolved',
+      suggestedStatus: 'Overturned — Partial Payment',
+      updates: { deniedAmount: 2820 },
+      diffs: [
+        { field: 'deniedAmount', label: 'Denied Amount',    from: '$5,640.00', to: '$2,820.00 (50% recovered)' },
+        { field: 'state',        label: 'Suggested State',  from: 'Active',    to: 'Resolved' },
+        { field: 'status',       label: 'Suggested Status', from: 'Appeal Drafting', to: 'Overturned — Partial Payment' },
+      ],
+      episodeResultLabel: 'Partial Payment Received',
+      episodeResultDescription: 'Aetna remit shows $2,820 paid on $5,640 claim — 50% recovered. Consider whether to accept partial or escalate for remaining balance.',
+    },
   },
 
-  // 8 — New, clean, 835 batch: Lucinda Park / Aetna / Authorization
+  // 3 — UPDATE: L1 appeal upheld — reopen for escalation decision
+  //     James Okafor / UHC → DN-2026-0377 (Submitted, Submission Failed)
   {
-    tempId: 'seed-8', selected: true, status: 'new',
-    sourceFile: '835_Aetna_batch_20260403.edi', suggestedEngine: 'Appeal',
-    sourceType: 'edi-835',
-    patientName: 'Lucinda Park', mrn: 'MRN-441902',
-    claimId: 'CLM-9901235', har: 'HAR-882002',
-    payer: 'Aetna',
-    denialType: 'Authorization', denialSubtype: 'No Prior Authorization',
-    carc: 'CARC-15', rarc: 'N30',
-    deniedAmount: 3120, paidAmount: 0, adjustmentAmount: 3120,
-    dos: '2026-03-11', deadline: addDays(TODAY, 12),
-    uncertainFields: [],
-  },
-
-  // 9 — Update (appeal upheld): James Okafor / UHC → DN-2026-0377
-  {
-    tempId: 'seed-9', selected: false, status: 'update',
+    tempId: 'seed-3', selected: false, status: 'update',
     sourceFile: 'AppealUpheld_UHC_JamesOkafor.pdf', suggestedEngine: 'Appeal',
     sourceType: 'appeal-upheld' as const,
     patientName: 'James Okafor', mrn: 'MRN-318740',
@@ -547,12 +474,195 @@ const SEED_STAGED: SeedEntry[] = [
       suggestedStatus: 'In Progress' as const,
       updates: {},
       diffs: [
-        { field: 'state',  label: 'Suggested State',  from: 'Submitted', to: 'Active — reopen for escalation' },
+        { field: 'state',  label: 'Suggested State',  from: 'Submitted',         to: 'Active — reopen for escalation' },
         { field: 'status', label: 'Payer Decision',    from: 'Submission Failed', to: 'L1 upheld — consider L2 or IRO' },
       ],
       episodeResultLabel: 'L1 Appeal Upheld by Payer',
       episodeResultDescription: 'UnitedHealthcare upheld the authorization denial. L1 appeal reviewed and denied. Level 2 external review available within 60 days.',
     },
+  },
+
+  // 4 — UPDATE: Payer changed denial reason on re-adjudication — strategy change needed
+  //     Carolyn Brandt / Cigna 835 → DN-2026-0358 (Active, Appeal Drafting)
+  //     Originally denied as Medical Necessity (CARC-50), now re-adjudicated to Authorization (CARC-15)
+  {
+    tempId: 'seed-4', selected: false, status: 'update',
+    sourceFile: '835_Cigna_CarolynBrandt_readjudicated.edi', suggestedEngine: 'Appeal',
+    sourceType: 'edi-835',
+    patientName: 'Carolyn Brandt', mrn: 'MRN-447129',
+    claimId: 'CLM-5521334', har: 'HAR-430887',
+    payer: 'Cigna',
+    denialType: 'Authorization', denialSubtype: 'No Prior Authorization on File',
+    carc: 'CARC-15', rarc: 'N130',
+    deniedAmount: 3210.75, paidAmount: 0, adjustmentAmount: 3210.75,
+    dos: '2026-03-10', deadline: addDays(TODAY, 35),
+    uncertainFields: [],
+    updateProposal: {
+      existingDenialId: 'DN-2026-0358',
+      label: 'Denial Reason Changed on Re-adjudication',
+      updateType: 'denial_new_reason' as const,
+      suggestedState: 'Active' as const,
+      suggestedStatus: 'In Progress' as const,
+      updates: { carc: 'CARC-15', denialType: 'Authorization' },
+      diffs: [
+        { field: 'carc',       label: 'Denial Code',  from: 'CARC-50 — Medical Necessity', to: 'CARC-15 — Authorization' },
+        { field: 'denialType', label: 'Denial Type',  from: 'Medical Necessity',            to: 'Authorization' },
+        { field: 'status',     label: 'Status',       from: 'Appeal Drafting',              to: 'In Progress — strategy reassessment needed' },
+      ],
+      episodeResultLabel: 'Payer Changed Denial Reason on Re-adjudication',
+      episodeResultDescription: 'Cigna re-adjudicated from Medical Necessity (CARC-50) to Authorization (CARC-15). In-progress appeal strategy needs to change — auth denial requires retro-auth pathway, not clinical criteria argument.',
+    },
+  },
+
+  // ── NEW RECORDS: 835 batch — clean extractions ───────────────────────────
+
+  // 5 — NEW: 835 batch, Medical Necessity, full denial
+  //     Dorothy Simmonds / UHC — new patient, clean extraction
+  {
+    tempId: 'seed-5', selected: true, status: 'new',
+    sourceFile: '835_UHC_batch_20260403.edi', suggestedEngine: 'Appeal',
+    sourceType: 'edi-835',
+    patientName: 'Dorothy Simmonds', mrn: 'MRN-8821',
+    claimId: 'CLM-NEW-5001', har: 'HAR-NEW-5001',
+    payer: 'UnitedHealthcare',
+    denialType: 'Medical Necessity', denialSubtype: 'Inpatient Stay — COPD Exacerbation',
+    carc: 'CARC-50', rarc: 'N386',
+    deniedAmount: 8920, paidAmount: 0, adjustmentAmount: 8920,
+    dos: '2026-03-15', deadline: addDays(TODAY, 26),
+    uncertainFields: [],
+  },
+
+  // 6 — NEW: 835 batch, DRG Downgrade with partial payment
+  //     Harold Nguyen / Aetna — new patient, DRG paid at lower rate
+  {
+    tempId: 'seed-6', selected: true, status: 'new',
+    sourceFile: '835_Aetna_batch_20260403.edi', suggestedEngine: 'Appeal',
+    sourceType: 'edi-835',
+    patientName: 'Harold Nguyen', mrn: 'MRN-558821',
+    claimId: 'CLM-9901234', har: 'HAR-882001',
+    payer: 'Aetna',
+    denialType: 'DRG Downgrade', denialSubtype: 'MS-DRG 871 → 872',
+    carc: 'CARC-4', rarc: 'N115',
+    deniedAmount: 2140, paidAmount: 5200, adjustmentAmount: 2140,
+    dos: '2026-03-10', deadline: addDays(TODAY, 52),
+    uncertainFields: [],
+  },
+
+  // 7 — NEW: 835 batch, Timely Filing defense needed
+  //     Lucinda Park / Aetna — denial for late submission
+  {
+    tempId: 'seed-7', selected: true, status: 'new',
+    sourceFile: '835_Aetna_batch_20260403.edi', suggestedEngine: 'Filing Defense',
+    sourceType: 'edi-835',
+    patientName: 'Lucinda Park', mrn: 'MRN-441902',
+    claimId: 'CLM-9901235', har: 'HAR-882002',
+    payer: 'Aetna',
+    denialType: 'Timely Filing', denialSubtype: 'Claim Received After 90-Day Limit',
+    carc: 'CARC-29',
+    deniedAmount: 3120, paidAmount: 0, adjustmentAmount: 3120,
+    dos: '2025-12-15', deadline: addDays(TODAY, 12),
+    uncertainFields: [],
+  },
+
+  // 8 — NEW: 835 batch, Eligibility / COB issue
+  //     Elena Vasquez / Medicare — coverage inactive on DOS
+  {
+    tempId: 'seed-8', selected: true, status: 'new',
+    sourceFile: '835_Medicare_batch_20260403.edi', suggestedEngine: 'Eligibility',
+    sourceType: 'edi-835',
+    patientName: 'Elena Vasquez', mrn: 'MRN-771203',
+    claimId: 'CLM-9901236', har: 'HAR-882003',
+    payer: 'Medicare',
+    denialType: 'Eligibility', denialSubtype: 'Coverage Inactive on Date of Service',
+    carc: 'CARC-31',
+    deniedAmount: 4480, paidAmount: 0, adjustmentAmount: 4480,
+    dos: '2026-03-08', deadline: addDays(TODAY, 40),
+    uncertainFields: [],
+  },
+
+  // ── NEW RECORDS: PDF/letter extractions — uncertain fields ───────────────
+
+  // 9 — NEW: PDF denial letter, uncertain CARC / amount / HAR
+  //     Daniel Forsythe / Cigna — lumbar fusion medical necessity
+  {
+    tempId: 'seed-9', selected: true, status: 'new',
+    sourceFile: 'DenialLetter_Cigna_DanielForsythe.pdf', suggestedEngine: 'Appeal',
+    sourceType: 'med-nec-denial',
+    patientName: 'Daniel Forsythe', mrn: 'MRN-9034',
+    claimId: 'CLM-NEW-5002', har: '',
+    payer: 'Cigna',
+    denialType: 'Medical Necessity', denialSubtype: 'Lumbar Spinal Fusion — L4-L5',
+    carc: '', rarc: '', deniedAmount: 0,
+    clinicalCriteria: 'MCG Surgical Criteria — Lumbar Fusion (A-0581)',
+    reviewingPhysician: 'Dr. Patricia Wells, MD — Cigna Clinical Review',
+    levelOfCare: 'Surgical procedure — medical necessity questioned per policy',
+    dos: '2026-03-22', deadline: addDays(TODAY, 33),
+    uncertainFields: ['carc', 'har', 'deniedAmount'],
+  },
+
+  // 10 — NEW: ADR letter, uncertain claim ID + HAR, medium fuzzy match
+  //      Raymond Castellano / Palmetto GBA — MRN-091247 matches DN-2026-0389 (Aetna, different payer)
+  {
+    tempId: 'seed-10', selected: true, status: 'new',
+    sourceFile: 'ADR_Palmetto_RaymondCastellano.pdf', suggestedEngine: 'Records Request',
+    sourceType: 'adr',
+    patientName: 'Raymond Castellano', mrn: 'MRN-091247',
+    claimId: 'CLM-NEW-5003', har: '',
+    payer: 'Palmetto GBA (Medicare)',
+    denialType: 'ADR', denialSubtype: 'Prepayment Review — Total Hip Arthroplasty (MS-DRG 470)',
+    dos: '2026-02-18', deadline: addDays(TODAY, 36),
+    recordsRequested: 'H&P, operative note, discharge summary, pre-op conservative treatment documentation (6 months)',
+    submissionDeadline: addDays(TODAY, 36),
+    uncertainFields: ['har', 'claimId'],
+  },
+
+  // 11 — NEW: Auth denial letter, uncertain amount + HAR, HIGH fuzzy match
+  //      Carolyn Brandt / Cigna — MRN-447129 + same payer matches DN-2026-0358
+  {
+    tempId: 'seed-11', selected: true, status: 'new',
+    sourceFile: 'AuthDenial_Cigna_CarolynBrandt_NewClaim.pdf', suggestedEngine: 'Appeal',
+    sourceType: 'auth-denial',
+    patientName: 'Carolyn Brandt', mrn: 'MRN-447129',
+    claimId: 'CLM-NEW-5004', har: '',
+    payer: 'Cigna',
+    denialType: 'Authorization', denialSubtype: 'No Prior Authorization — Cardiac Catheterization',
+    carc: 'CARC-15', rarc: 'N30', deniedAmount: 0,
+    authNumber: '',
+    serviceRequiringAuth: 'Diagnostic Cardiac Catheterization (CPT 93458)',
+    dos: '2026-03-28', deadline: addDays(TODAY, 45),
+    uncertainFields: ['deniedAmount', 'har', 'authNumber'],
+  },
+
+  // 12 — NEW: Underpayment EOB — contracted rate dispute
+  //      Michael Torres / Humana — paid at wrong rate, new patient
+  {
+    tempId: 'seed-12', selected: true, status: 'new',
+    sourceFile: 'EOB_Humana_MichaelTorres.pdf', suggestedEngine: 'Payment Dispute',
+    sourceType: 'underpayment',
+    patientName: 'Michael Torres', mrn: 'MRN-662910',
+    claimId: 'CLM-NEW-5005', har: 'HAR-NEW-5005',
+    payer: 'Humana',
+    denialType: 'Underpayment', denialSubtype: 'Contracted Rate Dispute',
+    carc: 'CARC-45',
+    deniedAmount: 3180, paidAmount: 6840, adjustmentAmount: 3180,
+    dos: '2026-03-05', deadline: addDays(TODAY, 55),
+    uncertainFields: [],
+  },
+
+  // ── DUPLICATE: already in the system ─────────────────────────────────────
+
+  // 13 — DUPLICATE: Harold Simmons / UHC underpayment EOB — CLM-9921847 = DN-2026-0521
+  {
+    tempId: 'seed-13', selected: false, status: 'duplicate',
+    sourceFile: 'EOB_UHC_HaroldSimmons_CLM9921847.pdf', suggestedEngine: 'Payment Dispute',
+    sourceType: 'underpayment',
+    patientName: 'Harold Simmons', mrn: 'MRN-109432',
+    claimId: 'CLM-9921847', har: 'HAR-773290',
+    payer: 'UnitedHealthcare',
+    denialType: 'Underpayment', denialSubtype: 'Contracted Rate Dispute',
+    deniedAmount: 4820, paidAmount: 8430, adjustmentAmount: 4820,
+    dos: '2026-02-18', deadline: '2026-04-28',
+    uncertainFields: [],
   },
 ]
 
