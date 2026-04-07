@@ -10,7 +10,6 @@ import {
 } from '@mui/material'
 import {
   ArrowBackOutlined,
-  WarningAmberOutlined,
   ReceiptLongOutlined,
   PictureAsPdfOutlined,
   MailOutlineOutlined,
@@ -3960,27 +3959,6 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
             const sc = STATE_CHIP[denial.state] ?? STATE_CHIP['Active']!
             return <Chip label={denial.state} size="small" sx={{ height: 20, fontWeight: 600, fontSize: '0.7rem', bgcolor: sc.bg, color: sc.color }} />
           })()}
-
-          {(denial.alerts ?? []).map(alert => {
-            const ALERT_COLORS: Record<string, { color: string; bg: string }> = {
-              deadline:           { color: '#DC2626', bg: '#FEF2F2' },
-              submission_failure: { color: '#EA580C', bg: '#FFF7ED' },
-              response_received:  { color: '#2563EB', bg: '#EFF6FF' },
-              records_ready:      { color: '#0D9488', bg: '#F0FDFA' },
-              stale:              { color: '#B45309', bg: '#FFFBEB' },
-            }
-            const style = ALERT_COLORS[alert.type] ?? { color: '#6B7280', bg: '#F9FAFB' }
-            return (
-              <Chip
-                key={alert.id}
-                icon={<WarningAmberOutlined sx={{ fontSize: 12, color: `${style.color} !important` }} />}
-                label={alert.message}
-                size="small"
-                onDelete={() => onDenialUpdate({ alerts: (denial.alerts ?? []).filter(a => a.id !== alert.id) })}
-                sx={{ height: 20, fontWeight: 600, fontSize: '0.7rem', bgcolor: style.bg, color: style.color, '& .MuiChip-deleteIcon': { fontSize: 13, color: style.color, opacity: 0.6, '&:hover': { opacity: 1 } } }}
-              />
-            )
-          })}
 
           <Box sx={{ flex: 1 }} />
 

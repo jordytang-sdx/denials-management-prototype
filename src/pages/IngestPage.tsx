@@ -7,9 +7,9 @@ import {
 } from '@mui/material'
 import {
   UploadFileOutlined, CloseOutlined, WarningAmberOutlined, AutoFixHighOutlined,
-  UpdateOutlined, ChevronRightOutlined, CodeOutlined,
+  UpdateOutlined, ChevronRightOutlined, CodeOutlined, AccountTreeOutlined,
 } from '@mui/icons-material'
-import { type DenialRecord, type DenialState, type DenialStatus } from '../data/denials'
+import { type DenialRecord, type DenialState, type DenialStatus, type RelationshipType } from '../data/denials'
 
 // ─── Source type ──────────────────────────────────────────────────────────────
 
@@ -46,6 +46,43 @@ const SOURCE_COLORS: Record<SourceType, { bg: string; color: string }> = {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+// ─── Fuzzy match / link decision ─────────────────────────────────────────────
+
+interface FuzzyMatch {
+  existingDenialId: string
+  confidence: 'high' | 'medium'
+  reasons: string[]
+  // snapshot for display
+  patientName: string
+  payer: string
+  denialType: string
+  state: DenialState
+  deniedAmount: number
+}
+
+type LinkDecision =
+  | { type: 'link'; existingDenialId: string; relationship: RelationshipType }
+  | { type: 'new' }
+  | { type: 'dismiss' }
+
+const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
+  adr_preceded:          'ADR preceded this denial',
+  adr_followed:          'ADR followed from this denial',
+  corrected_claim_of:    'Corrected claim for the existing denial',
+  corrected_claim_led_to:'Existing denial led to this corrected claim',
+  recoupment_of:         'Recoupment of existing claim',
+  escalated_from:        'Escalated from existing denial',
+}
+
+const REVERSE_RELATIONSHIP: Record<RelationshipType, RelationshipType> = {
+  adr_preceded:          'adr_followed',
+  adr_followed:          'adr_preceded',
+  corrected_claim_of:    'corrected_claim_led_to',
+  corrected_claim_led_to:'corrected_claim_of',
+  recoupment_of:         'recoupment_of',
+  escalated_from:        'escalated_from',
+}
 
 interface UpdateProposal {
   existingDenialId: string
@@ -104,6 +141,8 @@ interface StagedRecord extends Omit<RawExtraction, 'uncertainFields'> {
   sourceFile: string
   suggestedEngine: string
   uncertainFields: string[]
+  possibleMatches: FuzzyMatch[]
+  linkDecision?: LinkDecision
 }
 
 // ─── Engine classification ────────────────────────────────────────────────────
@@ -134,6 +173,41 @@ function classifyEngine(sourceType: SourceType, denialType: string, uncertainDen
   if (ENGINE_FROM_SOURCE[sourceType]) return ENGINE_FROM_SOURCE[sourceType]!
   if (uncertainDenialType) return '?'
   return ENGINE_FROM_TYPE[denialType] ?? '?'
+}
+
+// ─── Fuzzy matching ───────────────────────────────────────────────────────────
+
+function findFuzzyMatches(extraction: RawExtraction, existingDenials: DenialRecord[]): FuzzyMatch[] {
+  const results: FuzzyMatch[] = []
+  for (const d of existingDenials) {
+    if (d.claim.claimId === extraction.claimId) continue // exact match handled separately
+    const reasons: string[] = []
+    const mrnMatch = d.patient.mrn === extraction.mrn
+    const payerMatch = d.payer === extraction.payer
+    const harMatch = extraction.har && extraction.har.length > 0 && d.claim.har === extraction.har
+    if (mrnMatch) reasons.push('Same patient (MRN)')
+    if (mrnMatch && payerMatch) reasons.push('Same payer')
+    if (harMatch) reasons.push('Same HAR')
+    if (reasons.length === 0) continue
+    const confidence: FuzzyMatch['confidence'] =
+      (mrnMatch && payerMatch) || harMatch ? 'high' : 'medium'
+    results.push({
+      existingDenialId: d.id,
+      confidence,
+      reasons,
+      patientName: d.patient.name,
+      payer: d.payer,
+      denialType: d.denialType,
+      state: d.state,
+      deniedAmount: d.deniedAmount,
+    })
+  }
+  // Sort: high confidence first, then by deniedAmount desc
+  results.sort((a, b) => {
+    if (a.confidence !== b.confidence) return a.confidence === 'high' ? -1 : 1
+    return b.deniedAmount - a.deniedAmount
+  })
+  return results.slice(0, 3)
 }
 
 // ─── Mock extraction data ─────────────────────────────────────────────────────
@@ -202,26 +276,27 @@ const FILE_EXTRACTIONS: Record<string, RawExtraction[]> = {
     uncertainFields: ['carc', 'har', 'deniedAmount'],
   }],
 
-  // ADR letter — Palmetto Vivienne Okafor: prepayment review, total hip
-  // No claim adjudication yet — no CARC, RARC, or denied amount
+  // ADR letter — Palmetto Raymond Castellano: prepayment review, hip replacement
+  // Castellano already has active Aetna Med Nec denial (DN-2026-0389) — same MRN, different payer/claim
+  // → fuzzy match expected: medium confidence (MRN match, different payer)
   'ADR_Palmetto_VivienneOkafor.pdf': [{
     sourceType: 'adr',
-    patientName: 'Vivienne Okafor', mrn: 'MRN-7712',
+    patientName: 'Raymond Castellano', mrn: 'MRN-091247',
     claimId: 'CLM-NEW-5003', har: '',
     payer: 'Palmetto GBA (Medicare)',
     denialType: 'ADR', denialSubtype: 'Prepayment Review — Total Hip Arthroplasty (MS-DRG 470)',
-    dos: '2026-03-18', deadline: addDays(TODAY, 36),
+    dos: '2026-02-18', deadline: addDays(TODAY, 36),
     recordsRequested: 'H&P, operative note, discharge summary, pre-op conservative treatment documentation (6 months)',
     submissionDeadline: addDays(TODAY, 36),
     uncertainFields: ['har', 'claimId'],
   }],
 
-  // Auth denial letter — Cigna Daniel Forsythe: cardiac cath, no prior auth
-  // Extracted: auth required for service, no auth number on file
-  // Not extracted: exact denied amount, HAR
+  // Auth denial letter — Cigna Carolyn Brandt: no prior auth for cardiac procedure
+  // Brandt already has active Cigna Med Nec denial (DN-2026-0358) — same MRN + same payer
+  // → fuzzy match expected: high confidence (MRN + payer match)
   'AuthDenial_Cigna_MarcusWebb.pdf': [{
     sourceType: 'auth-denial',
-    patientName: 'Daniel Forsythe', mrn: 'MRN-6643',
+    patientName: 'Carolyn Brandt', mrn: 'MRN-447129',
     claimId: 'CLM-NEW-5004', har: '',
     payer: 'Cigna',
     denialType: 'Authorization', denialSubtype: 'No Prior Authorization — Cardiac Catheterization',
@@ -318,6 +393,149 @@ const TYPE_EXTRACTIONS: Record<string, RawExtraction[]> = {
     },
   ],
 }
+
+// ─── Seed staged data ─────────────────────────────────────────────────────────
+// Shown on first load / after reset. possibleMatches computed at runtime.
+
+type SeedEntry = Omit<StagedRecord, 'possibleMatches' | 'linkDecision'>
+
+const SEED_STAGED: SeedEntry[] = [
+  // 1 — New, clean, 835 EDI: Dorothy Simmonds / UHC / Medical Necessity
+  {
+    tempId: 'seed-1', selected: true, status: 'new',
+    sourceFile: '835_UHC_DorothySimmonds.edi', suggestedEngine: 'Appeal',
+    sourceType: 'edi-835',
+    patientName: 'Dorothy Simmonds', mrn: 'MRN-8821',
+    claimId: 'CLM-NEW-5001', har: 'HAR-NEW-5001',
+    payer: 'UnitedHealthcare',
+    denialType: 'Medical Necessity', denialSubtype: 'Inpatient Stay — COPD Exacerbation',
+    carc: 'CARC-50', rarc: 'N386',
+    deniedAmount: 8920, paidAmount: 0, adjustmentAmount: 8920,
+    dos: '2026-03-15', deadline: addDays(TODAY, 26),
+    uncertainFields: [],
+  },
+
+  // 2 — New, uncertain fields: Daniel Forsythe / Cigna / Medical Necessity denial letter
+  {
+    tempId: 'seed-2', selected: true, status: 'new',
+    sourceFile: 'DenialLetter_Cigna_DanielForsythe.pdf', suggestedEngine: 'Appeal',
+    sourceType: 'med-nec-denial',
+    patientName: 'Daniel Forsythe', mrn: 'MRN-9034',
+    claimId: 'CLM-NEW-5002', har: '',
+    payer: 'Cigna',
+    denialType: 'Medical Necessity', denialSubtype: 'Lumbar Spinal Fusion — L4-L5',
+    carc: '', rarc: '', deniedAmount: 0,
+    clinicalCriteria: 'MCG Surgical Criteria — Lumbar Fusion (A-0581)',
+    reviewingPhysician: 'Dr. Patricia Wells, MD — Cigna Clinical Review',
+    levelOfCare: 'Surgical procedure — medical necessity questioned per policy',
+    dos: '2026-03-22', deadline: addDays(TODAY, 33),
+    uncertainFields: ['carc', 'har', 'deniedAmount'],
+  },
+
+  // 3 — New, uncertain + MEDIUM fuzzy match: Raymond Castellano / Palmetto ADR
+  //     MRN-091247 matches existing Aetna Med Nec denial DN-2026-0389 (different payer)
+  {
+    tempId: 'seed-3', selected: true, status: 'new',
+    sourceFile: 'ADR_Palmetto_RaymondCastellano.pdf', suggestedEngine: 'Records Request',
+    sourceType: 'adr',
+    patientName: 'Raymond Castellano', mrn: 'MRN-091247',
+    claimId: 'CLM-NEW-5003', har: '',
+    payer: 'Palmetto GBA (Medicare)',
+    denialType: 'ADR', denialSubtype: 'Prepayment Review — Total Hip Arthroplasty (MS-DRG 470)',
+    dos: '2026-02-18', deadline: addDays(TODAY, 36),
+    recordsRequested: 'H&P, operative note, discharge summary, pre-op conservative treatment documentation (6 months)',
+    submissionDeadline: addDays(TODAY, 36),
+    uncertainFields: ['har', 'claimId'],
+  },
+
+  // 4 — New, no uncertain, HIGH fuzzy match: Carolyn Brandt / Cigna Auth denial
+  //     MRN-447129 + Cigna matches existing Cigna Med Nec denial DN-2026-0358 (same patient + payer)
+  {
+    tempId: 'seed-4', selected: true, status: 'new',
+    sourceFile: 'AuthDenial_Cigna_CarolynBrandt.pdf', suggestedEngine: 'Appeal',
+    sourceType: 'auth-denial',
+    patientName: 'Carolyn Brandt', mrn: 'MRN-447129',
+    claimId: 'CLM-NEW-5004', har: '',
+    payer: 'Cigna',
+    denialType: 'Authorization', denialSubtype: 'No Prior Authorization — Cardiac Catheterization',
+    carc: 'CARC-15', rarc: 'N30', deniedAmount: 0,
+    authNumber: '',
+    serviceRequiringAuth: 'Diagnostic Cardiac Catheterization (CPT 93458)',
+    dos: '2026-03-28', deadline: addDays(TODAY, 45),
+    uncertainFields: ['deniedAmount', 'har', 'authNumber'],
+  },
+
+  // 5 — Update (partial payment): Margaret Holloway / BCBS 835 → DN-2026-0412
+  {
+    tempId: 'seed-5', selected: false, status: 'update',
+    sourceFile: '835_BCBS_MargaretHolloway_adjusted.edi', suggestedEngine: 'Appeal',
+    sourceType: 'edi-835',
+    patientName: 'Margaret Holloway', mrn: 'MRN-104823',
+    claimId: 'CLM-8847291', har: 'HAR-774112',
+    payer: 'Blue Cross Blue Shield',
+    denialType: 'DRG Downgrade', denialSubtype: 'MS-DRG 291 → 292',
+    carc: 'CARC-4', rarc: 'N115',
+    deniedAmount: 2105, paidAmount: 2105, adjustmentAmount: 2105,
+    dos: '2026-02-14', deadline: addDays(TODAY, 4),
+    uncertainFields: [],
+    updateProposal: {
+      existingDenialId: 'DN-2026-0412',
+      label: 'Partial Payment Received',
+      suggestedState: 'Resolved',
+      suggestedStatus: 'Overturned — Partial Payment',
+      updates: { deniedAmount: 2105 },
+      diffs: [
+        { field: 'deniedAmount', label: 'Denied Amount',    from: '$4,210.00', to: '$2,105.00 (partial)' },
+        { field: 'status',       label: 'Suggested Status', from: 'Appeal Drafting', to: 'Overturned — Partial Payment' },
+        { field: 'state',        label: 'Suggested State',  from: 'Active', to: 'Resolved' },
+      ],
+    },
+  },
+
+  // 6 — Duplicate: Harold Simmons / UHC underpayment EOB → CLM-9921847 = DN-2026-0521
+  {
+    tempId: 'seed-6', selected: false, status: 'duplicate',
+    sourceFile: 'EOB_UHC_HaroldSimmons_CLM9921847.pdf', suggestedEngine: 'Payment Dispute',
+    sourceType: 'underpayment',
+    patientName: 'Harold Simmons', mrn: 'MRN-109432',
+    claimId: 'CLM-9921847', har: 'HAR-773290',
+    payer: 'UnitedHealthcare',
+    denialType: 'Underpayment', denialSubtype: 'Contracted Rate Dispute',
+    deniedAmount: 4820, paidAmount: 8430, adjustmentAmount: 4820,
+    dos: '2026-02-18', deadline: '2026-04-28',
+    uncertainFields: [],
+  },
+
+  // 7 — New, clean, 835 batch: Harold Nguyen / Aetna / Medical Necessity
+  {
+    tempId: 'seed-7', selected: true, status: 'new',
+    sourceFile: '835_Aetna_batch_20260403.edi', suggestedEngine: 'Appeal',
+    sourceType: 'edi-835',
+    patientName: 'Harold Nguyen', mrn: 'MRN-558821',
+    claimId: 'CLM-9901234', har: 'HAR-882001',
+    payer: 'Aetna',
+    denialType: 'Medical Necessity', denialSubtype: 'Inpatient Level of Care',
+    carc: 'CARC-50', rarc: 'N386',
+    deniedAmount: 7340, paidAmount: 0, adjustmentAmount: 7340,
+    dos: '2026-03-10', deadline: addDays(TODAY, 52),
+    uncertainFields: [],
+  },
+
+  // 8 — New, clean, 835 batch: Lucinda Park / Aetna / Authorization
+  {
+    tempId: 'seed-8', selected: true, status: 'new',
+    sourceFile: '835_Aetna_batch_20260403.edi', suggestedEngine: 'Appeal',
+    sourceType: 'edi-835',
+    patientName: 'Lucinda Park', mrn: 'MRN-441902',
+    claimId: 'CLM-9901235', har: 'HAR-882002',
+    payer: 'Aetna',
+    denialType: 'Authorization', denialSubtype: 'No Prior Authorization',
+    carc: 'CARC-15', rarc: 'N30',
+    deniedAmount: 3120, paidAmount: 0, adjustmentAmount: 3120,
+    dos: '2026-03-11', deadline: addDays(TODAY, 12),
+    uncertainFields: [],
+  },
+]
 
 function getFileType(name: string): 'edi' | 'pdf' | 'csv' | null {
   const ext = name.split('.').pop()?.toLowerCase()
@@ -424,14 +642,18 @@ function fmt(n: number) {
 // ─── Review drawer ────────────────────────────────────────────────────────────
 
 function RecordDrawer({
-  record, open, onClose, onUpdate, onApplyUpdate, onViewRaw, hasRaw,
+  record, open, onClose, onUpdate, onApplyUpdate, onLinkDecision, onViewRaw, hasRaw,
 }: {
   record: StagedRecord | null; open: boolean; onClose: () => void
   onUpdate: <K extends keyof StagedRecord>(key: K, value: StagedRecord[K]) => void
   onApplyUpdate: (proposal: UpdateProposal, updates: Partial<DenialRecord>) => void
+  onLinkDecision: (decision: LinkDecision | undefined) => void
   onViewRaw: () => void
   hasRaw: boolean
 }) {
+  const [linkingToId, setLinkingToId] = useState<string | null>(null)
+  const [selectedRelationship, setSelectedRelationship] = useState<RelationshipType | ''>('')
+
   if (!record) return null
   const u = record.uncertainFields
   const isUpdate = record.status === 'update'
@@ -440,6 +662,8 @@ function RecordDrawer({
   const isAppealResponse = st === 'appeal-upheld' || st === 'appeal-overturned'
   const isAdr = st === 'adr'
   const is835 = st === 'edi-835'
+  const hasPossibleMatches = record.possibleMatches.length > 0 && !record.linkDecision && !isUpdate && !isDupe
+  const decisionMade = Boolean(record.linkDecision)
 
   return (
     <Drawer
@@ -482,6 +706,146 @@ function RecordDrawer({
 
       {/* Scrollable body */}
       <Box sx={{ flex: 1, overflow: 'auto', px: 3, py: 2.5, display: 'flex', flexDirection: 'column', gap: 3 }}>
+
+        {/* ── Possible match panel ─────────────────────────────────────────── */}
+        {(hasPossibleMatches || decisionMade) && (
+          <Box>
+            {decisionMade ? (
+              // Decision summary banner
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.25, borderRadius: 1.5,
+                bgcolor: record.linkDecision!.type === 'link' ? '#EFF6FF' : record.linkDecision!.type === 'new' ? '#F0FFF4' : 'grey.100',
+                border: '1px solid', borderColor: record.linkDecision!.type === 'link' ? '#BFDBFE' : record.linkDecision!.type === 'new' ? '#BBF7D0' : 'divider',
+              }}>
+                <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600,
+                  color: record.linkDecision!.type === 'link' ? '#1E40AF' : record.linkDecision!.type === 'new' ? '#166534' : 'text.secondary',
+                }}>
+                  {record.linkDecision!.type === 'link'
+                    ? `Linked → ${record.linkDecision.existingDenialId} · ${RELATIONSHIP_LABELS[record.linkDecision.relationship]}`
+                    : record.linkDecision!.type === 'new' ? 'Will be created as a new independent instance'
+                    : 'Possible matches dismissed'}
+                </Typography>
+                <Box sx={{ flex: 1 }} />
+                <Button size="small" sx={{ fontSize: '0.7rem', p: 0, minWidth: 0, color: 'text.secondary' }}
+                  onClick={() => { onLinkDecision(undefined as unknown as LinkDecision); setLinkingToId(null); setSelectedRelationship('') }}>
+                  Change
+                </Button>
+              </Box>
+            ) : (
+              // Match candidates
+              <>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.25 }}>
+                  <AccountTreeOutlined sx={{ fontSize: 15, color: 'primary.main' }} />
+                  <Typography variant="overline" sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.07em', color: 'primary.dark' }}>
+                    Possible Match{record.possibleMatches.length > 1 ? 'es' : ''} Found
+                  </Typography>
+                </Box>
+                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5, lineHeight: 1.5 }}>
+                  We found existing denial{record.possibleMatches.length > 1 ? 's' : ''} that may be related. Choose how to handle this record.
+                </Typography>
+
+                {record.possibleMatches.map(match => (
+                  <Paper key={match.existingDenialId} variant="outlined" sx={{
+                    p: 1.5, mb: 1.25, borderRadius: 1.5,
+                    borderColor: linkingToId === match.existingDenialId ? 'primary.main' : 'divider',
+                    bgcolor: linkingToId === match.existingDenialId ? 'rgba(27,58,92,0.03)' : 'background.paper',
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+                            {match.patientName}
+                          </Typography>
+                          <Chip
+                            label={match.confidence === 'high' ? 'High confidence' : 'Possible match'}
+                            size="small"
+                            sx={{
+                              height: 16, fontSize: '0.6rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 },
+                              bgcolor: match.confidence === 'high' ? '#DBEAFE' : '#FEF3C7',
+                              color:   match.confidence === 'high' ? '#1E40AF' : '#92400E',
+                            }}
+                          />
+                        </Box>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem', fontFamily: 'monospace' }}>
+                          {match.existingDenialId}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem', display: 'block' }}>
+                          {match.payer} · {match.denialType} · {match.state}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
+                          {match.reasons.map(r => (
+                            <Chip key={r} label={r} size="small" sx={{ height: 16, fontSize: '0.6rem', '& .MuiChip-label': { px: 0.625 }, bgcolor: 'grey.100', color: 'text.secondary' }} />
+                          ))}
+                        </Box>
+                      </Box>
+                    </Box>
+
+                    {/* Relationship picker — shown when this match is selected for linking */}
+                    {linkingToId === match.existingDenialId && (
+                      <Box sx={{ mb: 1 }}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel sx={{ fontSize: '0.8125rem' }}>Relationship type</InputLabel>
+                          <Select
+                            value={selectedRelationship}
+                            label="Relationship type"
+                            onChange={e => setSelectedRelationship(e.target.value as RelationshipType)}
+                            sx={{ fontSize: '0.8125rem' }}
+                          >
+                            {(Object.keys(RELATIONSHIP_LABELS) as RelationshipType[]).map(rel => (
+                              <MenuItem key={rel} value={rel} sx={{ fontSize: '0.8125rem' }}>
+                                {RELATIONSHIP_LABELS[rel]}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Box>
+                    )}
+
+                    <Box sx={{ display: 'flex', gap: 0.75 }}>
+                      {linkingToId === match.existingDenialId ? (
+                        <>
+                          <Button size="small" variant="text" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}
+                            onClick={() => { setLinkingToId(null); setSelectedRelationship('') }}>
+                            Cancel
+                          </Button>
+                          <Button
+                            size="small" variant="contained" disableElevation
+                            disabled={!selectedRelationship}
+                            onClick={() => {
+                              onLinkDecision({ type: 'link', existingDenialId: match.existingDenialId, relationship: selectedRelationship as RelationshipType })
+                              setLinkingToId(null)
+                              setSelectedRelationship('')
+                            }}
+                            sx={{ fontSize: '0.75rem' }}
+                          >
+                            Confirm Link
+                          </Button>
+                        </>
+                      ) : (
+                        <Button size="small" variant="outlined" sx={{ fontSize: '0.75rem' }}
+                          onClick={() => { setLinkingToId(match.existingDenialId); setSelectedRelationship('') }}>
+                          Link to this
+                        </Button>
+                      )}
+                    </Box>
+                  </Paper>
+                ))}
+
+                <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                  <Button size="small" variant="outlined" sx={{ fontSize: '0.75rem', flex: 1 }}
+                    onClick={() => onLinkDecision({ type: 'new' })}>
+                    New independent instance
+                  </Button>
+                  <Button size="small" variant="text" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}
+                    onClick={() => onLinkDecision({ type: 'dismiss' })}>
+                    Dismiss
+                  </Button>
+                </Box>
+              </>
+            )}
+          </Box>
+        )}
+
+        {(hasPossibleMatches || decisionMade) && <Divider />}
 
         {/* ── Update diff ──────────────────────────────────────────────────── */}
         {isUpdate && record.updateProposal && (
@@ -787,7 +1151,12 @@ interface IngestPageProps {
 
 export default function IngestPage({ denials, onCommit, onUpdate }: IngestPageProps) {
   const [processing, setProcessing] = useState<string[]>([])
-  const [staged, setStaged] = useState<StagedRecord[]>([])
+  const [staged, setStaged] = useState<StagedRecord[]>(() =>
+    SEED_STAGED.map(entry => ({
+      ...entry,
+      possibleMatches: entry.status === 'new' ? findFuzzyMatches(entry as RawExtraction, denials) : [],
+    }))
+  )
   const [committed, setCommitted] = useState<number | null>(null)
   const [dragging, setDragging] = useState(false)
   const [drawerId, setDrawerId] = useState<string | null>(null)
@@ -822,6 +1191,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
           ? (r.updateProposal ? 'update' : 'duplicate')
           : 'new'
 
+        const possibleMatches = status === 'new' ? findFuzzyMatches(r, denials) : []
         return {
           ...r,
           tempId: `tmp-${tempIdCounter++}`,
@@ -830,6 +1200,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
           sourceFile: file.name,
           uncertainFields: uncertain,
           suggestedEngine: classifyEngine(r.sourceType, r.denialType, uncertain.includes('denialType')),
+          possibleMatches,
         }
       })
 
@@ -867,6 +1238,10 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
     setStaged(prev => prev.map(r => r.tempId === tempId ? { ...r, selected: !r.selected } : r))
   }
 
+  function setLinkDecision(tempId: string, decision: LinkDecision | undefined) {
+    setStaged(prev => prev.map(r => r.tempId === tempId ? { ...r, linkDecision: decision } : r))
+  }
+
   function removeRow(tempId: string) {
     setStaged(prev => prev.filter(r => r.tempId !== tempId))
     if (drawerId === tempId) setDrawerId(null)
@@ -892,27 +1267,49 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
 
   function handleCommit() {
     const toCommit = staged.filter(r => r.selected && r.status === 'new')
-    const newDenials: DenialRecord[] = toCommit.map((r, i) => ({
-      id: `DN-2026-${String(1500 + i).padStart(4, '0')}`,
-      patient: { name: r.patientName, mrn: r.mrn },
-      claim: { claimId: r.claimId, har: r.har ?? '' },
-      payer: r.payer,
-      denialType: r.denialType,
-      denialSubtype: r.denialSubtype,
-      carc: r.carc ?? '',
-      rarc: r.rarc || undefined,
-      deniedAmount: r.deniedAmount ?? 0,
-      deadline: r.deadline || r.submissionDeadline || addDays(TODAY, 30),
-      createdAt: TODAY,
-      dos: r.dos,
-      state: 'Intake' as const,
-      status: 'Unreviewed' as const,
-      assignedTo: null,
-      nextAction: '',
-      needsAttention: false,
-      needsAttentionReasons: [],
-      notes: '',
-    }))
+    const newDenials: DenialRecord[] = toCommit.map((r, i) => {
+      const newId = `DN-2026-${String(1500 + i).padStart(4, '0')}`
+      const linkDecision = r.linkDecision
+      const relatedInstances = linkDecision?.type === 'link'
+        ? [{ denialId: linkDecision.existingDenialId, relationship: linkDecision.relationship }]
+        : undefined
+      return {
+        id: newId,
+        patient: { name: r.patientName, mrn: r.mrn },
+        claim: { claimId: r.claimId, har: r.har ?? '' },
+        payer: r.payer,
+        denialType: r.denialType,
+        denialSubtype: r.denialSubtype,
+        carc: r.carc ?? '',
+        rarc: r.rarc || undefined,
+        deniedAmount: r.deniedAmount ?? 0,
+        deadline: r.deadline || r.submissionDeadline || addDays(TODAY, 30),
+        createdAt: TODAY,
+        dos: r.dos,
+        state: 'Intake' as const,
+        status: 'Unreviewed' as const,
+        assignedTo: null,
+        nextAction: '',
+        notes: '',
+        ...(relatedInstances ? { relatedInstances } : {}),
+      }
+    })
+
+    // Write reciprocal links back to any linked existing denials
+    toCommit.forEach((r, i) => {
+      if (r.linkDecision?.type !== 'link') return
+      const newId = newDenials[i]!.id
+      const { existingDenialId, relationship } = r.linkDecision
+      const reciprocal = REVERSE_RELATIONSHIP[relationship]
+      const existing = denials.find(d => d.id === existingDenialId)
+      const existingLinks = existing?.relatedInstances ?? []
+      const alreadyLinked = existingLinks.some(l => l.denialId === newId)
+      if (!alreadyLinked) {
+        onUpdate(existingDenialId, {
+          relatedInstances: [...existingLinks, { denialId: newId, relationship: reciprocal }],
+        })
+      }
+    })
 
     onCommit(newDenials)
     setCommitted(newDenials.length)
@@ -1018,6 +1415,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
                     const isUpdate = row.status === 'update'
                     const hasFlags = row.uncertainFields.length > 0
                     const isAppeal = row.sourceType === 'appeal-upheld' || row.sourceType === 'appeal-overturned'
+                    const hasUnresolvedMatch = row.status === 'new' && row.possibleMatches.length > 0 && !row.linkDecision
 
                     // Amount display: 835 shows denied, appeal-overturned shows approved, adr shows —
                     const amountDisplay = row.sourceType === 'adr'
@@ -1038,9 +1436,9 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
                         sx={{
                           cursor: 'pointer',
                           opacity: isDupe ? 0.5 : 1,
-                          bgcolor: drawerId === row.tempId ? 'rgba(27,58,92,0.04)' : isUpdate ? 'rgba(237,137,54,0.03)' : 'background.paper',
-                          borderLeft: isUpdate ? '3px solid' : '3px solid transparent',
-                          borderLeftColor: 'warning.main',
+                          bgcolor: drawerId === row.tempId ? 'rgba(27,58,92,0.04)' : isUpdate ? 'rgba(237,137,54,0.03)' : hasUnresolvedMatch ? 'rgba(37,87,214,0.02)' : 'background.paper',
+                          borderLeft: (isUpdate || hasUnresolvedMatch) ? '3px solid' : '3px solid transparent',
+                          borderLeftColor: isUpdate ? 'warning.main' : 'primary.main',
                           '&:last-child td': { border: 0 },
                         }}
                       >
@@ -1065,6 +1463,14 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
                                 color:   isDupe ? 'text.secondary' : isUpdate ? '#92400e' : '#276749',
                               }}
                             />
+                            {hasUnresolvedMatch && (
+                              <Tooltip title={`${row.possibleMatches.length} possible match${row.possibleMatches.length > 1 ? 'es' : ''} — open to review`}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, width: 'fit-content' }}>
+                                  <AccountTreeOutlined sx={{ fontSize: 11, color: 'primary.main' }} />
+                                  <Typography variant="caption" sx={{ fontSize: '0.6rem', color: 'primary.dark' }}>Possible match</Typography>
+                                </Box>
+                              </Tooltip>
+                            )}
                             {hasFlags && !isDupe && (
                               <Tooltip title={`Uncertain: ${row.uncertainFields.join(', ')}`}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, width: 'fit-content' }}>
@@ -1146,6 +1552,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
         onClose={() => setDrawerId(null)}
         onUpdate={(key, value) => drawerId && updateField(drawerId, key, value)}
         onApplyUpdate={handleApplyUpdate}
+        onLinkDecision={decision => drawerId && setLinkDecision(drawerId, decision)}
         hasRaw={Boolean(drawerRecord && rawFiles[drawerRecord.sourceFile])}
         onViewRaw={() => drawerRecord && setRawViewFile(drawerRecord.sourceFile)}
       />

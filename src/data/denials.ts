@@ -33,15 +33,6 @@ export type ArchivedStatus = 'Archived'
 
 export type DenialStatus = IntakeStatus | ActiveStatus | SubmittedStatus | ResolvedStatus | ClosedStatus | ArchivedStatus
 
-export type AlertType = 'deadline' | 'submission_failure' | 'response_received' | 'records_ready' | 'stale'
-
-export interface DenialAlert {
-  id: string
-  type: AlertType
-  message: string
-  createdAt: string
-}
-
 export type AppealRoundType = 'L1_internal' | 'L2_external' | 'IRO' | 'redetermination' | 'reconsideration' | 'reopening'
 export type AppealDecision = 'overturned' | 'upheld' | 'partial' | 'pending' | 'withdrawn'
 export type InstanceSource = 'manual_upload' | '835_auto' | 'user_action' | 'system'
@@ -95,7 +86,6 @@ export interface DenialRecord {
   status: DenialStatus
   assignedTo: TeamMember | null
   nextAction?: string
-  alerts?: DenialAlert[]
   notes: string
   archivedFrom?: { state: DenialState; status: DenialStatus }
   // Instance model fields
@@ -128,7 +118,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Appeal Drafting',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: 'Physician attestation obtained. Drafting level 1 appeal — deadline in 4 days.',
-    alerts: [{ id: 'a-0412-1', type: 'deadline', message: 'Appeal deadline in 4 days', createdAt: d(-1) }],
     relatedInstances: [{ denialId: 'DN-2026-0394', relationship: 'adr_preceded' }],
   },
   {
@@ -159,7 +148,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Unreviewed',
     assignedTo: null,
     notes: '',
-    alerts: [{ id: 'a-0389-1', type: 'stale', message: 'Unreviewed for 15 days — unassigned ($12,480)', createdAt: d(-5) }],
   },
   {
     id: 'DN-2026-0401',
@@ -188,7 +176,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Submitted', status: 'Submission Failed',
     assignedTo: TEAM_MEMBERS[2]!,
     notes: 'Portal submission failed 4/1 — payer ID mismatch. Confirmed correct routing with clearinghouse.',
-    alerts: [{ id: 'a-0377-1', type: 'submission_failure', message: 'Portal submission failed — payer ID mismatch. Resubmit required.', createdAt: d(-1) }],
     appealRounds: [
       { id: 'r-0377-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2026-03-28', submissionMethod: 'portal', decision: 'pending' },
     ],
@@ -220,7 +207,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Eligibility Investigation',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: 'Low-confidence match flagged. Verifying coverage — patient may have had dual eligibility on DOS.',
-    alerts: [{ id: 'a-0344-1', type: 'stale', message: 'Low-confidence patient match — verify coverage before taking action', createdAt: d(-4) }],
   },
   {
     id: 'DN-2026-0331',
@@ -235,10 +221,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Awaiting Records',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'BCBS initiated recoupment on 3/19 audit. Clinical docs pulled — submitting dispute this week.',
-    alerts: [
-      { id: 'a-0331-1', type: 'deadline', message: 'Dispute deadline in 6 days', createdAt: d(-2) },
-      { id: 'a-0331-2', type: 'stale', message: 'Records overdue — dispute package not yet submitted', createdAt: d(-7) },
-    ],
   },
   {
     id: 'DN-2026-0318',
@@ -283,7 +265,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Appeal Drafting',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: 'Clearinghouse confirmed 11/18 transmission. Pulling 277 report to attach to appeal.',
-    alerts: [{ id: 'a-0305-1', type: 'deadline', message: 'Appeal deadline in 2 days', createdAt: d(-1) }],
   },
   {
     id: 'DN-2026-0292',
@@ -312,7 +293,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Records Ready — Review Needed',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'ADR received 3/21. Records retrieved from HealthSource on 4/5 — ready for review.',
-    alerts: [{ id: 'a-0278-1', type: 'records_ready', message: 'Records received from HealthSource — ready for appeal review', createdAt: d(-1) }],
   },
   {
     id: 'DN-2026-0261',
@@ -544,7 +524,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'In Progress',
     assignedTo: TEAM_MEMBERS[1]!,
     nextAction: 'File payment dispute with contractual rate documentation',
-    alerts: [{ id: 'a-0521-1', type: 'stale', message: 'Contracted rate mismatch — paid $8,430, expected $13,250', createdAt: d(-3) }],
     notes: 'UHC applied commercial fee schedule instead of negotiated case rate. Contract §4.2 specifies $13,250 for CABG.',
   },
   {
@@ -578,7 +557,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Unreviewed',
     assignedTo: null,
     notes: '',
-    alerts: [{ id: 'a-0445-1', type: 'stale', message: 'High-value DRG downgrade — $7,340 unreviewed and unassigned', createdAt: d(-2) }],
   },
   {
     id: 'DN-2026-0451',
@@ -607,7 +585,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Unreviewed',
     assignedTo: null,
     notes: '',
-    alerts: [{ id: 'a-0451-1', type: 'stale', message: 'High-value claim ($11,200) unassigned', createdAt: d(-2) }],
   },
   {
     id: 'DN-2026-0471',

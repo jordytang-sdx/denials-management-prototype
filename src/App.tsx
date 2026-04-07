@@ -147,6 +147,7 @@ export default function App() {
   const [worklistSort, setWorklistSort] = useState<WorklistSort>(null)
   const [worklistFilters, setWorklistFilters] = useState<WorklistFilters>(DEFAULT_WORKLIST_FILTERS)
   const [notifications, setNotifications] = useState<AppNotification[]>(SEED_NOTIFICATIONS)
+  const [ingestKey, setIngestKey] = useState(0)
   const [bellAnchor, setBellAnchor] = useState<HTMLElement | null>(null)
   const [toast, setToast] = useState<{ message: string } | null>(null)
 
@@ -181,9 +182,8 @@ export default function App() {
   const showingWorklist = activeNav === 'Worklist' && !showingDetail
 
   const isTerminal = (s: string) => s === 'Resolved' || s === 'Closed' || s === 'Archived'
-  const openCount      = denials.filter(d => !isTerminal(d.state)).length
-  const attentionCount = denials.filter(d => (d.alerts?.length ?? 0) > 0 && !isTerminal(d.state)).length
-  const deadlineCount  = denials.filter(d => {
+  const openCount     = denials.filter(d => !isTerminal(d.state)).length
+  const deadlineCount = denials.filter(d => {
     if (isTerminal(d.state)) return false
     const days = Math.ceil((new Date(d.deadline).getTime() - Date.now()) / 86400000)
     return days >= 0 && days <= 3
@@ -362,7 +362,7 @@ export default function App() {
                 <Typography variant="h6" sx={{ lineHeight: 1.2 }}>{activeNav}</Typography>
                 <Typography variant="body2">
                   {activeNav === 'Worklist'
-                    ? `${openCount} open denial${openCount !== 1 ? 's' : ''}${attentionCount > 0 ? ` · ${attentionCount} need attention` : ''}${deadlineCount > 0 ? ` · ${deadlineCount} approaching deadline` : ''}`
+                    ? `${openCount} open denial${openCount !== 1 ? 's' : ''}${deadlineCount > 0 ? ` · ${deadlineCount} approaching deadline` : ''}`
                     : PAGE_SUBTITLES[activeNav]}
                 </Typography>
               </Box>
@@ -393,7 +393,7 @@ export default function App() {
               )
             })()}
             {activeNav === 'Dashboard' && <DashboardPage denials={denials} />}
-            {activeNav === 'Ingest' && <IngestPage denials={denials} onCommit={newRecords => setDenials(prev => [...newRecords, ...prev])} onUpdate={(id, updates) => setDenials(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d))} />}
+            {activeNav === 'Ingest' && <IngestPage key={ingestKey} denials={denials} onCommit={newRecords => setDenials(prev => [...newRecords, ...prev])} onUpdate={(id, updates) => setDenials(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d))} />}
             {activeNav === 'Routing Rules' && <RoutingRulesPage />}
             {activeNav === 'Settings' && (
               <SettingsPage onReset={() => {
@@ -403,6 +403,7 @@ export default function App() {
                 setWorklistSort(null)
                 setWorklistFilters(DEFAULT_WORKLIST_FILTERS)
                 setNotifications(SEED_NOTIFICATIONS)
+                setIngestKey(k => k + 1)
               }} />
             )}
             {activeNav !== 'Worklist' && activeNav !== 'Dashboard' && activeNav !== 'Ingest' && activeNav !== 'Routing Rules' && activeNav !== 'Settings' && (

@@ -6,7 +6,7 @@ import {
   TableCell, TableHead, TableRow,
 } from '@mui/material'
 import {
-  WarningAmberOutlined, AccessTimeOutlined, PersonOutlined,
+  AccessTimeOutlined, PersonOutlined,
   LightbulbOutlined,
 } from '@mui/icons-material'
 import {
@@ -616,7 +616,6 @@ export default function DashboardPage({ denials }: DashboardPageProps) {
 
   // ── Derived: Today ───────────────────────────────────────────────────────────
   const open        = denials.filter(d => !isTerminal(d.state))
-  const attention   = open.filter(d => (d.alerts?.length ?? 0) > 0)
   const dueThisWeek = open.filter(d => { const days = daysUntil(d.deadline); return days >= 0 && days <= 7 })
 
   const outcomes        = Object.values(DENIAL_OUTCOMES)
@@ -668,69 +667,44 @@ export default function DashboardPage({ denials }: DashboardPageProps) {
         <Box sx={{ p: 3, overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
           {/* KPI strip */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2 }}>
-            <StatCard label="Open Denials"    value={open.length}                   sub={`${denials.length} total in system`} />
-            <StatCard label="Needs Attention" value={attention.length}               sub="requires action"
-              color={attention.length > 0 ? '#C05621' : undefined} />
-            <StatCard label="Due This Week"   value={dueThisWeek.length}             sub="deadline within 7 days"
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
+            <StatCard label="Open Denials"    value={open.length}        sub={`${denials.length} total in system`} />
+            <StatCard label="Due This Week"   value={dueThisWeek.length} sub="deadline within 7 days"
               color={dueThisWeek.length > 0 ? '#9B2C2C' : undefined} />
             <StatCard label="Recovery Rate"   value={`${recoveryRate.toFixed(1)}%`}  sub={`${formatCurrency(totalRecovered)} recovered`} color="#22543D" />
           </Box>
 
-          {/* Deadlines + Attention */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-            <Card title="Upcoming Deadlines (next 14 days)">
-              {urgentList.length === 0
-                ? <Typography variant="body2" color="text.disabled">No deadlines in the next 14 days</Typography>
-                : urgentList.map(d => {
-                  const days = daysUntil(d.deadline)
-                  return (
-                    <Box key={d.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25, '&:last-child': { mb: 0 } }}>
-                      <AccessTimeOutlined sx={{ fontSize: 15, flexShrink: 0, color: days <= 3 ? 'error.main' : days <= 7 ? 'warning.main' : 'text.disabled' }} />
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {d.patient.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                          {d.payer} · {d.denialType}
-                        </Typography>
-                      </Box>
-                      <Chip
-                        label={days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}
-                        size="small"
-                        sx={{
-                          height: 18, fontSize: '0.6rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 }, flexShrink: 0,
-                          bgcolor: days <= 3 ? '#FED7D7' : days <= 7 ? '#FEFCBF' : 'grey.100',
-                          color:   days <= 3 ? '#9B2C2C'  : days <= 7 ? '#744210' : 'text.secondary',
-                        }}
-                      />
-                    </Box>
-                  )
-                })
-              }
-            </Card>
-
-            <Card title="Needs Attention">
-              {attention.length === 0
-                ? <Typography variant="body2" color="text.disabled">No items need attention</Typography>
-                : attention.slice(0, 7).map(d => (
+          {/* Deadlines */}
+          <Card title="Upcoming Deadlines (next 14 days)">
+            {urgentList.length === 0
+              ? <Typography variant="body2" color="text.disabled">No deadlines in the next 14 days</Typography>
+              : urgentList.map(d => {
+                const days = daysUntil(d.deadline)
+                return (
                   <Box key={d.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25, '&:last-child': { mb: 0 } }}>
-                    <WarningAmberOutlined sx={{ fontSize: 15, color: 'warning.main', flexShrink: 0 }} />
+                    <AccessTimeOutlined sx={{ fontSize: 15, flexShrink: 0, color: days <= 3 ? 'error.main' : days <= 7 ? 'warning.main' : 'text.disabled' }} />
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {d.patient.name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                        {d.alerts?.[0]?.message ?? d.status}
+                        {d.payer} · {d.denialType}
                       </Typography>
                     </Box>
-                    <Chip label={d.state} size="small"
-                      sx={{ height: 18, fontSize: '0.6rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 }, flexShrink: 0, bgcolor: 'grey.100', color: 'text.secondary' }} />
+                    <Chip
+                      label={days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}
+                      size="small"
+                      sx={{
+                        height: 18, fontSize: '0.6rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 }, flexShrink: 0,
+                        bgcolor: days <= 3 ? '#FED7D7' : days <= 7 ? '#FEFCBF' : 'grey.100',
+                        color:   days <= 3 ? '#9B2C2C'  : days <= 7 ? '#744210' : 'text.secondary',
+                      }}
+                    />
                   </Box>
-                ))
-              }
-            </Card>
-          </Box>
+                )
+              })
+            }
+          </Card>
 
           {/* Pipeline + Workload */}
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
