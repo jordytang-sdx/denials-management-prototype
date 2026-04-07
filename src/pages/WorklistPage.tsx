@@ -504,7 +504,9 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
               <ColHeader label="Denial Type"   colId="denialType"   filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} />
               <ColHeader label="Denied Amount" colId="deniedAmount" sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={132} align="right" />
               <ColHeader label="Deadline"      colId="deadline"     sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={132} />
-              <ColHeader label="Outcome"       colId="outcome"                 activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={168} />
+              {(activeState === 'Resolved' || activeState === 'Closed' || activeState === 'Archived') && (
+                <ColHeader label="Outcome" colId="outcome" activeSort={sort} hasFilter={false} onOpen={openColPopover} width={168} />
+              )}
               <ColHeader label="Assigned To"   colId="assignedTo"   filterable activeSort={sort} hasFilter={activeFilters.assignedTo} onOpen={openColPopover} width={134} />
               <ColHeader label="Notes"         colId="notes"                   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={58}  align="right" />
               {/* Attention toggle — icon only */}
@@ -637,9 +639,9 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                     </Box>
                   </TableCell>
 
-                  {/* Outcome — only meaningful for terminal states */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    {(denial.state === 'Resolved' || denial.state === 'Closed') && (() => {
+                  {/* Outcome — only shown on terminal state tabs */}
+                  {(activeState === 'Resolved' || activeState === 'Closed' || activeState === 'Archived') && <TableCell sx={{ py: 1.25 }}>
+                    {(() => {
                       const OUTCOME_STYLES: Record<string, { color: string; bg: string }> = {
                         'Overturned — Full Payment':    { color: '#166534', bg: '#DCFCE7' },
                         'Overturned — Partial Payment': { color: '#166534', bg: '#DCFCE7' },
@@ -661,7 +663,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                         />
                       )
                     })()}
-                  </TableCell>
+                  </TableCell>}
 
                   {/* Assigned To */}
                   <TableCell sx={{ py: 1.25 }}>
