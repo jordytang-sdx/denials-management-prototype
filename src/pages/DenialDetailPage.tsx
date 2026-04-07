@@ -61,8 +61,13 @@ import {
   InsertDriveFileOutlined,
   DescriptionOutlined,
   FolderZipOutlined,
+  LinkOutlined,
+  AddOutlined,
+  CheckOutlined,
+  BlockOutlined,
+  RemoveCircleOutlineOutlined,
 } from '@mui/icons-material'
-import { SEED_DENIALS, TEAM_MEMBERS, type TeamMember, type DenialRecord, type ActiveStatus, type ResolvedStatus, type DenialStatus } from '../data/denials'
+import { SEED_DENIALS, TEAM_MEMBERS, type TeamMember, type DenialRecord, type ActiveStatus, type ResolvedStatus, type DenialStatus, type AppealRound, type AppealRoundType } from '../data/denials'
 import {
   CARC_DESCRIPTIONS, RARC_DESCRIPTIONS,
   REMIT_DATA, CLAIM_DATA_837, TIMELINE_EVENTS, SUBMISSION_EPISODES,
@@ -940,6 +945,152 @@ Date of Service: ${denial.dos}</p>
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
+// ─── Appeal Rounds Section ────────────────────────────────────────────────────
+
+const ROUND_TYPE_LABELS: Record<AppealRoundType, string> = {
+  L1_internal:    'L1 Internal',
+  L2_external:    'L2 External',
+  IRO:            'Independent Review',
+  redetermination:'Redetermination',
+  reconsideration:'Reconsideration',
+  reopening:      'Reopening',
+}
+
+const METHOD_LABELS: Record<string, string> = {
+  mail: 'Mail', portal: 'Portal', fax: 'Fax', electronic: 'Electronic',
+}
+
+function AppealRoundsSection({ rounds, denialState, onAddRound }: {
+  rounds: AppealRound[]
+  denialState: string
+  onAddRound: (r: AppealRound) => void
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [draftType, setDraftType] = useState<AppealRoundType>('L1_internal')
+  const [draftDate, setDraftDate] = useState('')
+  const [draftMethod, setDraftMethod] = useState<string>('portal')
+  const [draftNotes, setDraftNotes] = useState('')
+  const [localRounds, setLocalRounds] = useState<AppealRound[]>(rounds)
+
+  const canAdd = denialState === 'Active' || denialState === 'Submitted'
+  const nextRound = localRounds.length + 1
+
+  function handleAdd() {
+    const newRound: AppealRound = {
+      id: `r-new-${Date.now()}`,
+      roundNumber: nextRound,
+      roundType: draftType,
+      submittedAt: draftDate || undefined,
+      submissionMethod: draftMethod as AppealRound['submissionMethod'],
+      decision: 'pending',
+      notes: draftNotes || undefined,
+    }
+    setLocalRounds(prev => [...prev, newRound])
+    onAddRound(newRound)
+    setDialogOpen(false)
+    setDraftDate('')
+    setDraftNotes('')
+  }
+
+  return (
+    <Box sx={{ mt: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+        <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
+          Appeal Rounds
+        </Typography>
+        {canAdd && (
+          <Button size="small" variant="text" startIcon={<AddOutlined sx={{ fontSize: 13 }} />}
+            onClick={() => setDialogOpen(true)}
+            sx={{ fontSize: '0.6875rem', p: 0, minWidth: 0, color: 'text.secondary', fontWeight: 600 }}>
+            Record Round {nextRound}
+          </Button>
+        )}
+      </Box>
+
+      {localRounds.length === 0 ? (
+        <Typography variant="caption" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+          No appeal rounds recorded yet.
+        </Typography>
+      ) : (
+        <Paper variant="outlined" sx={{ borderRadius: 1.5, overflow: 'hidden' }}>
+          {localRounds.map((round, idx) => {
+            const isLast = idx === localRounds.length - 1
+            const decisionColor = round.decision === 'overturned' ? 'success.main'
+              : round.decision === 'upheld' ? 'error.main'
+              : round.decision === 'partial' ? 'warning.main'
+              : 'text.disabled'
+            const DecisionIcon = round.decision === 'overturned' ? CheckOutlined
+              : round.decision === 'upheld' ? BlockOutlined
+              : round.decision === 'partial' ? RemoveCircleOutlineOutlined
+              : HourglassEmptyOutlined
+            return (
+              <Box key={round.id} sx={{ px: 2, py: 1.5, borderBottom: isLast ? 'none' : '1px solid', borderColor: 'divider' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>
+                    Round {round.roundNumber} · {ROUND_TYPE_LABELS[round.roundType]}
+                  </Typography>
+                </Box>
+                {round.submittedAt && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    Submitted {formatDate(round.submittedAt)}{round.submissionMethod ? ` · ${METHOD_LABELS[round.submissionMethod]}` : ''}
+                  </Typography>
+                )}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                  <DecisionIcon sx={{ fontSize: 12, color: decisionColor }} />
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: decisionColor }}>
+                    {round.decision === 'overturned' ? `Overturned${round.recoveryAmount ? ` · ${formatCurrency(round.recoveryAmount)}` : ''}` :
+                     round.decision === 'upheld' ? 'Upheld by payer' :
+                     round.decision === 'partial' ? 'Partial overturn' :
+                     round.decision === 'withdrawn' ? 'Withdrawn' :
+                     'Awaiting decision'}
+                    {round.decisionDate ? ` · ${formatDate(round.decisionDate)}` : ''}
+                  </Typography>
+                </Box>
+                {round.notes && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25, fontStyle: 'italic' }}>
+                    {round.notes}
+                  </Typography>
+                )}
+              </Box>
+            )
+          })}
+        </Paper>
+      )}
+
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontSize: '1rem', fontWeight: 700 }}>Record Appeal Round {nextRound}</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Round Type</InputLabel>
+            <Select value={draftType} label="Round Type" onChange={e => setDraftType(e.target.value as AppealRoundType)}>
+              {(Object.entries(ROUND_TYPE_LABELS) as [AppealRoundType, string][]).map(([v, l]) => (
+                <MenuItem key={v} value={v}>{l}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField size="small" type="date" label="Submission Date" value={draftDate}
+            onChange={e => setDraftDate(e.target.value)}
+            InputLabelProps={{ shrink: true }} fullWidth />
+          <FormControl size="small" fullWidth>
+            <InputLabel>Submission Method</InputLabel>
+            <Select value={draftMethod} label="Submission Method" onChange={e => setDraftMethod(e.target.value)}>
+              {Object.entries(METHOD_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <TextField size="small" multiline rows={2} label="Notes (optional)" value={draftNotes}
+            onChange={e => setDraftNotes(e.target.value)} fullWidth />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDialogOpen(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>
+          <Button variant="contained" disableElevation onClick={handleAdd}>Record Round</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+}
+
+// ─── Overview Tab ─────────────────────────────────────────────────────────────
+
 function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachment, events, episodes, onAddFile, assignedTo, onChangeAssignee }: {
   denial: DenialRecord
   denialId: string
@@ -1213,48 +1364,76 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
 
         </Paper>
 
-        {/* Related Denials */}
-        {denial.relatedDenialIds && denial.relatedDenialIds.length > 0 && (
-          <Box sx={{ mt: 3 }}>
-            <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
-              Related Denials
-            </Typography>
-            <Paper variant="outlined" sx={{ mt: 1.5, borderRadius: 1.5, overflow: 'hidden' }}>
-              {denial.relatedDenialIds.map((relId, idx) => {
-                const rel = SEED_DENIALS.find(d => d.id === relId)
-                if (!rel) return null
-                const relOutcome = DENIAL_OUTCOMES[relId]
-                return (
-                  <Box key={relId} sx={{ px: 2, py: 1.5, borderBottom: idx < (denial.relatedDenialIds?.length ?? 0) - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem' }}>{rel.id}</Typography>
-                      <Chip
-                        label={rel.state}
-                        size="small"
-                        sx={{
-                          height: 18, fontSize: '0.625rem', fontWeight: 700,
-                          bgcolor: rel.state === 'Resolved' ? 'success.light' : rel.state === 'Closed' ? 'action.selected' : 'warning.light',
-                          color: rel.state === 'Resolved' ? 'success.dark' : rel.state === 'Closed' ? 'text.secondary' : 'warning.dark',
-                          '& .MuiChip-label': { px: 0.75 },
-                        }}
-                      />
+        {/* Appeal Rounds */}
+        <AppealRoundsSection
+          rounds={denial.appealRounds ?? []}
+          denialState={denial.state}
+          onAddRound={round => {
+            // rounds are local to the detail view — in the real system this would persist
+          }}
+        />
+
+        {/* Related Instances */}
+        {(() => {
+          const related = denial.relatedInstances ?? (denial.relatedDenialIds?.map(id => ({ denialId: id, relationship: 'adr_followed' as const })) ?? [])
+          if (related.length === 0) return null
+          return (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
+                Related Instances
+              </Typography>
+              <Paper variant="outlined" sx={{ mt: 1.5, borderRadius: 1.5, overflow: 'hidden' }}>
+                {related.map(({ denialId: relId, relationship }, idx) => {
+                  const rel = SEED_DENIALS.find(d => d.id === relId)
+                  if (!rel) return null
+                  const relOutcome = DENIAL_OUTCOMES[relId]
+                  const RELATIONSHIP_LABELS: Record<string, string> = {
+                    adr_preceded:          'ADR preceded this denial',
+                    adr_followed:          'ADR triggered by this denial',
+                    corrected_claim_of:    'Denial on corrected claim',
+                    corrected_claim_led_to:'Original denial before correction',
+                    recoupment_of:         'Recoupment on prior resolved denial',
+                    escalated_from:        'Escalated from ADR',
+                  }
+                  return (
+                    <Box key={relId} sx={{ px: 2, py: 1.5, borderBottom: idx < related.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                        <LinkOutlined sx={{ fontSize: 12, color: 'text.disabled' }} />
+                        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem', fontStyle: 'italic' }}>
+                          {RELATIONSHIP_LABELS[relationship] ?? relationship}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem' }}>{rel.id}</Typography>
+                        <Chip
+                          label={rel.state}
+                          size="small"
+                          sx={{
+                            height: 18, fontSize: '0.625rem', fontWeight: 700,
+                            bgcolor: rel.state === 'Resolved' ? 'success.light' : rel.state === 'Closed' ? 'action.selected' : 'warning.light',
+                            color: rel.state === 'Resolved' ? 'success.dark' : rel.state === 'Closed' ? 'text.secondary' : 'warning.dark',
+                            '& .MuiChip-label': { px: 0.75 },
+                          }}
+                        />
+                      </Box>
+                      <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>{rel.denialType}</Typography>
+                      <Typography variant="caption" color="text.secondary">{rel.denialSubtype}</Typography>
+                      {relOutcome && (
+                        <Typography variant="caption" sx={{ display: 'block', mt: 0.25, fontWeight: 600,
+                          color: relOutcome.disposition === 'overturned_full' ? 'success.main' : relOutcome.disposition === 'will_not_appeal' ? 'text.disabled' : 'warning.main' }}>
+                          {relOutcome.disposition === 'overturned_full' ? `Overturned · ${formatCurrency(relOutcome.recoveredAmount)} recovered` :
+                           relOutcome.disposition === 'will_not_appeal' ? 'Will Not Appeal' :
+                           relOutcome.disposition === 'settled_partial' ? `Settled · ${formatCurrency(relOutcome.repaidAmount ?? 0)} repaid` :
+                           rel.status}
+                        </Typography>
+                      )}
                     </Box>
-                    <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>{rel.denialType}</Typography>
-                    <Typography variant="caption" color="text.secondary">{rel.denialSubtype}</Typography>
-                    {relOutcome && (
-                      <Typography variant="caption" sx={{ display: 'block', mt: 0.25, color: relOutcome.disposition === 'overturned_full' ? 'success.main' : relOutcome.disposition === 'will_not_appeal' ? 'text.disabled' : 'warning.main', fontWeight: 600 }}>
-                        {relOutcome.disposition === 'overturned_full' ? `Overturned · ${formatCurrency(relOutcome.recoveredAmount)} recovered` :
-                         relOutcome.disposition === 'will_not_appeal' ? 'Will Not Appeal' :
-                         relOutcome.disposition === 'settled_partial' ? `Settled · ${formatCurrency(relOutcome.repaidAmount ?? 0)} repaid` :
-                         rel.status}
-                      </Typography>
-                    )}
-                  </Box>
-                )
-              })}
-            </Paper>
-          </Box>
-        )}
+                  )
+                })}
+              </Paper>
+            </Box>
+          )
+        })()}
 
       </Box>
     </Box>
@@ -3411,14 +3590,44 @@ function IntakeReviewPanel({
   const days = Math.ceil((new Date(denial.deadline).getTime() - new Date('2026-04-02').getTime()) / 86400000)
 
 
+  const source = denial.source ?? 'manual_upload'
+  const hasLetter = denial.denialLetterOnFile !== false
+
   return (
     <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
+      {/* Source indicator */}
+      <Box sx={{ mx: 3, mt: 2.5, mb: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Chip
+          size="small"
+          label={source === '835_auto' ? 'Auto-created from 835 remit' : 'Manually uploaded'}
+          icon={source === '835_auto' ? <SyncOutlined sx={{ fontSize: '13px !important' }} /> : <UploadFileOutlined sx={{ fontSize: '13px !important' }} />}
+          sx={{ fontSize: '0.6875rem', height: 22, fontWeight: 600,
+            bgcolor: source === '835_auto' ? 'info.light' : 'action.selected',
+            color: source === '835_auto' ? 'info.dark' : 'text.secondary',
+            '& .MuiChip-label': { px: 0.75 },
+          }}
+        />
+        {source === '835_auto' && denial.matchConfidence && (
+          <Chip size="small"
+            label={`${denial.matchConfidence.charAt(0).toUpperCase() + denial.matchConfidence.slice(1)} confidence match`}
+            sx={{ fontSize: '0.6875rem', height: 22, fontWeight: 600,
+              bgcolor: denial.matchConfidence === 'high' ? 'success.light' : denial.matchConfidence === 'medium' ? 'warning.light' : 'error.light',
+              color: denial.matchConfidence === 'high' ? 'success.dark' : denial.matchConfidence === 'medium' ? 'warning.dark' : 'error.dark',
+              '& .MuiChip-label': { px: 0.75 },
+            }}
+          />
+        )}
+      </Box>
+
       {/* Banner */}
       <Alert
-        severity="info"
-        sx={{ mx: 3, mt: 2.5, mb: 0, borderRadius: 1.5, fontSize: '0.8125rem' }}
+        severity={source === '835_auto' && !hasLetter ? 'warning' : 'info'}
+        sx={{ mx: 3, mt: 1.5, mb: 0, borderRadius: 1.5, fontSize: '0.8125rem' }}
       >
-        Review the classification and assignment below, then accept to move this denial into the active worklist — or dismiss if it shouldn't be worked.
+        {source === '835_auto' && !hasLetter
+          ? 'This instance was auto-created from remit data — no denial letter on file yet. You can accept based on the CARC/RARC codes below, or upload the letter first.'
+          : 'Review the classification and assignment below, then accept to move this denial into the active worklist — or dismiss if it shouldn\'t be worked.'
+        }
       </Alert>
 
       {/* Two-column body */}
@@ -3435,6 +3644,23 @@ function IntakeReviewPanel({
               <IntakeInfoRow label="Payer" value={denial.payer} />
               <IntakeInfoRow label="Claim" value={`${denial.claim.claimId} · ${denial.claim.har}`} mono />
               <IntakeInfoRow label="Date of Service" value={formatDate(denial.dos)} />
+              <IntakeInfoRow
+                label="Denial Letter"
+                value={
+                  hasLetter
+                    ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <VerifiedOutlined sx={{ fontSize: 13, color: 'success.main' }} />
+                        <Typography variant="body2" sx={{ fontSize: '0.8125rem', color: 'success.main', fontWeight: 600 }}>On file</Typography>
+                      </Box>
+                    : <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ fontSize: '0.8125rem', color: 'text.disabled', fontStyle: 'italic' }}>Not yet received</Typography>
+                        <Button size="small" variant="outlined" startIcon={<UploadFileOutlined sx={{ fontSize: 12 }} />}
+                          sx={{ fontSize: '0.6875rem', py: 0.25, px: 1, minHeight: 0, lineHeight: 1.5 }}>
+                          Upload
+                        </Button>
+                      </Box>
+                }
+              />
               <IntakeInfoRow label="Denied Amount" value={<Typography component="span" variant="body2" sx={{ fontWeight: 700, color: 'error.main' }}>{formatCurrency(denial.deniedAmount)}</Typography>} />
               <IntakeInfoRow
                 label="Deadline"

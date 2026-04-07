@@ -33,6 +33,29 @@ export type ArchivedStatus = 'Archived'
 
 export type DenialStatus = IntakeStatus | ActiveStatus | SubmittedStatus | ResolvedStatus | ClosedStatus | ArchivedStatus
 
+export type AppealRoundType = 'L1_internal' | 'L2_external' | 'IRO' | 'redetermination' | 'reconsideration' | 'reopening'
+export type AppealDecision = 'overturned' | 'upheld' | 'partial' | 'pending' | 'withdrawn'
+export type InstanceSource = 'manual_upload' | '835_auto' | 'user_action' | 'system'
+export type RelationshipType = 'adr_preceded' | 'adr_followed' | 'corrected_claim_of' | 'corrected_claim_led_to' | 'recoupment_of' | 'escalated_from'
+
+export interface AppealRound {
+  id: string
+  roundNumber: number
+  roundType: AppealRoundType
+  submittedAt?: string
+  submissionMethod?: 'mail' | 'portal' | 'fax' | 'electronic'
+  payerResponseDeadline?: string
+  decision: AppealDecision
+  decisionDate?: string
+  recoveryAmount?: number
+  notes?: string
+}
+
+export interface RelatedInstance {
+  denialId: string
+  relationship: RelationshipType
+}
+
 export interface TeamMember {
   id: string
   name: string
@@ -64,10 +87,16 @@ export interface DenialRecord {
   assignedTo: TeamMember | null
   nextAction?: string
   needsAttention: boolean
-  relatedDenialIds?: string[]
   needsAttentionReasons: string[]
   notes: string
   archivedFrom?: { state: DenialState; status: DenialStatus }
+  // Instance model fields
+  source?: InstanceSource
+  denialLetterOnFile?: boolean
+  appealRounds?: AppealRound[]
+  relatedInstances?: RelatedInstance[]
+  /** @deprecated use relatedInstances */
+  relatedDenialIds?: string[]
 }
 
 // Reference date: 2026-04-02
@@ -141,6 +170,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     notes: 'Portal submission failed 4/1 — payer ID mismatch. Confirmed correct routing with clearinghouse.',
     needsAttention: true,
     needsAttentionReasons: ['Last submission attempt failed'],
+    appealRounds: [
+      { id: 'r-0377-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2026-03-28', submissionMethod: 'portal', decision: 'pending' },
+    ],
   },
   {
     id: 'DN-2026-0358',
@@ -288,6 +320,11 @@ export const SEED_DENIALS: DenialRecord[] = [
     notes: 'L1 upheld, L2 upheld, external independent review overturned denial. Full $8,940 payment received 2025-10-18.',
     needsAttention: false,
     needsAttentionReasons: [],
+    appealRounds: [
+      { id: 'r-0847-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-08-20', submissionMethod: 'mail', decision: 'upheld', decisionDate: '2025-09-08' },
+      { id: 'r-0847-2', roundNumber: 2, roundType: 'L2_external', submittedAt: '2025-09-22', submissionMethod: 'mail', decision: 'upheld', decisionDate: '2025-10-03' },
+      { id: 'r-0847-3', roundNumber: 3, roundType: 'IRO', submittedAt: '2025-10-06', submissionMethod: 'mail', decision: 'overturned', decisionDate: '2025-10-18', recoveryAmount: 8940 },
+    ],
   },
   {
     id: 'DN-2025-1201',
@@ -304,6 +341,10 @@ export const SEED_DENIALS: DenialRecord[] = [
     notes: 'L1 and L2 upheld. Recovery ROI at $6,200 below external review threshold. Closed per finance approval.',
     needsAttention: false,
     needsAttentionReasons: [],
+    appealRounds: [
+      { id: 'r-1201-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-10-02', submissionMethod: 'portal', decision: 'upheld', decisionDate: '2025-10-28' },
+      { id: 'r-1201-2', roundNumber: 2, roundType: 'L2_external', submittedAt: '2025-11-08', submissionMethod: 'mail', decision: 'upheld', decisionDate: '2025-12-01' },
+    ],
   },
   {
     id: 'DN-2025-0932',
@@ -320,7 +361,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     notes: 'Records submitted to Medicare in response to ADR. Post-review Medicare issued DRG downgrade — escalated to DN-2025-0933.',
     needsAttention: false,
     needsAttentionReasons: [],
-    relatedDenialIds: ['DN-2025-0933'],
+    relatedInstances: [{ denialId: 'DN-2025-0933', relationship: 'adr_followed' }],
   },
   {
     id: 'DN-2025-0933',
@@ -337,7 +378,11 @@ export const SEED_DENIALS: DenialRecord[] = [
     notes: 'DRG downgrade issued after ADR record review (see DN-2025-0932). L2 appeal overturned — MS-DRG 194 restored. $3,840 recovered.',
     needsAttention: false,
     needsAttentionReasons: [],
-    relatedDenialIds: ['DN-2025-0932'],
+    relatedInstances: [{ denialId: 'DN-2025-0932', relationship: 'escalated_from' }],
+    appealRounds: [
+      { id: 'r-0933-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-09-10', submissionMethod: 'mail', decision: 'upheld', decisionDate: '2025-09-28' },
+      { id: 'r-0933-2', roundNumber: 2, roundType: 'L2_external', submittedAt: '2025-10-06', submissionMethod: 'mail', decision: 'overturned', decisionDate: '2025-10-25', recoveryAmount: 3840 },
+    ],
   },
   {
     id: 'DN-2025-1089',
@@ -354,6 +399,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     notes: 'Retro-auth request denied. L1 appeal + peer-to-peer with Cigna MD resulted in overturn. Full $9,450 recovered.',
     needsAttention: false,
     needsAttentionReasons: [],
+    appealRounds: [
+      { id: 'r-1089-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-11-10', submissionMethod: 'portal', decision: 'overturned', decisionDate: '2025-12-01', recoveryAmount: 9450, notes: 'Peer-to-peer with Cigna MD conducted 11/28 — contributed to overturn.' },
+    ],
   },
   {
     id: 'DN-2025-1156',
@@ -370,6 +418,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     notes: 'L1 appeal upheld. Authorization gap confirmed — no retroactive pathway available. Closed per policy.',
     needsAttention: false,
     needsAttentionReasons: [],
+    appealRounds: [
+      { id: 'r-1156-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-12-01', submissionMethod: 'portal', decision: 'upheld', decisionDate: '2025-12-22' },
+    ],
   },
   {
     id: 'DN-2025-0788',
@@ -386,6 +437,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     notes: 'Medicare recoupment disputed with full clinical record. Settlement reached: $6,200 repaid, $6,200 written off by Medicare. Case closed 2025-11-14.',
     needsAttention: false,
     needsAttentionReasons: [],
+    appealRounds: [
+      { id: 'r-0788-1', roundNumber: 1, roundType: 'redetermination', submittedAt: '2025-09-05', submissionMethod: 'mail', decision: 'partial', decisionDate: '2025-10-20', notes: 'Settlement: $6,200 repaid, $6,200 written off.' },
+    ],
   },
   {
     id: 'DN-2025-1302',
@@ -402,6 +456,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     notes: '277-CA confirmed timely transmission within filing window. Aetna accepted defense — full $3,100 paid.',
     needsAttention: false,
     needsAttentionReasons: [],
+    appealRounds: [
+      { id: 'r-1302-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-08-02', submissionMethod: 'mail', decision: 'overturned', decisionDate: '2025-08-22', recoveryAmount: 3100, notes: '277-CA timely filing evidence accepted.' },
+    ],
   },
   {
     id: 'DN-2026-0044',
@@ -450,6 +507,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     notes: 'L1 appeal upheld. Cigna criteria for extended LOS not supported by documentation. Closed per finance — recovery below external review threshold.',
     needsAttention: false,
     needsAttentionReasons: [],
+    appealRounds: [
+      { id: 'r-0103-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2026-02-03', submissionMethod: 'portal', decision: 'upheld', decisionDate: '2026-02-24' },
+    ],
   },
   {
     id: 'DN-2026-0521',
