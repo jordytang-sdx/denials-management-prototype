@@ -558,21 +558,12 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                 >
                   {/* Patient */}
                   <TableCell sx={{ py: 1.25 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      {denial.needsAttention && (
-                        <Tooltip title={denial.needsAttentionReasons.join(' · ')} placement="top">
-                          <WarningAmberOutlined sx={{ fontSize: 14, color: 'warning.main', flexShrink: 0 }} />
-                        </Tooltip>
-                      )}
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
-                          {denial.patient.name}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          {denial.patient.mrn}
-                        </Typography>
-                      </Box>
-                    </Box>
+                    <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
+                      {denial.patient.name}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      {denial.patient.mrn}
+                    </Typography>
                   </TableCell>
 
                   {/* Claim ID + HAR */}
