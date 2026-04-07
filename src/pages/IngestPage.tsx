@@ -158,6 +158,24 @@ const UPDATE_OUTCOMES: Partial<Record<NonNullable<UpdateProposal['updateType']>,
   ],
 }
 
+// ─── CARC → Denial type mapping ──────────────────────────────────────────────
+
+const CARC_TO_DENIAL_TYPE: Record<string, string> = {
+  '4':  'DRG Downgrade',   '6':  'DRG Downgrade',   '97': 'DRG Downgrade',
+  '50': 'Medical Necessity','51': 'Medical Necessity','96': 'Medical Necessity','167':'Medical Necessity',
+  '15': 'Authorization',   '55': 'Authorization',   '56': 'Authorization',   '57': 'Authorization',
+  '16': 'Authorization',   '18': 'Authorization',
+  '29': 'Timely Filing',
+  '22': 'Eligibility',     '23': 'Eligibility',     '31': 'Eligibility',
+  '45': 'Underpayment',
+}
+
+function denialTypeFromCarc(carc: string): string | null {
+  // Accept both "CARC-50" and "50"
+  const code = carc.replace(/^CARC-?/i, '').trim()
+  return CARC_TO_DENIAL_TYPE[code] ?? null
+}
+
 // ─── Engine classification ────────────────────────────────────────────────────
 
 const ENGINE_FROM_TYPE: Record<string, string> = {
@@ -1069,6 +1087,31 @@ function DrawerField({
   label: string; value: string; uncertain?: boolean
   onChange: (v: string) => void; multiline?: boolean; type?: string; readOnly?: boolean
 }) {
+  if (readOnly) {
+    return (
+      <Box>
+        <TextField
+          fullWidth size="small" label={label}
+          value={value}
+          InputProps={{ readOnly: true }}
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              fontSize: '0.875rem',
+              bgcolor: 'grey.50',
+              cursor: 'default',
+              '& fieldset': { borderColor: 'divider', borderStyle: 'dashed' },
+              '&:hover fieldset': { borderColor: 'divider', borderStyle: 'dashed' },
+              '&.Mui-focused fieldset': { borderColor: 'divider', borderStyle: 'dashed', borderWidth: 1 },
+            },
+            '& .MuiInputLabel-root': { color: 'text.disabled' },
+            '& .MuiInputLabel-root.Mui-focused': { color: 'text.disabled' },
+            '& input': { cursor: 'default', color: 'text.secondary' },
+            '& textarea': { cursor: 'default', color: 'text.secondary' },
+          }}
+        />
+      </Box>
+    )
+  }
   return (
     <Box>
       <TextField
@@ -1077,11 +1120,10 @@ function DrawerField({
         onChange={e => onChange(e.target.value)}
         multiline={multiline} rows={multiline ? 2 : undefined}
         type={type}
-        InputProps={{ readOnly }}
         sx={{
           '& .MuiOutlinedInput-root': {
             fontSize: '0.875rem',
-            bgcolor: uncertain ? '#fffbeb' : readOnly ? 'grey.50' : 'background.paper',
+            bgcolor: uncertain ? '#fffbeb' : 'background.paper',
             '& fieldset': { borderColor: uncertain ? '#f59e0b' : undefined },
             '&:hover fieldset': { borderColor: uncertain ? '#d97706' : undefined },
           },
@@ -1196,7 +1238,7 @@ function RecordDrawer({
                 {record.possibleMatches.length} possible match{record.possibleMatches.length > 1 ? 'es' : ''} flagged
               </Typography>
               <Typography variant="caption" sx={{ color: '#1E40AF', fontSize: '0.75rem', lineHeight: 1.4, display: 'block' }}>
-                {record.possibleMatches.map(m => m.existingDenialId).join(', ')} — linking decisions will be made during intake review.
+                {record.possibleMatches.map(m => m.existingDenialId).join(', ')} — linking can be reviewed from the case view after import.
               </Typography>
             </Box>
           </Box>
@@ -1333,14 +1375,34 @@ function RecordDrawer({
             <SectionHeading>Remittance Detail</SectionHeading>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1.5 }}>
-                <DrawerField label="Denied ($)" value={String(record.deniedAmount ?? 0)} uncertain={u.includes('deniedAmount')} onChange={v => { const n = parseFloat(v); if (!isNaN(n)) onUpdate('deniedAmount', n) }} />
-                <DrawerField label="Paid ($)" value={String(record.paidAmount ?? 0)} onChange={v => { const n = parseFloat(v); if (!isNaN(n)) onUpdate('paidAmount', n) }} />
-                <DrawerField label="Adjustment ($)" value={String(record.adjustmentAmount ?? 0)} onChange={v => { const n = parseFloat(v); if (!isNaN(n)) onUpdate('adjustmentAmount', n) }} />
+                <DrawerField label="Denied ($)" value={String(record.deniedAmount ?? 0)} uncertain={u.includes('deniedAmount')} readOnly={!u.includes('deniedAmount')} onChange={v => { const n = parseFloat(v); if (!isNaN(n)) onUpdate('deniedAmount', n) }} />
+                <DrawerField label="Paid ($)" value={String(record.paidAmount ?? 0)} readOnly onChange={v => { const n = parseFloat(v); if (!isNaN(n)) onUpdate('paidAmount', n) }} />
+                <DrawerField label="Adjustment ($)" value={String(record.adjustmentAmount ?? 0)} readOnly onChange={v => { const n = parseFloat(v); if (!isNaN(n)) onUpdate('adjustmentAmount', n) }} />
               </Box>
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-                <DrawerField label="CARC" value={record.carc ?? ''} uncertain={u.includes('carc')} onChange={v => onUpdate('carc', v)} />
-                <DrawerField label="RARC" value={record.rarc ?? ''} uncertain={u.includes('rarc')} onChange={v => onUpdate('rarc', v)} />
+                <DrawerField
+                  label="CARC" value={record.carc ?? ''} uncertain={u.includes('carc')}
+                  readOnly={!u.includes('carc')}
+                  onChange={v => {
+                    onUpdate('carc', v)
+                    const derived = denialTypeFromCarc(v)
+                    if (derived) {
+                      onUpdate('denialType', derived)
+                      onUpdate('suggestedEngine', ENGINE_FROM_TYPE[derived] ?? '?')
+                    }
+                  }}
+                />
+                <DrawerField label="RARC" value={record.rarc ?? ''} uncertain={u.includes('rarc')} readOnly={!u.includes('rarc')} onChange={v => onUpdate('rarc', v)} />
               </Box>
+              <DrawerField
+                label="Denial Type" value={record.denialType}
+                readOnly={!u.includes('denialType') && !u.includes('carc')}
+                uncertain={u.includes('denialType')}
+                onChange={v => {
+                  onUpdate('denialType', v)
+                  onUpdate('suggestedEngine', ENGINE_FROM_TYPE[v] ?? '?')
+                }}
+              />
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
                 <DrawerField label="Date of Service" value={record.dos} type="date" onChange={v => onUpdate('dos', v)} />
                 <DrawerField label="Deadline" value={record.deadline} type="date" onChange={v => onUpdate('deadline', v)} />
@@ -1357,10 +1419,15 @@ function RecordDrawer({
               <DrawerField label="Payer" value={record.payer} onChange={v => onUpdate('payer', v)} />
               {!isAdr && (
                 <>
-                  <DrawerField label="Denial Type" value={record.denialType} onChange={v => {
-                    onUpdate('denialType', v)
-                    onUpdate('suggestedEngine', ENGINE_FROM_TYPE[v] ?? '?')
-                  }} />
+                  <DrawerField
+                    label="Denial Type" value={record.denialType}
+                    readOnly={!u.includes('denialType')}
+                    uncertain={u.includes('denialType')}
+                    onChange={v => {
+                      onUpdate('denialType', v)
+                      onUpdate('suggestedEngine', ENGINE_FROM_TYPE[v] ?? '?')
+                    }}
+                  />
                   <DrawerField label="Denial Subtype / Description" value={record.denialSubtype} multiline onChange={v => onUpdate('denialSubtype', v)} />
                 </>
               )}
@@ -1496,15 +1563,14 @@ function RecordDrawer({
             <Box>
               <SectionHeading>Assignment</SectionHeading>
               <FormControl fullWidth size="small">
-                <InputLabel sx={{ fontSize: '0.875rem' }}>Assign to</InputLabel>
                 <Select
                   value={record.assignedTo?.id ?? ''}
-                  label="Assign to"
                   onChange={e => {
                     const member = TEAM_MEMBERS.find(m => m.id === e.target.value) ?? null
                     onUpdate('assignedTo', member)
                   }}
                   displayEmpty
+                  renderValue={v => v ? (TEAM_MEMBERS.find(m => m.id === v)?.name ?? 'Unassigned') : <span style={{ color: '#9e9e9e' }}>Unassigned</span>}
                   sx={{ fontSize: '0.875rem' }}
                 >
                   <MenuItem value="" sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>Unassigned</MenuItem>
@@ -1909,7 +1975,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
                               }}
                             />
                             {hasPossibleMatches && (
-                              <Tooltip title={`${row.possibleMatches.length} possible match${row.possibleMatches.length > 1 ? 'es' : ''} — linking decisions made during intake review`}>
+                              <Tooltip title={`${row.possibleMatches.length} possible match${row.possibleMatches.length > 1 ? 'es' : ''} — linking can be reviewed from the case view`}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, width: 'fit-content' }}>
                                   <AccountTreeOutlined sx={{ fontSize: 11, color: 'text.secondary' }} />
                                   <Typography variant="caption" sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>Possible match</Typography>

@@ -1093,7 +1093,7 @@ function AppealRoundsSection({ rounds, denialState, onAddRound }: {
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachment, events, episodes, onAddFile, assignedTo, onChangeAssignee, onNavigateToDenial }: {
+function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachment, events, episodes, onAddFile, assignedTo, onChangeAssignee, onNavigateToDenial, allDenials, onDenialUpdate, onUpdateDenial }: {
   denial: DenialRecord
   denialId: string
   onViewRemit: () => void
@@ -1105,6 +1105,9 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
   assignedTo: TeamMember | null
   onChangeAssignee: (m: TeamMember | null) => void
   onNavigateToDenial?: (id: string) => void
+  allDenials?: DenialRecord[]
+  onDenialUpdate?: (updates: Partial<DenialRecord>) => void
+  onUpdateDenial?: (id: string, updates: Partial<DenialRecord>) => void
 }) {
   const remit = REMIT_DATA[denialId]
   const latestEpisode = episodes.length > 0 ? episodes[episodes.length - 1] : null
@@ -1113,6 +1116,10 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
   const carcInfo = CARC_DESCRIPTIONS[denial.carc]
   const rarcInfo = denial.rarc ? RARC_DESCRIPTIONS[denial.rarc] : null
   const claim837 = CLAIM_DATA_837[denialId]
+
+  // Possible Matches linking state
+  const [linkingMatchId, setLinkingMatchId] = useState<string | null>(null)
+  const [selectedRelationships, setSelectedRelationships] = useState<Record<string, RelationshipType | null>>({})
 
   return (
     <Box sx={{ display: 'flex', gap: 3, p: 3, height: '100%', overflow: 'auto' }}>
@@ -1446,6 +1453,148 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
             </Box>
           )
         })()}
+
+        {/* Possible Matches */}
+        {denial.possibleMatches && denial.possibleMatches.length > 0 && (
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
+              Possible Matches
+            </Typography>
+            <Paper variant="outlined" sx={{ mt: 1.5, borderRadius: 2, overflow: 'hidden' }}>
+              <Box sx={{ px: 2, py: 1.25, bgcolor: '#EFF6FF', borderBottom: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AccountTreeOutlined sx={{ fontSize: 14, color: '#1E40AF' }} />
+                <Typography variant="overline" sx={{ fontSize: '0.6875rem', color: '#1E40AF', fontWeight: 600 }}>
+                  Possible Related Instances
+                </Typography>
+              </Box>
+              {denial.possibleMatches.map((possibleMatch, idx) => {
+                const matchedDenial = allDenials?.find(d => d.id === possibleMatch.denialId)
+                const isLinking = linkingMatchId === possibleMatch.denialId
+                const selectedRel = selectedRelationships[possibleMatch.denialId] ?? null
+                return (
+                  <Box
+                    key={possibleMatch.denialId}
+                    sx={{ px: 2, py: 1.5, borderBottom: idx < (denial.possibleMatches?.length ?? 0) - 1 ? '1px solid' : 'none', borderColor: 'divider' }}
+                  >
+                    {/* Match ID + confidence */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.725rem' }}>
+                        {possibleMatch.denialId}
+                      </Typography>
+                      <Chip
+                        label={possibleMatch.confidence === 'high' ? 'High' : 'Medium'}
+                        size="small"
+                        sx={{
+                          height: 16, fontSize: '0.6rem', fontWeight: 700,
+                          bgcolor: possibleMatch.confidence === 'high' ? 'success.light' : 'warning.light',
+                          color: possibleMatch.confidence === 'high' ? 'success.dark' : 'warning.dark',
+                          '& .MuiChip-label': { px: 0.5 },
+                        }}
+                      />
+                    </Box>
+                    {/* Matched denial info */}
+                    {matchedDenial && (
+                      <Box sx={{ mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.8rem', lineHeight: 1.3 }}>
+                          {matchedDenial.patient.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.725rem' }}>
+                          {matchedDenial.payer} · {matchedDenial.denialType}
+                        </Typography>
+                      </Box>
+                    )}
+                    {/* Reasons */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, mb: 0.75 }}>
+                      {possibleMatch.reasons.map(r => (
+                        <Typography key={r} variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', lineHeight: 1.4 }}>
+                          · {r}
+                        </Typography>
+                      ))}
+                    </Box>
+                    {/* Actions */}
+                    {!isLinking ? (
+                      <Box sx={{ display: 'flex', gap: 0.75 }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          sx={{ fontSize: '0.75rem', py: 0.25, textTransform: 'none', fontWeight: 600 }}
+                          onClick={() => setLinkingMatchId(possibleMatch.denialId)}
+                        >
+                          Link
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="secondary"
+                          sx={{ fontSize: '0.75rem', py: 0.25, textTransform: 'none' }}
+                          onClick={() => {
+                            const updated = (denial.possibleMatches ?? []).filter(m => m.denialId !== possibleMatch.denialId)
+                            onDenialUpdate?.({ possibleMatches: updated })
+                          }}
+                        >
+                          Dismiss
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel sx={{ fontSize: '0.8rem' }}>Relationship</InputLabel>
+                          <Select
+                            label="Relationship"
+                            value={selectedRel ?? ''}
+                            onChange={e => setSelectedRelationships(prev => ({ ...prev, [possibleMatch.denialId]: e.target.value as RelationshipType }))}
+                            sx={{ fontSize: '0.8rem' }}
+                          >
+                            {RELATIONSHIP_OPTIONS.map(opt => (
+                              <MenuItem key={opt.value} value={opt.value} sx={{ fontSize: '0.8rem' }}>{opt.label}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <Box sx={{ display: 'flex', gap: 0.75 }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            disabled={!selectedRel}
+                            sx={{ fontSize: '0.75rem', py: 0.25, textTransform: 'none', fontWeight: 600 }}
+                            onClick={() => {
+                              if (!selectedRel) return
+                              const newRelInstance: RelatedInstance = { denialId: possibleMatch.denialId, relationship: selectedRel }
+                              const reverseRelInstance: RelatedInstance = { denialId: denial.id, relationship: REVERSE_RELATIONSHIP[selectedRel] }
+                              const updatedPossibleMatches = (denial.possibleMatches ?? []).filter(m => m.denialId !== possibleMatch.denialId)
+                              const updatedRelatedInstances = [...(denial.relatedInstances ?? []), newRelInstance]
+                              onDenialUpdate?.({ relatedInstances: updatedRelatedInstances, possibleMatches: updatedPossibleMatches })
+                              if (matchedDenial) {
+                                const otherRelatedInstances = [...(matchedDenial.relatedInstances ?? []), reverseRelInstance]
+                                onUpdateDenial?.(possibleMatch.denialId, { relatedInstances: otherRelatedInstances })
+                              }
+                              setLinkingMatchId(null)
+                              setSelectedRelationships(prev => { const n = { ...prev }; delete n[possibleMatch.denialId]; return n })
+                            }}
+                          >
+                            Confirm Link
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="text"
+                            sx={{ fontSize: '0.75rem', py: 0.25, textTransform: 'none', color: 'text.secondary' }}
+                            onClick={() => {
+                              setLinkingMatchId(null)
+                              setSelectedRelationships(prev => { const n = { ...prev }; delete n[possibleMatch.denialId]; return n })
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </Box>
+                      </Box>
+                    )}
+                  </Box>
+                )
+              })}
+            </Paper>
+          </Box>
+        )}
 
       </Box>
     </Box>
@@ -3585,6 +3734,15 @@ const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
   escalated_from:         'Escalated from existing denial',
 }
 
+const RELATIONSHIP_OPTIONS: { value: RelationshipType; label: string }[] = [
+  { value: 'adr_preceded',           label: 'ADR preceded this denial' },
+  { value: 'adr_followed',           label: 'ADR followed from this denial' },
+  { value: 'corrected_claim_of',     label: 'Corrected claim for this denial' },
+  { value: 'corrected_claim_led_to', label: 'This denial led to a corrected claim' },
+  { value: 'recoupment_of',          label: 'Recoupment on a prior claim' },
+  { value: 'escalated_from',         label: 'Escalated from a prior instance' },
+]
+
 function IntakeReviewPanel({
   denial,
   assignedTo,
@@ -4255,7 +4413,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
 
       {/* ── Tab content ───────────────────────────────────────────────────────── */}
       <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'background.default' }}>
-        {tab === 0 && <OverviewTab denial={denial} denialId={denialId} onViewRemit={() => setRemitOpen(true)} onViewClaim={() => setClaim837Open(true)} onOpenAttachment={handleOpenAttachment} events={events} episodes={episodes} onAddFile={handleAddFile} assignedTo={assignedTo} onChangeAssignee={setAssignedTo} onNavigateToDenial={onNavigateToDenial} />}
+        {tab === 0 && <OverviewTab denial={denial} denialId={denialId} onViewRemit={() => setRemitOpen(true)} onViewClaim={() => setClaim837Open(true)} onOpenAttachment={handleOpenAttachment} events={events} episodes={episodes} onAddFile={handleAddFile} assignedTo={assignedTo} onChangeAssignee={setAssignedTo} onNavigateToDenial={onNavigateToDenial} allDenials={allDenials} onDenialUpdate={onDenialUpdate} onUpdateDenial={onUpdateDenial} />}
         {tab === 1 && engine === 'appeal'          && <AppealTab denial={denial} denialId={denialId} denialState={denial.state} appealLetterPdf={appealLetterPdf} setAppealLetterPdf={setAppealLetterPdf} supportingDocs={supportingDocs} setSupportingDocs={setSupportingDocs} priorCorrespondence={priorCorrespondence} setPriorCorrespondence={setPriorCorrespondence} onSubmit={() => applyTransition('Submitted', 'Awaiting Payer Decision')} onSubmitSuccess={(channel, payer, patientName) => {
           const channelLabel = CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG]?.label ?? channel
           const newEvent: TimelineEvent = {

@@ -323,6 +323,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Records Ready — Review Needed',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'ADR received 3/21. Records retrieved from HealthSource on 4/5 — ready for review.',
+    possibleMatches: [
+      { denialId: 'DN-2026-0451', confidence: 'high' as const, reasons: ['Same payer (Medicare)', 'ADR commonly precedes Medical Necessity denial', 'Overlapping date of service window'] },
+    ],
   },
   {
     id: 'DN-2026-0261',
@@ -587,6 +590,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'In Progress',
     assignedTo: null,
     notes: '',
+    possibleMatches: [
+      { denialId: 'DN-2026-0412', confidence: 'medium' as const, reasons: ['Same payer (Blue Cross Blue Shield)', 'Same denial type — DRG Downgrade, MS-DRG 291 → 292', 'Same diagnosis group'] },
+    ],
   },
   {
     id: 'DN-2026-0451',
@@ -629,5 +635,33 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'In Progress',
     assignedTo: null,
     notes: '',
+  },
+  {
+    id: 'DN-2025-1201',
+    patient: { name: 'Raymond Castellano', mrn: 'MRN-091247' },
+    claim: { claimId: 'CLM-7741002', har: 'HAR-660811' },
+    payer: 'Aetna',
+    denialType: 'Medical Necessity',
+    denialSubtype: 'Inpatient Stay Not Justified — COPD Exacerbation',
+    carc: 'CARC-50', rarc: 'M86',
+    deniedAmount: 9840.00,
+    deadline: d(-120), createdAt: d(-180), dos: '2025-10-04',
+    state: 'Resolved', status: 'Overturned — Full Payment',
+    assignedTo: TEAM_MEMBERS[1]!,
+    notes: 'Appeal overturned on clinical criteria argument. MCG criteria met per peer-to-peer.',
+  },
+  {
+    id: 'DN-2026-0103',
+    patient: { name: 'Franklin Pierce', mrn: 'MRN-922771' },
+    claim: { claimId: 'CLM-8812004', har: 'HAR-771023' },
+    payer: 'Humana',
+    denialType: 'Medical Necessity',
+    denialSubtype: 'Length of Stay Exceeds Criteria — Knee Replacement',
+    carc: 'CARC-50', rarc: 'M86',
+    deniedAmount: 6120.00,
+    deadline: d(-60), createdAt: d(-90), dos: '2026-01-12',
+    state: 'Resolved', status: 'Overturned — Partial Payment',
+    assignedTo: TEAM_MEMBERS[0]!,
+    notes: 'Partial overturn — 3 of 5 days approved. Accepted partial.',
   },
 ]
