@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import Anthropic from '@anthropic-ai/sdk'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import {
@@ -1856,88 +1857,97 @@ function AppealTab({ denial, denialId, denialState, appealLetterPdf, setAppealLe
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
 
-  function applyPromptToLetter(promptText: string): string {
-    if (!editor) return ''
-    const lower = promptText.toLowerCase()
-    const html = editor.getHTML()
-    const paras = html.match(/<p[^>]*>[\s\S]*?<\/p>/g) ?? [html]
-
-    if (lower.match(/short|shorten|concise|brief|trim/)) {
-      if (paras.length > 4) return [...paras.slice(0, 2), paras[paras.length - 1]!].join('\n')
-      return html
-    }
-
-    if (lower.match(/clinical|evidence|literature|criteria|peer.?review/)) {
-      const inject = `<p>Peer-reviewed clinical literature supports the medical necessity of this case. Studies published in the Journal of Hospital Medicine and CHEST confirm that patients presenting with ${denial.patient.name.split(' ')[0]}'s documented condition meet established criteria for the level of care provided. We respectfully request the payer's clinical reviewers consider this evidence in their reassessment.</p>`
-      return [...paras.slice(0, -1), inject, paras[paras.length - 1]!].join('\n')
-    }
-
-    if (lower.match(/strong|aggressive|forceful|demand|escalat/)) {
-      const strongClose = `<p>We demand immediate reconsideration of this denial. Failure to overturn this decision will result in escalation to your state's Department of Insurance and initiation of external independent review. This patient's access to medically necessary care must not be compromised by an erroneous coverage determination. A response is required within the timeframes mandated by applicable law and your plan documents.</p>`
-      return [...paras.slice(0, -1), strongClose].join('\n')
-    }
-
-    if (lower.match(/formal|professional|tone/)) {
-      return html
-        .replace(/We are writing/gi, 'This correspondence serves to formally notify your organization')
-        .replace(/We believe/gi, 'It is the professional determination of the treating team that')
-        .replace(/\bplease\b/gi, 'we respectfully request that you')
-    }
-
-    if (lower.match(/deadline|timely|days|urgent|expedit/)) {
-      const urgencyPara = `<p>We draw your attention to applicable appeal timeline requirements. Per CMS regulations and your plan's coverage determination policies, a written response is required within 30 days of receipt of this appeal. Given the time-sensitive nature of this case and the direct impact on patient care, we respectfully request expedited review.</p>`
-      return [...paras.slice(0, -1), urgencyPara, paras[paras.length - 1]!].join('\n')
-    }
-
-    if (lower.match(/diagnosis|icd|code|dx/)) {
-      const dxPara = `<p>The following ICD-10 diagnosis codes documented in the medical record substantiate the medical necessity of the services rendered: the primary diagnosis and all listed comorbidities were actively managed during this encounter and directly informed the level of care determination. These codes are supported by physician attestation, nursing notes, and objective clinical findings in the attached record.</p>`
-      return [...paras.slice(0, -1), dxPara, paras[paras.length - 1]!].join('\n')
-    }
-
-    // Generic: weave the instruction into a new supporting paragraph
-    const genericPara = `<p>Furthermore, ${promptText.trim().replace(/^./, c => c.toLowerCase()).replace(/\.$/, '')}. We trust this additional context will support reconsideration of the initial determination.</p>`
-    return [...paras.slice(0, -1), genericPara, paras[paras.length - 1]!].join('\n')
-  }
-
-  const PROMPT_RESPONSES: Record<string, string> = {
-    short:     'I\'ve condensed the letter, keeping the opening rationale and closing request. The core argument is preserved.',
-    clinical:  'I\'ve added a clinical evidence paragraph citing peer-reviewed literature supporting medical necessity. Review and adjust the specific citations as needed.',
-    strong:    'I\'ve replaced the closing with stronger language and an explicit escalation warning. Use this if prior rounds have been ignored.',
-    formal:    'I\'ve adjusted the tone — more formal language throughout. The substance is unchanged.',
-    deadline:  'I\'ve added an urgency paragraph citing applicable response timelines under CMS regulations.',
-    diagnosis: 'I\'ve added a paragraph explicitly tying the ICD-10 codes to the medical necessity argument.',
-  }
-
-  function getAiResponse(promptText: string): string {
-    const lower = promptText.toLowerCase()
-    if (lower.match(/short|shorten|concise|brief|trim/)) return PROMPT_RESPONSES.short!
-    if (lower.match(/clinical|evidence|literature|criteria/)) return PROMPT_RESPONSES.clinical!
-    if (lower.match(/strong|aggressive|forceful|demand/)) return PROMPT_RESPONSES.strong!
-    if (lower.match(/formal|professional|tone/)) return PROMPT_RESPONSES.formal!
-    if (lower.match(/deadline|timely|urgent|expedit/)) return PROMPT_RESPONSES.deadline!
-    if (lower.match(/diagnosis|icd|code|dx/)) return PROMPT_RESPONSES.diagnosis!
-    return `I've updated the letter to reflect: "${promptText.trim()}". The change has been applied — review it on the left and let me know if you'd like further adjustments.`
-  }
-
-  function handleSendPrompt() {
-    if (!prompt.trim() || isGenerating) return
+  const handleSendPrompt = useCallback(async () => {
+    if (!prompt.trim() || isGenerating || !editor) return
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: prompt.trim(), timestamp: new Date().toISOString() }
     setChatMessages(prev => [...prev, userMsg])
     setPrompt('')
     setIsGenerating(true)
-    setTimeout(() => {
-      const newHtml = applyPromptToLetter(userMsg.content)
-      if (newHtml && editor) editor.commands.setContent(newHtml)
-      const aiMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'ai',
-        content: getAiResponse(userMsg.content),
-        timestamp: new Date().toISOString(),
+
+    const currentHtml = editor.getHTML()
+    const aiMsgId = (Date.now() + 1).toString()
+    // Add empty AI message that we'll stream into
+    setChatMessages(prev => [...prev, { id: aiMsgId, role: 'ai', content: '', timestamp: new Date().toISOString() }])
+
+    try {
+      const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined
+      if (!apiKey) throw new Error('VITE_ANTHROPIC_API_KEY is not set in .env')
+
+      const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
+
+      const systemPrompt = `You are an expert healthcare appeals specialist helping a revenue cycle management team edit insurance appeal letters.
+
+Context about this denial:
+- Patient: ${denial.patient.name}
+- Payer: ${denial.payer}
+- Denial Type: ${denial.denialType}
+- Denied Amount: $${denial.deniedAmount.toLocaleString()}
+- Date of Service: ${denial.dateOfService}
+
+The user will ask you to modify the appeal letter. You must respond with a JSON object in this exact format:
+{
+  "updatedLetter": "<the full updated letter HTML>",
+  "message": "A brief 1-2 sentence explanation of what you changed and why."
+}
+
+The updatedLetter must be valid HTML using only <p>, <strong>, <em>, <ul>, <ol>, <li>, <h1>-<h3> tags.
+Always return the complete letter, not just the changed parts.
+If the user is asking a question rather than requesting a change, return the original letter unchanged and answer in the message field.`
+
+      const conversationHistory = chatMessages
+        .filter(m => m.id !== 'init')
+        .map(m => ({
+          role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+          content: m.role === 'ai'
+            ? JSON.stringify({ updatedLetter: currentHtml, message: m.content })
+            : m.content,
+        }))
+
+      conversationHistory.push({ role: 'user', content: `Current letter HTML:\n${currentHtml}\n\nUser request: ${userMsg.content}` })
+
+      let fullResponse = ''
+      const stream = await client.messages.stream({
+        model: 'claude-opus-4-6',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: conversationHistory,
+      })
+
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+          fullResponse += event.delta.text
+          // Try to extract message for streaming display
+          try {
+            const parsed = JSON.parse(fullResponse)
+            setChatMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, content: parsed.message ?? '' } : m))
+          } catch {
+            // Not valid JSON yet — show partial message text if we can extract it
+            const msgMatch = fullResponse.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)/)
+            if (msgMatch) {
+              setChatMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, content: msgMatch[1]!.replace(/\\n/g, '\n').replace(/\\"/g, '"') } : m))
+            }
+          }
+        }
       }
-      setChatMessages(prev => [...prev, aiMsg])
+
+      // Parse final response and apply letter update
+      try {
+        const parsed = JSON.parse(fullResponse) as { updatedLetter: string; message: string }
+        if (parsed.updatedLetter && parsed.updatedLetter !== currentHtml) {
+          editor.commands.setContent(parsed.updatedLetter)
+        }
+        setChatMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, content: parsed.message ?? 'Done.' } : m))
+      } catch {
+        // If Claude didn't return valid JSON, show raw response as chat message
+        setChatMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, content: fullResponse } : m))
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+      setChatMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, content: `Error: ${errMsg}` } : m))
+    } finally {
       setIsGenerating(false)
-    }, 1200)
-  }
+    }
+  }, [prompt, isGenerating, editor, denial, chatMessages])
 
   function handleConfirmTemplateSwitch() {
     if (!confirmTemplate || !editor) return
