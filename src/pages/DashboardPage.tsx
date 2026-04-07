@@ -616,7 +616,7 @@ export default function DashboardPage({ denials }: DashboardPageProps) {
 
   // ── Derived: Today ───────────────────────────────────────────────────────────
   const open        = denials.filter(d => !isTerminal(d.state))
-  const attention   = open.filter(d => d.needsAttention)
+  const attention   = open.filter(d => (d.alerts?.length ?? 0) > 0)
   const dueThisWeek = open.filter(d => { const days = daysUntil(d.deadline); return days >= 0 && days <= 7 })
 
   const outcomes        = Object.values(DENIAL_OUTCOMES)
@@ -721,7 +721,7 @@ export default function DashboardPage({ denials }: DashboardPageProps) {
                         {d.patient.name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                        {d.needsAttentionReasons?.[0] ?? d.status}
+                        {d.alerts?.[0]?.message ?? d.status}
                       </Typography>
                     </Box>
                     <Chip label={d.state} size="small"

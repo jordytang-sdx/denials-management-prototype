@@ -178,7 +178,7 @@ export default function App() {
 
   const isTerminal = (s: string) => s === 'Resolved' || s === 'Closed' || s === 'Archived'
   const openCount      = denials.filter(d => !isTerminal(d.state)).length
-  const attentionCount = denials.filter(d => d.needsAttention && !isTerminal(d.state)).length
+  const attentionCount = denials.filter(d => (d.alerts?.length ?? 0) > 0 && !isTerminal(d.state)).length
   const deadlineCount  = denials.filter(d => {
     if (isTerminal(d.state)) return false
     const days = Math.ceil((new Date(d.deadline).getTime() - Date.now()) / 86400000)

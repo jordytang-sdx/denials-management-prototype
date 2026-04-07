@@ -33,6 +33,15 @@ export type ArchivedStatus = 'Archived'
 
 export type DenialStatus = IntakeStatus | ActiveStatus | SubmittedStatus | ResolvedStatus | ClosedStatus | ArchivedStatus
 
+export type AlertType = 'deadline' | 'submission_failure' | 'response_received' | 'records_ready' | 'stale'
+
+export interface DenialAlert {
+  id: string
+  type: AlertType
+  message: string
+  createdAt: string
+}
+
 export type AppealRoundType = 'L1_internal' | 'L2_external' | 'IRO' | 'redetermination' | 'reconsideration' | 'reopening'
 export type AppealDecision = 'overturned' | 'upheld' | 'partial' | 'pending' | 'withdrawn'
 export type InstanceSource = 'manual_upload' | '835_auto' | 'user_action' | 'system'
@@ -86,8 +95,7 @@ export interface DenialRecord {
   status: DenialStatus
   assignedTo: TeamMember | null
   nextAction?: string
-  needsAttention: boolean
-  needsAttentionReasons: string[]
+  alerts?: DenialAlert[]
   notes: string
   archivedFrom?: { state: DenialState; status: DenialStatus }
   // Instance model fields
@@ -120,8 +128,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Appeal Drafting',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: 'Physician attestation obtained. Drafting level 1 appeal — deadline in 4 days.',
-    needsAttention: true,
-    needsAttentionReasons: ['Appeal deadline in 4 days'],
+    alerts: [{ id: 'a-0412-1', type: 'deadline', message: 'Appeal deadline in 4 days', createdAt: d(-1) }],
     relatedInstances: [{ denialId: 'DN-2026-0394', relationship: 'adr_preceded' }],
   },
   {
@@ -137,8 +144,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Closed', status: 'Escalated to DRG Dispute',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: 'BCBS requested documentation for 2/14 inpatient admit. Records submitted 3/12. BCBS completed review and issued DRG downgrade — escalated to DN-2026-0412.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     relatedInstances: [{ denialId: 'DN-2026-0412', relationship: 'adr_followed' }],
   },
   {
@@ -154,8 +159,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Unreviewed',
     assignedTo: null,
     notes: '',
-    needsAttention: true,
-    needsAttentionReasons: ['High-value claim ($12,480) unworked for 15 days', 'Unassigned'],
+    alerts: [{ id: 'a-0389-1', type: 'stale', message: 'Unreviewed for 15 days — unassigned ($12,480)', createdAt: d(-5) }],
   },
   {
     id: 'DN-2026-0401',
@@ -170,8 +174,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'In Progress',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'CDI flagged sequencing issue on 2/28 admit. Corrected claim ready to resubmit.',
-    needsAttention: false,
-    needsAttentionReasons: [],
   },
   {
     id: 'DN-2026-0377',
@@ -186,8 +188,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Submitted', status: 'Submission Failed',
     assignedTo: TEAM_MEMBERS[2]!,
     notes: 'Portal submission failed 4/1 — payer ID mismatch. Confirmed correct routing with clearinghouse.',
-    needsAttention: true,
-    needsAttentionReasons: ['Last submission attempt failed'],
+    alerts: [{ id: 'a-0377-1', type: 'submission_failure', message: 'Portal submission failed — payer ID mismatch. Resubmit required.', createdAt: d(-1) }],
     appealRounds: [
       { id: 'r-0377-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2026-03-28', submissionMethod: 'portal', decision: 'pending' },
     ],
@@ -205,8 +206,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Appeal Drafting',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: '',
-    needsAttention: false,
-    needsAttentionReasons: [],
   },
   {
     id: 'DN-2026-0344',
@@ -221,8 +220,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Eligibility Investigation',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: 'Low-confidence match flagged. Verifying coverage — patient may have had dual eligibility on DOS.',
-    needsAttention: true,
-    needsAttentionReasons: ['Low-confidence patient match — verify identity before action'],
+    alerts: [{ id: 'a-0344-1', type: 'stale', message: 'Low-confidence patient match — verify coverage before taking action', createdAt: d(-4) }],
   },
   {
     id: 'DN-2026-0331',
@@ -237,8 +235,10 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Awaiting Records',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'BCBS initiated recoupment on 3/19 audit. Clinical docs pulled — submitting dispute this week.',
-    needsAttention: true,
-    needsAttentionReasons: ['Active recoupment — timely response required', 'Deadline in 6 days'],
+    alerts: [
+      { id: 'a-0331-1', type: 'deadline', message: 'Dispute deadline in 6 days', createdAt: d(-2) },
+      { id: 'a-0331-2', type: 'stale', message: 'Records overdue — dispute package not yet submitted', createdAt: d(-7) },
+    ],
   },
   {
     id: 'DN-2026-0318',
@@ -253,8 +253,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Appeal Drafting',
     assignedTo: TEAM_MEMBERS[2]!,
     notes: '',
-    needsAttention: false,
-    needsAttentionReasons: [],
     relatedInstances: [{ denialId: 'DN-2026-0301', relationship: 'adr_preceded' }],
   },
   {
@@ -270,8 +268,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Closed', status: 'Escalated to DRG Dispute',
     assignedTo: TEAM_MEMBERS[2]!,
     notes: 'Aetna requested records for 3/12 surgical admit. Records submitted 3/26. Aetna completed utilization review and issued DRG downgrade — escalated to DN-2026-0318.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     relatedInstances: [{ denialId: 'DN-2026-0318', relationship: 'adr_followed' }],
   },
   {
@@ -287,8 +283,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Appeal Drafting',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: 'Clearinghouse confirmed 11/18 transmission. Pulling 277 report to attach to appeal.',
-    needsAttention: true,
-    needsAttentionReasons: ['Appeal deadline in 2 days'],
+    alerts: [{ id: 'a-0305-1', type: 'deadline', message: 'Appeal deadline in 2 days', createdAt: d(-1) }],
   },
   {
     id: 'DN-2026-0292',
@@ -303,8 +298,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Pending Acceptance',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: '',
-    needsAttention: false,
-    needsAttentionReasons: [],
   },
   {
     id: 'DN-2026-0278',
@@ -316,11 +309,10 @@ export const SEED_DENIALS: DenialRecord[] = [
     carc: 'CARC-18',
     deniedAmount: 4110.00,
     deadline: d(9), createdAt: d(-12), dos: '2026-02-10',
-    state: 'Active', status: 'Awaiting Records',
+    state: 'Active', status: 'Records Ready — Review Needed',
     assignedTo: TEAM_MEMBERS[1]!,
-    notes: 'ADR received 3/21. HealthSource request pending — records not yet retrieved after 12 days.',
-    needsAttention: true,
-    needsAttentionReasons: ['ADR open — medical records not retrieved after 12 days'],
+    notes: 'ADR received 3/21. Records retrieved from HealthSource on 4/5 — ready for review.',
+    alerts: [{ id: 'a-0278-1', type: 'records_ready', message: 'Records received from HealthSource — ready for appeal review', createdAt: d(-1) }],
   },
   {
     id: 'DN-2026-0261',
@@ -335,8 +327,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'Corrected Claim Submitted',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: 'Billing NPI missing from original claim. Corrected claim submitted 4/4 with NPI included. Awaiting Cigna reprocessing.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     relatedInstances: [{ denialId: 'DN-2025-1144', relationship: 'corrected_claim_led_to' }],
   },
 
@@ -355,8 +345,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Resolved', status: 'Overturned — Full Payment',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: 'L1 upheld, L2 upheld, external independent review overturned denial. Full $8,940 payment received 2025-10-18.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     appealRounds: [
       { id: 'r-0847-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-08-20', submissionMethod: 'mail', decision: 'upheld', decisionDate: '2025-09-08' },
       { id: 'r-0847-2', roundNumber: 2, roundType: 'L2_external', submittedAt: '2025-09-22', submissionMethod: 'mail', decision: 'upheld', decisionDate: '2025-10-03' },
@@ -376,8 +364,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Closed', status: 'Will Not Appeal',
     assignedTo: TEAM_MEMBERS[2]!,
     notes: 'L1 and L2 upheld. Recovery ROI at $6,200 below external review threshold. Closed per finance approval.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     appealRounds: [
       { id: 'r-1201-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-10-02', submissionMethod: 'portal', decision: 'upheld', decisionDate: '2025-10-28' },
       { id: 'r-1201-2', roundNumber: 2, roundType: 'L2_external', submittedAt: '2025-11-08', submissionMethod: 'mail', decision: 'upheld', decisionDate: '2025-12-01' },
@@ -396,8 +382,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Closed', status: 'Escalated to DRG Dispute',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'Records submitted to Medicare in response to ADR. Post-review Medicare issued DRG downgrade — escalated to DN-2025-0933.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     relatedInstances: [{ denialId: 'DN-2025-0933', relationship: 'adr_followed' }],
   },
   {
@@ -413,8 +397,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Resolved', status: 'Overturned — Full Payment',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'DRG downgrade issued after ADR record review (see DN-2025-0932). L2 appeal overturned — MS-DRG 194 restored. $3,840 recovered.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     relatedInstances: [{ denialId: 'DN-2025-0932', relationship: 'escalated_from' }],
     appealRounds: [
       { id: 'r-0933-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-09-10', submissionMethod: 'mail', decision: 'upheld', decisionDate: '2025-09-28' },
@@ -434,8 +416,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Resolved', status: 'Overturned — Full Payment',
     assignedTo: TEAM_MEMBERS[2]!,
     notes: 'Retro-auth request denied. L1 appeal + peer-to-peer with Cigna MD resulted in overturn. Full $9,450 recovered.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     appealRounds: [
       { id: 'r-1089-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-11-10', submissionMethod: 'portal', decision: 'overturned', decisionDate: '2025-12-01', recoveryAmount: 9450, notes: 'Peer-to-peer with Cigna MD conducted 11/28 — contributed to overturn.' },
     ],
@@ -453,8 +433,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Closed', status: 'Will Not Appeal',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: 'L1 appeal upheld. Authorization gap confirmed — no retroactive pathway available. Closed per policy.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     appealRounds: [
       { id: 'r-1156-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-12-01', submissionMethod: 'portal', decision: 'upheld', decisionDate: '2025-12-22' },
     ],
@@ -472,8 +450,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Resolved', status: 'Partial Settlement',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'Medicare recoupment disputed with full clinical record. Settlement reached: $6,200 repaid, $6,200 written off by Medicare. Case closed 2025-11-14.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     appealRounds: [
       { id: 'r-0788-1', roundNumber: 1, roundType: 'redetermination', submittedAt: '2025-09-05', submissionMethod: 'mail', decision: 'partial', decisionDate: '2025-10-20', notes: 'Settlement: $6,200 repaid, $6,200 written off.' },
     ],
@@ -491,8 +467,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Resolved', status: 'Overturned — Full Payment',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: '277-CA confirmed timely transmission within filing window. Aetna accepted defense — full $3,100 paid.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     appealRounds: [
       { id: 'r-1302-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2025-08-02', submissionMethod: 'mail', decision: 'overturned', decisionDate: '2025-08-22', recoveryAmount: 3100, notes: '277-CA timely filing evidence accepted.' },
     ],
@@ -510,8 +484,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Resolved', status: 'Corrected Claim Paid',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: 'Same issue as current denial — billing NPI missing on original claim. Corrected claim submitted 11/04, Cigna processed and paid $635 on 11/19.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     relatedInstances: [{ denialId: 'DN-2026-0261', relationship: 'corrected_claim_of' }],
   },
   {
@@ -527,8 +499,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Resolved', status: 'Corrected Claim Paid',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'ICD-10 sequencing corrected per CDI review. BCBS processed corrected claim — $1,240 paid 2026-01-08.',
-    needsAttention: false,
-    needsAttentionReasons: [],
   },
   {
     id: 'DN-2026-0077',
@@ -543,8 +513,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Resolved', status: 'Secondary Payer Paid',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: 'Medicaid coverage confirmed inactive on DOS. Medicare identified as primary — billed and paid in full. $2,340 recovered.',
-    needsAttention: false,
-    needsAttentionReasons: [],
   },
   {
     id: 'DN-2026-0103',
@@ -559,8 +527,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Closed', status: 'Will Not Appeal',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: 'L1 appeal upheld. Cigna criteria for extended LOS not supported by documentation. Closed per finance — recovery below external review threshold.',
-    needsAttention: false,
-    needsAttentionReasons: [],
     appealRounds: [
       { id: 'r-0103-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2026-02-03', submissionMethod: 'portal', decision: 'upheld', decisionDate: '2026-02-24' },
     ],
@@ -578,8 +544,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'In Progress',
     assignedTo: TEAM_MEMBERS[1]!,
     nextAction: 'File payment dispute with contractual rate documentation',
-    needsAttention: true,
-    needsAttentionReasons: ['Contracted rate mismatch — paid $8,430, expected $13,250'],
+    alerts: [{ id: 'a-0521-1', type: 'stale', message: 'Contracted rate mismatch — paid $8,430, expected $13,250', createdAt: d(-3) }],
     notes: 'UHC applied commercial fee schedule instead of negotiated case rate. Contract §4.2 specifies $13,250 for CABG.',
   },
   {
@@ -595,8 +560,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Active', status: 'In Progress',
     assignedTo: null,
     nextAction: 'Verify contracted rate and draft payment dispute letter',
-    needsAttention: false,
-    needsAttentionReasons: [],
     notes: 'Aetna paid at outpatient DRG rate for inpatient joint replacement. Contracted inpatient case rate should apply.',
   },
 
@@ -615,8 +578,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Unreviewed',
     assignedTo: null,
     notes: '',
-    needsAttention: true,
-    needsAttentionReasons: ['High-value DRG downgrade — $7,340 unreviewed', 'Unassigned'],
+    alerts: [{ id: 'a-0445-1', type: 'stale', message: 'High-value DRG downgrade — $7,340 unreviewed and unassigned', createdAt: d(-2) }],
   },
   {
     id: 'DN-2026-0451',
@@ -631,8 +593,6 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Pending Acceptance',
     assignedTo: TEAM_MEMBERS[2]!,
     notes: 'RAC identified this claim in batch review. Admission order and physician notes on file.',
-    needsAttention: false,
-    needsAttentionReasons: [],
   },
   {
     id: 'DN-2026-0463',
@@ -647,8 +607,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Unreviewed',
     assignedTo: null,
     notes: '',
-    needsAttention: true,
-    needsAttentionReasons: ['High-value claim ($11,200) unassigned', 'Deadline in 18 days'],
+    alerts: [{ id: 'a-0451-1', type: 'stale', message: 'High-value claim ($11,200) unassigned', createdAt: d(-2) }],
   },
   {
     id: 'DN-2026-0471',
@@ -663,7 +622,5 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Unreviewed',
     assignedTo: null,
     notes: '',
-    needsAttention: false,
-    needsAttentionReasons: [],
   },
 ]

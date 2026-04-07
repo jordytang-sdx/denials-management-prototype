@@ -37,11 +37,19 @@ export interface WorklistFilters {
   denialType: string[]
   assignedTo: string[]
   status: string[]
-  needsAttentionOnly: boolean
+  hasAlertsOnly: boolean
 }
 
 export const DEFAULT_WORKLIST_FILTERS: WorklistFilters = {
-  payer: [], denialType: [], assignedTo: [], status: [], needsAttentionOnly: false,
+  payer: [], denialType: [], assignedTo: [], status: [], hasAlertsOnly: false,
+}
+
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  deadline:           'Deadline',
+  submission_failure: 'Sub. Failed',
+  response_received:  'Response In',
+  records_ready:      'Records Ready',
+  stale:              'Stale',
 }
 
 interface ColPopoverState {
@@ -256,8 +264,8 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
     if (filters.status.length > 0) {
       rows = rows.filter(r => filters.status.includes(r.status))
     }
-    if (filters.needsAttentionOnly) {
-      rows = rows.filter(r => r.needsAttention)
+    if (filters.hasAlertsOnly) {
+      rows = rows.filter(r => (r.alerts?.length ?? 0) > 0)
     }
     if (filters.payer.length > 0) {
       rows = rows.filter(r => filters.payer.includes(r.payer))
@@ -329,7 +337,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
     denialType:     filters.denialType.length > 0,
     assignedTo:     filters.assignedTo.length > 0,
     status:         filters.status.length > 0,
-    needsAttention: filters.needsAttentionOnly,
+    hasAlerts: filters.hasAlertsOnly,
   }
 
   const tabCount = (t: WorklistActiveTab) => denials.filter(d => d.state === t).length
@@ -341,7 +349,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
     const atRisk = open.reduce((sum, d) => sum + d.deniedAmount, 0)
     const overdue = open.filter(d => daysUntil(d.deadline) < 0).length
     const dueThisWeek = open.filter(d => { const days = daysUntil(d.deadline); return days >= 0 && days <= 7 }).length
-    const attention = open.filter(d => d.needsAttention).length
+    const attention = open.filter(d => (d.alerts?.length ?? 0) > 0).length
     const resolvedCount = denials.filter(d => d.state === 'Resolved' || d.state === 'Closed').length
     return { atRisk, overdue, dueThisWeek, attention, resolvedCount }
   }, [denials])
@@ -510,19 +518,19 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                 align="center"
                 sx={{
                   width: 44, py: 1.25,
-                  bgcolor: activeFilters.needsAttention ? 'rgba(183,119,13,0.07)' : undefined,
-                  borderBottom: activeFilters.needsAttention ? '2px solid' : undefined,
-                  borderBottomColor: activeFilters.needsAttention ? 'warning.main' : undefined,
+                  bgcolor: activeFilters.hasAlerts ? 'rgba(183,119,13,0.07)' : undefined,
+                  borderBottom: activeFilters.hasAlerts ? '2px solid' : undefined,
+                  borderBottomColor: activeFilters.hasAlerts ? 'warning.main' : undefined,
                 }}
               >
-                <Tooltip title={activeFilters.needsAttention ? 'Showing flagged only — click to clear' : 'Show flagged only'} placement="left">
+                <Tooltip title={activeFilters.hasAlerts ? 'Showing alerts only — click to clear' : 'Show alerts only'} placement="left">
                   <IconButton
                     size="small"
-                    onClick={() => setFilters(prev => ({ ...prev, needsAttentionOnly: !prev.needsAttentionOnly }))}
+                    onClick={() => setFilters(prev => ({ ...prev, hasAlertsOnly: !prev.hasAlertsOnly }))}
                     sx={{
                       p: 0.25,
-                      color: activeFilters.needsAttention ? 'warning.main' : 'text.disabled',
-                      opacity: activeFilters.needsAttention ? 1 : 0.45,
+                      color: activeFilters.hasAlerts ? 'warning.main' : 'text.disabled',
+                      opacity: activeFilters.hasAlerts ? 1 : 0.45,
                       '&:hover': { opacity: 1, color: 'warning.main', bgcolor: 'transparent' },
                     }}
                   >
@@ -695,23 +703,31 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                     </Tooltip>
                   </TableCell>
 
-                  {/* Needs Attention */}
-                  <TableCell align="center" sx={{ py: 1.25 }}>
-                    {denial.needsAttention && (
-                      <Tooltip
-                        title={
-                          <Box>
-                            {denial.needsAttentionReasons.map((r, i) => (
-                              <Typography key={i} variant="caption" sx={{ display: 'block' }}>• {r}</Typography>
-                            ))}
-                          </Box>
-                        }
-                        placement="left"
-                        arrow
-                      >
-                        <WarningAmberOutlined sx={{ fontSize: 18, color: 'warning.main', display: 'block', ml: 'auto' }} />
-                      </Tooltip>
-                    )}
+                  {/* Alerts */}
+                  <TableCell sx={{ py: 1.25, maxWidth: 200 }}>
+                    {(denial.alerts ?? []).map(alert => {
+                      const ALERT_STYLES: Record<string, { color: string; bg: string; label: string }> = {
+                        deadline:           { color: '#DC2626', bg: '#FEF2F2', label: '⏰' },
+                        submission_failure: { color: '#EA580C', bg: '#FFF7ED', label: '⚠' },
+                        response_received:  { color: '#2563EB', bg: '#EFF6FF', label: '📬' },
+                        records_ready:      { color: '#0D9488', bg: '#F0FDFA', label: '📋' },
+                        stale:              { color: '#B45309', bg: '#FFFBEB', label: '⏳' },
+                      }
+                      const style = ALERT_STYLES[alert.type] ?? { color: '#6B7280', bg: '#F9FAFB', label: '!' }
+                      return (
+                        <Tooltip key={alert.id} title={alert.message} placement="left" arrow>
+                          <Chip
+                            label={ALERT_TYPE_LABELS[alert.type] ?? alert.type}
+                            size="small"
+                            sx={{
+                              height: 18, fontSize: '0.65rem', fontWeight: 600, mr: 0.5, mb: 0.25,
+                              bgcolor: style.bg, color: style.color,
+                              '& .MuiChip-label': { px: 0.75 },
+                            }}
+                          />
+                        </Tooltip>
+                      )
+                    })}
                   </TableCell>
 
                 </TableRow>
@@ -732,8 +748,8 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
         {activeFilters.assignedTo && (
           <Chip size="small" label={`Assigned: ${filters.assignedTo.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, assignedTo: [] }))} />
         )}
-        {activeFilters.needsAttention && (
-          <Chip size="small" icon={<WarningAmberOutlined sx={{ fontSize: 14 }} />} label="Needs Attention" color="warning" onDelete={() => setFilters(p => ({ ...p, needsAttentionOnly: false }))} />
+        {activeFilters.hasAlerts && (
+          <Chip size="small" icon={<WarningAmberOutlined sx={{ fontSize: 14 }} />} label="Has Alerts" color="warning" onDelete={() => setFilters(p => ({ ...p, hasAlertsOnly: false }))} />
         )}
 
         <Box sx={{ flex: 1 }} />
