@@ -500,8 +500,8 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
             <TableRow>
               <ColHeader label="Patient"       colId="patient"      sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={148} />
               <ColHeader label="Claim ID"      colId="claimId"                 activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={126} />
-              <ColHeader label="Payer"         colId="payer"        filterable activeSort={sort} hasFilter={activeFilters.payer}      onOpen={openColPopover} />
-              <ColHeader label="Denial Type"   colId="denialType"   filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} />
+              <ColHeader label="Payer"         colId="payer"        filterable activeSort={sort} hasFilter={activeFilters.payer}      onOpen={openColPopover} width={148} />
+              <ColHeader label="Denial Type"   colId="denialType"   filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={160} />
               <ColHeader label="Denied Amount" colId="deniedAmount" sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={132} align="right" />
               <ColHeader label="Deadline"      colId="deadline"     sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={132} />
               {(activeState === 'Resolved' || activeState === 'Closed' || activeState === 'Archived') && (
