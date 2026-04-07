@@ -806,7 +806,7 @@ function ActivityTab({ episodes, onOpenAttachment, onAddFile }: {
 
 // ─── Underpayment Tab ─────────────────────────────────────────────────────────
 
-function UnderpaymentTab({ denial, denialState, onSubmit }: { denial: DenialRecord; denialState: string; onSubmit?: () => void }) {
+function UnderpaymentTab({ denial, denialState, onSubmit, onSubmitSuccess }: { denial: DenialRecord; denialState: string; onSubmit?: () => void; onSubmitSuccess?: (channel: string) => void }) {
   const canAct = denialState === 'Active'
   const data = UNDERPAYMENT_DATA[denial.id]
   const letterData = APPEAL_LETTERS[denial.id]
@@ -839,6 +839,7 @@ Date of Service: ${denial.dos}</p>
       setSubmitting(false)
       setSubmitted(true)
       onSubmit?.()
+      onSubmitSuccess?.(channel)
     }, 1600)
   }
 
@@ -3914,6 +3915,31 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
     setMoreMenuAnchor(null)
   }
 
+  // Maps submission channel strings to DeliveryMethod for activity log
+  const CHANNEL_TO_METHOD: Record<string, DeliveryMethod> = {
+    esmd: 'esmd', portal: 'portal', fax: 'fax', mail: 'mail', agent: 'portal',
+  }
+
+  function recordSubmissionEpisode(channel: string, labelOverride?: string) {
+    const method: DeliveryMethod = CHANNEL_TO_METHOD[channel] ?? 'portal'
+    const channelLabel = labelOverride ?? (CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG]?.label ?? channel)
+    const today = new Date().toISOString().split('T')[0]!
+    const action: EpisodeAction = { label: `Submitted via ${channelLabel}`, date: today, method }
+    setEpisodes(prev => {
+      const last = prev[prev.length - 1]
+      if (last && !last.action) {
+        return prev.map((ep, i) => i === prev.length - 1 ? { ...ep, action } : ep)
+      }
+      const roundNum = prev.length + 1
+      return [...prev, {
+        id: `ep-${denialId}-r${roundNum}`,
+        round: roundNum === 1 ? 'Level 1 Appeal' : roundNum === 2 ? 'Level 2 Appeal' : `Round ${roundNum}`,
+        openedAt: today,
+        action,
+      }]
+    })
+  }
+
   const DISPOSITION_LABELS: Record<OutcomeDisposition, ResolvedStatus> = {
     overturned_full:    'Overturned — Full Payment',
     overturned_partial: 'Overturned — Partial Payment',
@@ -4126,6 +4152,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
             detail: `Appeal packet submitted to ${payer} via ${channelLabel}. Packet includes appeal letter and supporting documentation.`,
           }
           setEvents(prev => [...prev, newEvent])
+          recordSubmissionEpisode(channel, channelLabel)
           onSubmitSuccess?.(channel, payer, patientName)
         }} />}
         {tab === 1 && engine === 'records_request' && <RecordsRequestTab denial={denial} denialState={denial.state} onStatusUpdate={s => onDenialUpdate({ status: s })} />}
@@ -4133,7 +4160,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
         {tab === 1 && engine === 'filing_defense'  && <FilingDefenseTab  denial={denial} denialState={denial.state} />}
         {tab === 1 && engine === 'recoupment'      && <RecoupmentTab     denial={denial} denialState={denial.state} />}
         {tab === 1 && engine === 'eligibility'     && <EligibilityTab    denial={denial} denialState={denial.state} />}
-        {tab === 1 && engine === 'underpayment'    && <UnderpaymentTab  denial={denial} denialState={denial.state} onSubmit={() => applyTransition('Submitted', 'Awaiting Payer Decision')} />}
+        {tab === 1 && engine === 'underpayment'    && <UnderpaymentTab  denial={denial} denialState={denial.state} onSubmit={() => applyTransition('Submitted', 'Awaiting Payer Decision')} onSubmitSuccess={channel => recordSubmissionEpisode(channel)} />}
         {tab === 2 && <ClinicalTab denial={denial} />}
         {tab === 3 && <ActivityTab episodes={episodes} onOpenAttachment={handleOpenAttachment} onAddFile={handleAddFile} />}
         {tab === 4 && <OutcomeTab denialId={denialId} currentState={denial.state} />}
