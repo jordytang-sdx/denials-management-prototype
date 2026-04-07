@@ -56,6 +56,12 @@ export interface RelatedInstance {
   relationship: RelationshipType
 }
 
+export interface PossibleMatch {
+  denialId: string
+  confidence: 'high' | 'medium'
+  reasons: string[]
+}
+
 export interface TeamMember {
   id: string
   name: string
@@ -93,8 +99,18 @@ export interface DenialRecord {
   denialLetterOnFile?: boolean
   appealRounds?: AppealRound[]
   relatedInstances?: RelatedInstance[]
+  possibleMatches?: PossibleMatch[]
   /** @deprecated use relatedInstances */
   relatedDenialIds?: string[]
+}
+
+export const REVERSE_RELATIONSHIP: Record<RelationshipType, RelationshipType> = {
+  adr_preceded:           'adr_followed',
+  adr_followed:           'adr_preceded',
+  corrected_claim_of:     'corrected_claim_led_to',
+  corrected_claim_led_to: 'corrected_claim_of',
+  recoupment_of:          'recoupment_of',
+  escalated_from:         'escalated_from',
 }
 
 // Reference date: 2026-04-02

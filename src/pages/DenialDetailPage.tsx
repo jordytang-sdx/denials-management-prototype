@@ -66,7 +66,7 @@ import {
   BlockOutlined,
   RemoveCircleOutlineOutlined,
 } from '@mui/icons-material'
-import { SEED_DENIALS, TEAM_MEMBERS, type TeamMember, type DenialRecord, type ActiveStatus, type ResolvedStatus, type DenialStatus, type AppealRound, type AppealRoundType } from '../data/denials'
+import { SEED_DENIALS, TEAM_MEMBERS, REVERSE_RELATIONSHIP, type TeamMember, type DenialRecord, type ActiveStatus, type ResolvedStatus, type DenialStatus, type AppealRound, type AppealRoundType, type RelationshipType, type RelatedInstance, type PossibleMatch } from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
 import {
   CARC_DESCRIPTIONS, RARC_DESCRIPTIONS,
@@ -3575,6 +3575,15 @@ function IntakeInfoRow({ label, value, mono }: { label: string; value: React.Rea
   )
 }
 
+const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
+  adr_preceded:           'ADR preceded this denial',
+  adr_followed:           'ADR followed from this denial',
+  corrected_claim_of:     'Corrected claim for the existing denial',
+  corrected_claim_led_to: 'Existing denial led to this corrected claim',
+  recoupment_of:          'Recoupment of existing claim',
+  escalated_from:         'Escalated from existing denial',
+}
+
 function IntakeReviewPanel({
   denial,
   assignedTo,
@@ -3582,17 +3591,24 @@ function IntakeReviewPanel({
   onDismiss,
   onWillNotAppeal,
   onViewClaim,
+  allDenials,
 }: {
   denial: DenialRecord
   assignedTo: TeamMember | null
-  onAccept: (denialType: string, assignee: TeamMember | null, notes: string) => void
+  onAccept: (denialType: string, assignee: TeamMember | null, notes: string, relatedInstances: RelatedInstance[]) => void
   onDismiss: () => void
   onWillNotAppeal: () => void
   onViewClaim?: () => void
+  allDenials?: DenialRecord[]
+  onUpdateDenial?: (id: string, updates: Partial<DenialRecord>) => void
 }) {
   const [localType, setLocalType] = useState(denial.denialType)
   const [localAssigneeId, setLocalAssigneeId] = useState<string>(assignedTo?.id ?? '')
   const [notes, setNotes] = useState(denial.notes)
+
+  // One decision per possible match: 'link' | 'skip', plus relationship if linking
+  const possibleMatches = denial.possibleMatches ?? []
+  const [matchDecisions, setMatchDecisions] = useState<Record<string, { action: 'link' | 'skip'; relationship?: RelationshipType }>>({})
 
   const engine = getResolutionEngine(localType)
   const engineLabel = ENGINE_LABELS[engine]
@@ -3806,6 +3822,95 @@ function IntakeReviewPanel({
               />
             </Box>
           </Paper>
+
+          {possibleMatches.length > 0 && (
+            <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+              <Box sx={{ px: 2, py: 1.25, bgcolor: '#EFF6FF', borderBottom: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AccountTreeOutlined sx={{ fontSize: 14, color: '#1E40AF' }} />
+                <Typography variant="overline" sx={{ fontSize: '0.6875rem', color: '#1E40AF', fontWeight: 600 }}>
+                  Possible Related Instances
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {possibleMatches.map((match, idx) => {
+                  const existing = allDenials?.find(d => d.id === match.denialId)
+                  const decision = matchDecisions[match.denialId]
+                  return (
+                    <Box key={match.denialId} sx={{ px: 2, py: 1.5, borderBottom: idx < possibleMatches.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                      {/* Match header */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+                        <Chip
+                          label={match.confidence === 'high' ? 'High confidence' : 'Medium confidence'}
+                          size="small"
+                          sx={{ height: 18, fontSize: '0.65rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 },
+                            bgcolor: match.confidence === 'high' ? 'success.light' : 'warning.light',
+                            color: match.confidence === 'high' ? 'success.dark' : 'warning.dark' }}
+                        />
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.7rem', color: 'text.secondary' }}>
+                          {match.denialId}
+                        </Typography>
+                      </Box>
+                      {existing && (
+                        <Box sx={{ mb: 0.75 }}>
+                          <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>{existing.patient.name}</Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            {existing.denialType} · {existing.payer} · {existing.state}
+                          </Typography>
+                        </Box>
+                      )}
+                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.75 }}>
+                        {match.reasons.map(r => (
+                          <Chip key={r} label={r} size="small" sx={{ height: 18, fontSize: '0.65rem', '& .MuiChip-label': { px: 0.75 } }} />
+                        ))}
+                      </Box>
+                      {/* Decision */}
+                      {!decision ? (
+                        <Box sx={{ display: 'flex', gap: 0.75 }}>
+                          <Button size="small" variant="outlined" sx={{ fontSize: '0.75rem', py: 0.25, textTransform: 'none', fontWeight: 600 }}
+                            onClick={() => setMatchDecisions(prev => ({ ...prev, [match.denialId]: { action: 'link' } }))}>
+                            Link
+                          </Button>
+                          <Button size="small" variant="text" sx={{ fontSize: '0.75rem', py: 0.25, textTransform: 'none', color: 'text.secondary' }}
+                            onClick={() => setMatchDecisions(prev => ({ ...prev, [match.denialId]: { action: 'skip' } }))}>
+                            Skip
+                          </Button>
+                        </Box>
+                      ) : decision.action === 'skip' ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>Skipped</Typography>
+                          <Button size="small" variant="text" sx={{ fontSize: '0.7rem', py: 0, textTransform: 'none', minWidth: 0 }}
+                            onClick={() => setMatchDecisions(prev => { const n = { ...prev }; delete n[match.denialId]; return n })}>
+                            Undo
+                          </Button>
+                        </Box>
+                      ) : (
+                        /* Link chosen — show relationship selector */
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                          <FormControl size="small" fullWidth>
+                            <InputLabel sx={{ fontSize: '0.8rem' }}>Relationship</InputLabel>
+                            <Select
+                              label="Relationship"
+                              value={decision.relationship ?? ''}
+                              onChange={e => setMatchDecisions(prev => ({ ...prev, [match.denialId]: { action: 'link', relationship: e.target.value as RelationshipType } }))}
+                              sx={{ fontSize: '0.8rem' }}
+                            >
+                              {(Object.keys(REVERSE_RELATIONSHIP) as RelationshipType[]).map(rel => (
+                                <MenuItem key={rel} value={rel} sx={{ fontSize: '0.8rem' }}>{RELATIONSHIP_LABELS[rel]}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          <Button size="small" variant="text" sx={{ fontSize: '0.7rem', py: 0, textTransform: 'none', color: 'text.secondary', alignSelf: 'flex-start' }}
+                            onClick={() => setMatchDecisions(prev => { const n = { ...prev }; delete n[match.denialId]; return n })}>
+                            Undo
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+                  )
+                })}
+              </Box>
+            </Paper>
+          )}
         </Box>
       </Box>
 
@@ -3836,7 +3941,12 @@ function IntakeReviewPanel({
           variant="contained"
           disableElevation
           size="small"
-          onClick={() => onAccept(localType, localAssignee, notes)}
+          onClick={() => {
+            const relatedInstances: RelatedInstance[] = Object.entries(matchDecisions)
+              .filter(([, d]) => d.action === 'link' && d.relationship)
+              .map(([denialId, d]) => ({ denialId, relationship: d.relationship! }))
+            onAccept(localType, localAssignee, notes, relatedInstances)
+          }}
           sx={{ fontWeight: 700, fontSize: '0.8125rem', px: 2 }}
         >
           Accept & Begin Work
@@ -3854,9 +3964,11 @@ interface DenialDetailPageProps {
   onDenialUpdate: (updates: Partial<DenialRecord>) => void
   onSubmitSuccess?: (channel: string, payer: string, patientName: string) => void
   onNavigateToDenial?: (id: string) => void
+  allDenials?: DenialRecord[]
+  onUpdateDenial?: (id: string, updates: Partial<DenialRecord>) => void
 }
 
-export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSubmitSuccess, onNavigateToDenial }: DenialDetailPageProps) {
+export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSubmitSuccess, onNavigateToDenial, allDenials, onUpdateDenial }: DenialDetailPageProps) {
   const denialId = denial.id
   const [tab, setTab] = useState(0)
   const [remitOpen, setRemitOpen] = useState(false)
@@ -4126,13 +4238,29 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
         <IntakeReviewPanel
           denial={denial}
           assignedTo={assignedTo}
+          allDenials={allDenials}
+          onUpdateDenial={onUpdateDenial}
           onViewClaim={CLAIM_DATA_837[denialId] ? () => setClaim837Open(true) : undefined}
-          onAccept={(newType, newAssignee, intakeNotes) => {
+          onAccept={(newType, newAssignee, intakeNotes, relatedInstances) => {
             const newEngine = getResolutionEngine(newType)
             applyTransition('Active', getDefaultActiveStatus(newEngine), {
               denialType: newType,
               assignedTo: newAssignee,
               notes: intakeNotes,
+              relatedInstances: relatedInstances.length > 0 ? relatedInstances : undefined,
+              possibleMatches: undefined, // clear now that decisions are made
+            })
+            // Write reciprocal links to matched denials
+            relatedInstances.forEach(link => {
+              const reciprocal = REVERSE_RELATIONSHIP[link.relationship]
+              const existing = allDenials?.find(d => d.id === link.denialId)
+              const existingLinks = existing?.relatedInstances ?? []
+              const alreadyLinked = existingLinks.some(l => l.denialId === denialId)
+              if (!alreadyLinked) {
+                onUpdateDenial?.(link.denialId, {
+                  relatedInstances: [...existingLinks, { denialId, relationship: reciprocal }],
+                })
+              }
             })
           }}
           onDismiss={() => setTransitionModal('dismiss')}

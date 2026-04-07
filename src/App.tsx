@@ -389,6 +389,8 @@ export default function App() {
                   onDenialUpdate={updates => setDenials(prev => prev.map(d => d.id === selectedDenialId ? { ...d, ...updates } : d))}
                   onSubmitSuccess={handleSubmitSuccess}
                   onNavigateToDenial={id => setSelectedDenialId(id)}
+                  allDenials={denials}
+                  onUpdateDenial={(id, updates) => setDenials(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d))}
                 />
               )
             })()}

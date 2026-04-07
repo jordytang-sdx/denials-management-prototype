@@ -9,7 +9,7 @@ import {
   UploadFileOutlined, CloseOutlined, WarningAmberOutlined, AutoFixHighOutlined,
   UpdateOutlined, ChevronRightOutlined, CodeOutlined, AccountTreeOutlined,
 } from '@mui/icons-material'
-import { type DenialRecord, type DenialState, type DenialStatus, type RelationshipType } from '../data/denials'
+import { type DenialRecord, type DenialState, type DenialStatus, type PossibleMatch, REVERSE_RELATIONSHIP } from '../data/denials'
 
 // ─── Source type ──────────────────────────────────────────────────────────────
 
@@ -61,28 +61,6 @@ interface FuzzyMatch {
   deniedAmount: number
 }
 
-type LinkDecision =
-  | { type: 'link'; existingDenialId: string; relationship: RelationshipType }
-  | { type: 'new' }
-  | { type: 'dismiss' }
-
-const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
-  adr_preceded:          'ADR preceded this denial',
-  adr_followed:          'ADR followed from this denial',
-  corrected_claim_of:    'Corrected claim for the existing denial',
-  corrected_claim_led_to:'Existing denial led to this corrected claim',
-  recoupment_of:         'Recoupment of existing claim',
-  escalated_from:        'Escalated from existing denial',
-}
-
-const REVERSE_RELATIONSHIP: Record<RelationshipType, RelationshipType> = {
-  adr_preceded:          'adr_followed',
-  adr_followed:          'adr_preceded',
-  corrected_claim_of:    'corrected_claim_led_to',
-  corrected_claim_led_to:'corrected_claim_of',
-  recoupment_of:         'recoupment_of',
-  escalated_from:        'escalated_from',
-}
 
 interface UpdateProposal {
   existingDenialId: string
@@ -142,7 +120,6 @@ interface StagedRecord extends Omit<RawExtraction, 'uncertainFields'> {
   suggestedEngine: string
   uncertainFields: string[]
   possibleMatches: FuzzyMatch[]
-  linkDecision?: LinkDecision
 }
 
 // ─── Engine classification ────────────────────────────────────────────────────
@@ -397,7 +374,7 @@ const TYPE_EXTRACTIONS: Record<string, RawExtraction[]> = {
 // ─── Seed staged data ─────────────────────────────────────────────────────────
 // Shown on first load / after reset. possibleMatches computed at runtime.
 
-type SeedEntry = Omit<StagedRecord, 'possibleMatches' | 'linkDecision'>
+type SeedEntry = Omit<StagedRecord, 'possibleMatches'>
 
 const SEED_STAGED: SeedEntry[] = [
   // 1 — New, clean, 835 EDI: Dorothy Simmonds / UHC / Medical Necessity
@@ -642,18 +619,14 @@ function fmt(n: number) {
 // ─── Review drawer ────────────────────────────────────────────────────────────
 
 function RecordDrawer({
-  record, open, onClose, onUpdate, onApplyUpdate, onLinkDecision, onViewRaw, hasRaw,
+  record, open, onClose, onUpdate, onApplyUpdate, onViewRaw, hasRaw,
 }: {
   record: StagedRecord | null; open: boolean; onClose: () => void
   onUpdate: <K extends keyof StagedRecord>(key: K, value: StagedRecord[K]) => void
   onApplyUpdate: (proposal: UpdateProposal, updates: Partial<DenialRecord>) => void
-  onLinkDecision: (decision: LinkDecision | undefined) => void
   onViewRaw: () => void
   hasRaw: boolean
 }) {
-  const [linkingToId, setLinkingToId] = useState<string | null>(null)
-  const [selectedRelationship, setSelectedRelationship] = useState<RelationshipType | ''>('')
-
   if (!record) return null
   const u = record.uncertainFields
   const isUpdate = record.status === 'update'
@@ -662,8 +635,6 @@ function RecordDrawer({
   const isAppealResponse = st === 'appeal-upheld' || st === 'appeal-overturned'
   const isAdr = st === 'adr'
   const is835 = st === 'edi-835'
-  const hasPossibleMatches = record.possibleMatches.length > 0 && !record.linkDecision && !isUpdate && !isDupe
-  const decisionMade = Boolean(record.linkDecision)
 
   return (
     <Drawer
@@ -707,145 +678,20 @@ function RecordDrawer({
       {/* Scrollable body */}
       <Box sx={{ flex: 1, overflow: 'auto', px: 3, py: 2.5, display: 'flex', flexDirection: 'column', gap: 3 }}>
 
-        {/* ── Possible match panel ─────────────────────────────────────────── */}
-        {(hasPossibleMatches || decisionMade) && (
-          <Box>
-            {decisionMade ? (
-              // Decision summary banner
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.25, borderRadius: 1.5,
-                bgcolor: record.linkDecision!.type === 'link' ? '#EFF6FF' : record.linkDecision!.type === 'new' ? '#F0FFF4' : 'grey.100',
-                border: '1px solid', borderColor: record.linkDecision!.type === 'link' ? '#BFDBFE' : record.linkDecision!.type === 'new' ? '#BBF7D0' : 'divider',
-              }}>
-                <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600,
-                  color: record.linkDecision!.type === 'link' ? '#1E40AF' : record.linkDecision!.type === 'new' ? '#166534' : 'text.secondary',
-                }}>
-                  {record.linkDecision!.type === 'link'
-                    ? `Linked → ${record.linkDecision.existingDenialId} · ${RELATIONSHIP_LABELS[record.linkDecision.relationship]}`
-                    : record.linkDecision!.type === 'new' ? 'Will be created as a new independent instance'
-                    : 'Possible matches dismissed'}
-                </Typography>
-                <Box sx={{ flex: 1 }} />
-                <Button size="small" sx={{ fontSize: '0.7rem', p: 0, minWidth: 0, color: 'text.secondary' }}
-                  onClick={() => { onLinkDecision(undefined as unknown as LinkDecision); setLinkingToId(null); setSelectedRelationship('') }}>
-                  Change
-                </Button>
-              </Box>
-            ) : (
-              // Match candidates
-              <>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.25 }}>
-                  <AccountTreeOutlined sx={{ fontSize: 15, color: 'primary.main' }} />
-                  <Typography variant="overline" sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.07em', color: 'primary.dark' }}>
-                    Possible Match{record.possibleMatches.length > 1 ? 'es' : ''} Found
-                  </Typography>
-                </Box>
-                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5, lineHeight: 1.5 }}>
-                  We found existing denial{record.possibleMatches.length > 1 ? 's' : ''} that may be related. Choose how to handle this record.
-                </Typography>
-
-                {record.possibleMatches.map(match => (
-                  <Paper key={match.existingDenialId} variant="outlined" sx={{
-                    p: 1.5, mb: 1.25, borderRadius: 1.5,
-                    borderColor: linkingToId === match.existingDenialId ? 'primary.main' : 'divider',
-                    bgcolor: linkingToId === match.existingDenialId ? 'rgba(27,58,92,0.03)' : 'background.paper',
-                  }}>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
-                      <Box sx={{ flex: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem' }}>
-                            {match.patientName}
-                          </Typography>
-                          <Chip
-                            label={match.confidence === 'high' ? 'High confidence' : 'Possible match'}
-                            size="small"
-                            sx={{
-                              height: 16, fontSize: '0.6rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 },
-                              bgcolor: match.confidence === 'high' ? '#DBEAFE' : '#FEF3C7',
-                              color:   match.confidence === 'high' ? '#1E40AF' : '#92400E',
-                            }}
-                          />
-                        </Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem', fontFamily: 'monospace' }}>
-                          {match.existingDenialId}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem', display: 'block' }}>
-                          {match.payer} · {match.denialType} · {match.state}
-                        </Typography>
-                        <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
-                          {match.reasons.map(r => (
-                            <Chip key={r} label={r} size="small" sx={{ height: 16, fontSize: '0.6rem', '& .MuiChip-label': { px: 0.625 }, bgcolor: 'grey.100', color: 'text.secondary' }} />
-                          ))}
-                        </Box>
-                      </Box>
-                    </Box>
-
-                    {/* Relationship picker — shown when this match is selected for linking */}
-                    {linkingToId === match.existingDenialId && (
-                      <Box sx={{ mb: 1 }}>
-                        <FormControl fullWidth size="small">
-                          <InputLabel sx={{ fontSize: '0.8125rem' }}>Relationship type</InputLabel>
-                          <Select
-                            value={selectedRelationship}
-                            label="Relationship type"
-                            onChange={e => setSelectedRelationship(e.target.value as RelationshipType)}
-                            sx={{ fontSize: '0.8125rem' }}
-                          >
-                            {(Object.keys(RELATIONSHIP_LABELS) as RelationshipType[]).map(rel => (
-                              <MenuItem key={rel} value={rel} sx={{ fontSize: '0.8125rem' }}>
-                                {RELATIONSHIP_LABELS[rel]}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </Box>
-                    )}
-
-                    <Box sx={{ display: 'flex', gap: 0.75 }}>
-                      {linkingToId === match.existingDenialId ? (
-                        <>
-                          <Button size="small" variant="text" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}
-                            onClick={() => { setLinkingToId(null); setSelectedRelationship('') }}>
-                            Cancel
-                          </Button>
-                          <Button
-                            size="small" variant="contained" disableElevation
-                            disabled={!selectedRelationship}
-                            onClick={() => {
-                              onLinkDecision({ type: 'link', existingDenialId: match.existingDenialId, relationship: selectedRelationship as RelationshipType })
-                              setLinkingToId(null)
-                              setSelectedRelationship('')
-                            }}
-                            sx={{ fontSize: '0.75rem' }}
-                          >
-                            Confirm Link
-                          </Button>
-                        </>
-                      ) : (
-                        <Button size="small" variant="outlined" sx={{ fontSize: '0.75rem' }}
-                          onClick={() => { setLinkingToId(match.existingDenialId); setSelectedRelationship('') }}>
-                          Link to this
-                        </Button>
-                      )}
-                    </Box>
-                  </Paper>
-                ))}
-
-                <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                  <Button size="small" variant="outlined" sx={{ fontSize: '0.75rem', flex: 1 }}
-                    onClick={() => onLinkDecision({ type: 'new' })}>
-                    New independent instance
-                  </Button>
-                  <Button size="small" variant="text" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}
-                    onClick={() => onLinkDecision({ type: 'dismiss' })}>
-                    Dismiss
-                  </Button>
-                </Box>
-              </>
-            )}
+        {/* ── Possible Matches ─────────────────────────────────────────────── */}
+        {record.possibleMatches.length > 0 && (
+          <Box sx={{ mx: 2, mb: 2, p: 1.5, bgcolor: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 1.5, display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+            <AccountTreeOutlined sx={{ fontSize: 15, color: '#1E40AF', mt: 0.25, flexShrink: 0 }} />
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#1E40AF', mb: 0.25 }}>
+                {record.possibleMatches.length} possible match{record.possibleMatches.length > 1 ? 'es' : ''} flagged
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#1E40AF', fontSize: '0.75rem', lineHeight: 1.4, display: 'block' }}>
+                {record.possibleMatches.map(m => m.existingDenialId).join(', ')} — linking decisions will be made during intake review.
+              </Typography>
+            </Box>
           </Box>
         )}
-
-        {(hasPossibleMatches || decisionMade) && <Divider />}
 
         {/* ── Update diff ──────────────────────────────────────────────────── */}
         {isUpdate && record.updateProposal && (
@@ -1238,10 +1084,6 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
     setStaged(prev => prev.map(r => r.tempId === tempId ? { ...r, selected: !r.selected } : r))
   }
 
-  function setLinkDecision(tempId: string, decision: LinkDecision | undefined) {
-    setStaged(prev => prev.map(r => r.tempId === tempId ? { ...r, linkDecision: decision } : r))
-  }
-
   function removeRow(tempId: string) {
     setStaged(prev => prev.filter(r => r.tempId !== tempId))
     if (drawerId === tempId) setDrawerId(null)
@@ -1269,9 +1111,8 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
     const toCommit = staged.filter(r => r.selected && r.status === 'new')
     const newDenials: DenialRecord[] = toCommit.map((r, i) => {
       const newId = `DN-2026-${String(1500 + i).padStart(4, '0')}`
-      const linkDecision = r.linkDecision
-      const relatedInstances = linkDecision?.type === 'link'
-        ? [{ denialId: linkDecision.existingDenialId, relationship: linkDecision.relationship }]
+      const possibleMatches: PossibleMatch[] | undefined = r.possibleMatches.length > 0
+        ? r.possibleMatches.map(m => ({ denialId: m.existingDenialId, confidence: m.confidence, reasons: m.reasons }))
         : undefined
       return {
         id: newId,
@@ -1291,23 +1132,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
         assignedTo: null,
         nextAction: '',
         notes: '',
-        ...(relatedInstances ? { relatedInstances } : {}),
-      }
-    })
-
-    // Write reciprocal links back to any linked existing denials
-    toCommit.forEach((r, i) => {
-      if (r.linkDecision?.type !== 'link') return
-      const newId = newDenials[i]!.id
-      const { existingDenialId, relationship } = r.linkDecision
-      const reciprocal = REVERSE_RELATIONSHIP[relationship]
-      const existing = denials.find(d => d.id === existingDenialId)
-      const existingLinks = existing?.relatedInstances ?? []
-      const alreadyLinked = existingLinks.some(l => l.denialId === newId)
-      if (!alreadyLinked) {
-        onUpdate(existingDenialId, {
-          relatedInstances: [...existingLinks, { denialId: newId, relationship: reciprocal }],
-        })
+        ...(possibleMatches ? { possibleMatches } : {}),
       }
     })
 
@@ -1415,7 +1240,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
                     const isUpdate = row.status === 'update'
                     const hasFlags = row.uncertainFields.length > 0
                     const isAppeal = row.sourceType === 'appeal-upheld' || row.sourceType === 'appeal-overturned'
-                    const hasUnresolvedMatch = row.status === 'new' && row.possibleMatches.length > 0 && !row.linkDecision
+                    const hasPossibleMatches = row.status === 'new' && row.possibleMatches.length > 0
 
                     // Amount display: 835 shows denied, appeal-overturned shows approved, adr shows —
                     const amountDisplay = row.sourceType === 'adr'
@@ -1436,9 +1261,9 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
                         sx={{
                           cursor: 'pointer',
                           opacity: isDupe ? 0.5 : 1,
-                          bgcolor: drawerId === row.tempId ? 'rgba(27,58,92,0.04)' : isUpdate ? 'rgba(237,137,54,0.03)' : hasUnresolvedMatch ? 'rgba(37,87,214,0.02)' : 'background.paper',
-                          borderLeft: (isUpdate || hasUnresolvedMatch) ? '3px solid' : '3px solid transparent',
-                          borderLeftColor: isUpdate ? 'warning.main' : 'primary.main',
+                          bgcolor: drawerId === row.tempId ? 'rgba(27,58,92,0.04)' : isUpdate ? 'rgba(237,137,54,0.03)' : 'background.paper',
+                          borderLeft: isUpdate ? '3px solid' : '3px solid transparent',
+                          borderLeftColor: isUpdate ? 'warning.main' : 'transparent',
                           '&:last-child td': { border: 0 },
                         }}
                       >
@@ -1463,11 +1288,11 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
                                 color:   isDupe ? 'text.secondary' : isUpdate ? '#92400e' : '#276749',
                               }}
                             />
-                            {hasUnresolvedMatch && (
-                              <Tooltip title={`${row.possibleMatches.length} possible match${row.possibleMatches.length > 1 ? 'es' : ''} — open to review`}>
+                            {hasPossibleMatches && (
+                              <Tooltip title={`${row.possibleMatches.length} possible match${row.possibleMatches.length > 1 ? 'es' : ''} — linking decisions made during intake review`}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, width: 'fit-content' }}>
-                                  <AccountTreeOutlined sx={{ fontSize: 11, color: 'primary.main' }} />
-                                  <Typography variant="caption" sx={{ fontSize: '0.6rem', color: 'primary.dark' }}>Possible match</Typography>
+                                  <AccountTreeOutlined sx={{ fontSize: 11, color: 'text.secondary' }} />
+                                  <Typography variant="caption" sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>Possible match</Typography>
                                 </Box>
                               </Tooltip>
                             )}
@@ -1552,7 +1377,6 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
         onClose={() => setDrawerId(null)}
         onUpdate={(key, value) => drawerId && updateField(drawerId, key, value)}
         onApplyUpdate={handleApplyUpdate}
-        onLinkDecision={decision => drawerId && setLinkDecision(drawerId, decision)}
         hasRaw={Boolean(drawerRecord && rawFiles[drawerRecord.sourceFile])}
         onViewRaw={() => drawerRecord && setRawViewFile(drawerRecord.sourceFile)}
       />
