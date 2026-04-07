@@ -53,7 +53,7 @@ interface InlinePopoverState {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS: WorklistActiveTab[] = ['Intake', 'Active', 'Submitted', 'Resolved', 'Closed', 'Archived']
+const TABS: WorklistActiveTab[] = ['Active', 'Submitted', 'Resolved', 'Closed', 'Archived']
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,8 +76,7 @@ function formatCurrency(n: number): string {
 
 // ─── State colors ─────────────────────────────────────────────────────────────
 
-const STATE_COLORS: Record<DenialState, { bg: string; color: string }> = {
-  Intake:    { bg: '#EDF2F7', color: '#4A5568' },
+const STATE_COLORS: Partial<Record<DenialState, { bg: string; color: string }>> = {
   Active:    { bg: '#EBF4FF', color: '#2C5282' },
   Submitted: { bg: '#E6FFFA', color: '#276749' },
   Resolved:  { bg: '#F0FFF4', color: '#22543D' },

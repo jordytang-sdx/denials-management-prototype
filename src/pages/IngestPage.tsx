@@ -9,7 +9,7 @@ import {
   UploadFileOutlined, CloseOutlined, WarningAmberOutlined, AutoFixHighOutlined,
   UpdateOutlined, ChevronRightOutlined, CodeOutlined, AccountTreeOutlined,
 } from '@mui/icons-material'
-import { type DenialRecord, type DenialState, type DenialStatus, type PossibleMatch, REVERSE_RELATIONSHIP } from '../data/denials'
+import { type DenialRecord, type DenialState, type DenialStatus, type PossibleMatch, REVERSE_RELATIONSHIP, TEAM_MEMBERS, type TeamMember } from '../data/denials'
 
 // ─── Source type ──────────────────────────────────────────────────────────────
 
@@ -123,6 +123,7 @@ interface StagedRecord extends Omit<RawExtraction, 'uncertainFields'> {
   suggestedEngine: string
   uncertainFields: string[]
   possibleMatches: FuzzyMatch[]
+  assignedTo?: TeamMember | null
   rawContent?: string
 }
 
@@ -1488,6 +1489,34 @@ function RecordDrawer({
           </>
         )}
 
+        {/* ── Assignment ── */}
+        {!isUpdate && !isDupe && (
+          <>
+            <Divider />
+            <Box>
+              <SectionHeading>Assignment</SectionHeading>
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ fontSize: '0.875rem' }}>Assign to</InputLabel>
+                <Select
+                  value={record.assignedTo?.id ?? ''}
+                  label="Assign to"
+                  onChange={e => {
+                    const member = TEAM_MEMBERS.find(m => m.id === e.target.value) ?? null
+                    onUpdate('assignedTo', member)
+                  }}
+                  displayEmpty
+                  sx={{ fontSize: '0.875rem' }}
+                >
+                  <MenuItem value="" sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>Unassigned</MenuItem>
+                  {TEAM_MEMBERS.map(m => (
+                    <MenuItem key={m.id} value={m.id} sx={{ fontSize: '0.875rem' }}>{m.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          </>
+        )}
+
         {/* ── Classification — only for uncertain new records ── */}
         {!isUpdate && !isAdr && !isAppealResponse && record.suggestedEngine === '?' && (
           <>
@@ -1715,9 +1744,9 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
         deadline: r.deadline || r.submissionDeadline || addDays(TODAY, 30),
         createdAt: TODAY,
         dos: r.dos,
-        state: 'Intake' as const,
-        status: 'Unreviewed' as const,
-        assignedTo: null,
+        state: 'Active' as const,
+        status: 'In Progress' as const,
+        assignedTo: r.assignedTo ?? null,
         nextAction: '',
         notes: '',
         ...(possibleMatches ? { possibleMatches } : {}),
@@ -1779,7 +1808,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
       {/* ── Banners ────────────────────────────────────────────────────────── */}
       {committed !== null && (
         <Alert severity="success" onClose={() => setCommitted(null)} sx={{ borderRadius: 1.5 }}>
-          {committed} denial{committed !== 1 ? 's' : ''} added to the worklist in <strong>Intake</strong> state.
+          {committed} denial{committed !== 1 ? 's' : ''} added to the <strong>Active</strong> worklist.
         </Alert>
       )}
       {hasUncertain && (
@@ -1806,7 +1835,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
               onClick={handleCommit}
               sx={{ fontWeight: 600 }}
             >
-              Import {selectedNew.length > 0 ? `${selectedNew.length} ` : ''}New
+              Accept & Activate{selectedNew.length > 0 ? ` (${selectedNew.length})` : ''}
             </Button>
           </Box>
 

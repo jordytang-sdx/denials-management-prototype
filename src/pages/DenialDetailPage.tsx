@@ -4170,11 +4170,10 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
           {denial.rarc && <Chip label={denial.rarc} size="small" sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 } }} />}
         </Box>
 
-        {/* Tabs + inline next step — hidden for Intake (uses dedicated panel) ── */}
-        {denial.state !== 'Intake' && (() => {
+        {/* Tabs + inline next step ─────────────────────────────────────────── */}
+        {(() => {
           const state = denial.state
           const primary: { label: string; type: TransitionType } | null =
-            state === 'Intake'    ? { label: 'Accept & Begin Work',   type: 'begin_work'      } :
             state === 'Active'    ? { label: 'Mark as Submitted',     type: 'mark_submitted'  } :
             state === 'Submitted' ? { label: 'Record Payer Decision', type: 'record_decision' } :
             state === 'Resolved'  ? { label: 'Close Case',            type: 'close_case'      } :
@@ -4182,7 +4181,6 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
             null
 
           const secondaries: { label: string; type: TransitionType }[] =
-            state === 'Intake'    ? [{ label: 'Dismiss', type: 'dismiss' }, { label: 'Archive', type: 'archive' }] :
             state === 'Active'    ? [{ label: 'Will Not Appeal', type: 'will_not_appeal' }, { label: 'Dismiss', type: 'dismiss' }, { label: 'Archive', type: 'archive' }] :
             state === 'Submitted' ? [{ label: 'Begin Next Round', type: 'next_round' }, { label: 'Archive', type: 'archive' }] :
             state === 'Resolved'  ? [{ label: 'Archive', type: 'archive' }] :
@@ -4255,43 +4253,8 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
         })()}
       </Box>
 
-      {/* ── Intake panel (replaces tabs entirely) ─────────────────────────────── */}
-      {denial.state === 'Intake' && (
-        <IntakeReviewPanel
-          denial={denial}
-          assignedTo={assignedTo}
-          allDenials={allDenials}
-          onUpdateDenial={onUpdateDenial}
-          onViewClaim={CLAIM_DATA_837[denialId] ? () => setClaim837Open(true) : undefined}
-          onAccept={(newType, newAssignee, intakeNotes, relatedInstances) => {
-            const newEngine = getResolutionEngine(newType)
-            applyTransition('Active', getDefaultActiveStatus(newEngine), {
-              denialType: newType,
-              assignedTo: newAssignee,
-              notes: intakeNotes,
-              relatedInstances: relatedInstances.length > 0 ? relatedInstances : undefined,
-              possibleMatches: undefined, // clear now that decisions are made
-            })
-            // Write reciprocal links to matched denials
-            relatedInstances.forEach(link => {
-              const reciprocal = REVERSE_RELATIONSHIP[link.relationship]
-              const existing = allDenials?.find(d => d.id === link.denialId)
-              const existingLinks = existing?.relatedInstances ?? []
-              const alreadyLinked = existingLinks.some(l => l.denialId === denialId)
-              if (!alreadyLinked) {
-                onUpdateDenial?.(link.denialId, {
-                  relatedInstances: [...existingLinks, { denialId, relationship: reciprocal }],
-                })
-              }
-            })
-          }}
-          onDismiss={() => setTransitionModal('dismiss')}
-          onWillNotAppeal={() => applyTransition('Closed', 'Will Not Appeal')}
-        />
-      )}
-
       {/* ── Tab content ───────────────────────────────────────────────────────── */}
-      {denial.state !== 'Intake' && <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'background.default' }}>
+      <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'background.default' }}>
         {tab === 0 && <OverviewTab denial={denial} denialId={denialId} onViewRemit={() => setRemitOpen(true)} onViewClaim={() => setClaim837Open(true)} onOpenAttachment={handleOpenAttachment} events={events} episodes={episodes} onAddFile={handleAddFile} assignedTo={assignedTo} onChangeAssignee={setAssignedTo} onNavigateToDenial={onNavigateToDenial} />}
         {tab === 1 && engine === 'appeal'          && <AppealTab denial={denial} denialId={denialId} denialState={denial.state} appealLetterPdf={appealLetterPdf} setAppealLetterPdf={setAppealLetterPdf} supportingDocs={supportingDocs} setSupportingDocs={setSupportingDocs} priorCorrespondence={priorCorrespondence} setPriorCorrespondence={setPriorCorrespondence} onSubmit={() => applyTransition('Submitted', 'Awaiting Payer Decision')} onSubmitSuccess={(channel, payer, patientName) => {
           const channelLabel = CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG]?.label ?? channel
@@ -4330,7 +4293,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
             priorCorrespondence={priorCorrespondence}
           />
         )}
-      </Box>}
+      </Box>
 
       {/* ── Transition modals ─────────────────────────────────────────────────── */}
 
