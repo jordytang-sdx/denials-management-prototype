@@ -9,6 +9,7 @@ import {
   DashboardOutlined, ListAltOutlined, UploadFileOutlined,
   SettingsOutlined, AccountTreeOutlined,
   NotificationsOutlined, HelpOutlineOutlined, RestartAltOutlined,
+  ChevronLeftOutlined, ChevronRightOutlined,
 } from '@mui/icons-material'
 import theme from './theme'
 import smarterDxLogo from './assets/SmarterDX.svg'
@@ -22,6 +23,7 @@ import RoutingRulesPage from './pages/RoutingRulesPage'
 import { SEED_DENIALS, type DenialRecord } from './data/denials'
 
 const SIDEBAR_WIDTH = 224
+const SIDEBAR_COLLAPSED_WIDTH = 56
 
 type NavItem = 'Dashboard' | 'Worklist' | 'Ingest' | 'Routing Rules' | 'Settings'
 
@@ -137,6 +139,8 @@ function SettingsPage({ onReset }: { onReset: () => void }) {
 
 export default function App() {
   const [activeNav, setActiveNav] = useState<NavItem>('Worklist')
+  const [navCollapsed, setNavCollapsed] = useState(false)
+  const sidebarWidth = navCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
   const [selectedDenialId, setSelectedDenialId] = useState<string | null>(null)
   const [denials, setDenials] = useState<DenialRecord[]>(SEED_DENIALS)
   const [worklistTab, setWorklistTab] = useState<WorklistActiveTab>('Active')
@@ -235,55 +239,60 @@ export default function App() {
         <Drawer
           variant="permanent"
           sx={{
-            width: SIDEBAR_WIDTH,
+            width: sidebarWidth,
             flexShrink: 0,
+            transition: 'width 0.2s ease',
             '& .MuiDrawer-paper': {
-              width: SIDEBAR_WIDTH,
+              width: sidebarWidth,
               boxSizing: 'border-box',
               top: 52,
               height: 'calc(100% - 52px)',
               bgcolor: '#F8F9FB',
               display: 'flex',
               flexDirection: 'column',
+              overflowX: 'hidden',
+              transition: 'width 0.2s ease',
             },
           }}
         >
           <List dense disablePadding sx={{ px: 1, pt: 1.5, flex: 1 }}>
-            <Typography variant="overline" sx={{ px: 1.5, mb: 0.5, display: 'block', color: 'text.secondary' }}>
-              Navigation
-            </Typography>
+            {!navCollapsed && (
+              <Typography variant="overline" sx={{ px: 1.5, mb: 0.5, display: 'block', color: 'text.secondary' }}>
+                Navigation
+              </Typography>
+            )}
             {navItems.map(({ label, icon }) => (
-              <ListItemButton
-                key={label}
-                selected={activeNav === label}
-                onClick={() => handleNavClick(label)}
-                sx={{
-                  borderRadius: 1.5, mb: 0.25, px: 1.5, py: 0.75,
-                  '&.Mui-selected': {
-                    bgcolor: '#EEF2FF', color: 'primary.main',
-                    '& .MuiListItemIcon-root': { color: 'primary.main' },
-                    '&:hover': { bgcolor: '#E0E9FF' },
-                  },
-                  '&:hover': { bgcolor: 'rgba(37,87,214,0.06)' },
-                }}
-              >
-                <ListItemIcon sx={{ minWidth: 32, color: 'text.secondary' }}>{icon}</ListItemIcon>
-                <ListItemText
-                  primary={label}
-                  primaryTypographyProps={{ fontSize: '0.8125rem', fontWeight: 500 }}
-                />
-                {label === 'Worklist' && openCount > 0 && (
-                  <Chip
-                    label={openCount}
-                    size="small"
-                    sx={{
-                      height: 18, fontSize: '0.6875rem', fontWeight: 600,
-                      bgcolor: 'error.main',
-                      color: '#fff', '& .MuiChip-label': { px: 0.75 },
-                    }}
-                  />
-                )}
-              </ListItemButton>
+              <Tooltip key={label} title={navCollapsed ? label : ''} placement="right">
+                <ListItemButton
+                  selected={activeNav === label}
+                  onClick={() => handleNavClick(label)}
+                  sx={{
+                    borderRadius: 1.5, mb: 0.25,
+                    px: navCollapsed ? 1 : 1.5, py: 0.75,
+                    justifyContent: navCollapsed ? 'center' : 'flex-start',
+                    minWidth: 0,
+                    '&.Mui-selected': {
+                      bgcolor: '#EEF2FF', color: 'primary.main',
+                      '& .MuiListItemIcon-root': { color: 'primary.main' },
+                      '&:hover': { bgcolor: '#E0E9FF' },
+                    },
+                    '&:hover': { bgcolor: 'rgba(37,87,214,0.06)' },
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: navCollapsed ? 0 : 32, color: 'text.secondary', justifyContent: 'center' }}>{icon}</ListItemIcon>
+                  {!navCollapsed && (
+                    <>
+                      <ListItemText primary={label} primaryTypographyProps={{ fontSize: '0.8125rem', fontWeight: 500 }} />
+                      {label === 'Worklist' && openCount > 0 && (
+                        <Chip label={openCount} size="small" sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 600, bgcolor: 'error.main', color: '#fff', '& .MuiChip-label': { px: 0.75 } }} />
+                      )}
+                    </>
+                  )}
+                  {navCollapsed && label === 'Worklist' && openCount > 0 && (
+                    <Box sx={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: 'error.main' }} />
+                  )}
+                </ListItemButton>
+              </Tooltip>
             ))}
           </List>
 
@@ -291,26 +300,42 @@ export default function App() {
 
           <List dense disablePadding sx={{ px: 1, py: 1 }}>
             {bottomNavItems.map(({ label, icon }) => (
+              <Tooltip key={label} title={navCollapsed ? label : ''} placement="right">
+                <ListItemButton
+                  selected={activeNav === label}
+                  onClick={() => handleNavClick(label)}
+                  sx={{
+                    borderRadius: 1.5,
+                    px: navCollapsed ? 1 : 1.5, py: 0.75,
+                    justifyContent: navCollapsed ? 'center' : 'flex-start',
+                    '&.Mui-selected': {
+                      bgcolor: '#EEF2FF', color: 'primary.main',
+                      '& .MuiListItemIcon-root': { color: 'primary.main' },
+                    },
+                    '&:hover': { bgcolor: 'rgba(37,87,214,0.06)' },
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: navCollapsed ? 0 : 32, color: 'text.secondary', justifyContent: 'center' }}>{icon}</ListItemIcon>
+                  {!navCollapsed && <ListItemText primary={label} primaryTypographyProps={{ fontSize: '0.8125rem', fontWeight: 500 }} />}
+                </ListItemButton>
+              </Tooltip>
+            ))}
+            <Tooltip title={navCollapsed ? 'Expand' : ''} placement="right">
               <ListItemButton
-                key={label}
-                selected={activeNav === label}
-                onClick={() => handleNavClick(label)}
+                onClick={() => setNavCollapsed(c => !c)}
                 sx={{
-                  borderRadius: 1.5, px: 1.5, py: 0.75,
-                  '&.Mui-selected': {
-                    bgcolor: '#EEF2FF', color: 'primary.main',
-                    '& .MuiListItemIcon-root': { color: 'primary.main' },
-                  },
+                  borderRadius: 1.5,
+                  px: navCollapsed ? 1 : 1.5, py: 0.75,
+                  justifyContent: navCollapsed ? 'center' : 'flex-start',
                   '&:hover': { bgcolor: 'rgba(37,87,214,0.06)' },
                 }}
               >
-                <ListItemIcon sx={{ minWidth: 32, color: 'text.secondary' }}>{icon}</ListItemIcon>
-                <ListItemText
-                  primary={label}
-                  primaryTypographyProps={{ fontSize: '0.8125rem', fontWeight: 500 }}
-                />
+                <ListItemIcon sx={{ minWidth: navCollapsed ? 0 : 32, color: 'text.secondary', justifyContent: 'center' }}>
+                  {navCollapsed ? <ChevronRightOutlined fontSize="small" /> : <ChevronLeftOutlined fontSize="small" />}
+                </ListItemIcon>
+                {!navCollapsed && <ListItemText primary="Collapse" primaryTypographyProps={{ fontSize: '0.8125rem', fontWeight: 500, color: 'text.secondary' }} />}
               </ListItemButton>
-            ))}
+            </Tooltip>
           </List>
         </Drawer>
 
