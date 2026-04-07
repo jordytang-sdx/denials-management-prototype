@@ -498,12 +498,12 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
         <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%', minWidth: 960 }}>
           <TableHead>
             <TableRow>
-              <ColHeader label="Patient"       colId="patient"      sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={136} />
+              <ColHeader label="Patient"       colId="patient"      sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={120} />
               <ColHeader label="Claim ID"      colId="claimId"                 activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={104} />
               <ColHeader label="Payer"         colId="payer"        filterable activeSort={sort} hasFilter={activeFilters.payer}      onOpen={openColPopover} width={124} />
               <ColHeader label="Denial Type"   colId="denialType"   filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={152} />
               <ColHeader label="Denied Amount" colId="deniedAmount" sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={90} align="right" />
-              <ColHeader label="Deadline"      colId="deadline"     sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={108} />
+              <ColHeader label="Deadline"      colId="deadline"     sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={90} />
               {(activeState === 'Resolved' || activeState === 'Closed' || activeState === 'Archived') && (
                 <ColHeader label="Outcome" colId="outcome" activeSort={sort} hasFilter={false} onOpen={openColPopover} width={152} />
               )}
