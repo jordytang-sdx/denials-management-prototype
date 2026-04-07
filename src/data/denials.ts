@@ -56,6 +56,13 @@ export interface RelatedInstance {
   relationship: RelationshipType
 }
 
+export interface IncomingEpisodeResult {
+  label: string
+  date: string
+  source?: string
+  description?: string
+}
+
 export interface PossibleMatch {
   denialId: string
   confidence: 'high' | 'medium'
@@ -100,6 +107,7 @@ export interface DenialRecord {
   appealRounds?: AppealRound[]
   relatedInstances?: RelatedInstance[]
   possibleMatches?: PossibleMatch[]
+  incomingEpisodeResult?: IncomingEpisodeResult
   /** @deprecated use relatedInstances */
   relatedDenialIds?: string[]
 }

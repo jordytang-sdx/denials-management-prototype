@@ -65,6 +65,9 @@ interface FuzzyMatch {
 interface UpdateProposal {
   existingDenialId: string
   label: string
+  updateType?: 'payment_full' | 'payment_partial' | 'denial_upheld' | 'denial_new_reason' | 'recoupment'
+  episodeResultLabel?: string
+  episodeResultDescription?: string
   suggestedState: DenialState
   suggestedStatus: DenialStatus
   updates: Partial<Pick<DenialRecord, 'deniedAmount' | 'carc' | 'rarc'>>
@@ -212,6 +215,9 @@ const FILE_EXTRACTIONS: Record<string, RawExtraction[]> = {
     updateProposal: {
       existingDenialId: 'DN-2026-0412',
       label: 'Partial Payment Received',
+      updateType: 'payment_partial',
+      episodeResultLabel: 'Partial Payment Received',
+      episodeResultDescription: 'BCBS remit shows $2,105 paid. Original denied amount was $4,210 — 50% recovered. Case closed as partial.',
       suggestedState: 'Resolved',
       suggestedStatus: 'Overturned — Partial Payment',
       updates: { deniedAmount: 2105.00 },
@@ -297,6 +303,9 @@ const FILE_EXTRACTIONS: Record<string, RawExtraction[]> = {
     updateProposal: {
       existingDenialId: 'DN-2026-0412',
       label: 'Appeal Overturned — Full Payment',
+      updateType: 'payment_full',
+      episodeResultLabel: 'Appeal Overturned — Full Payment Authorized',
+      episodeResultDescription: 'BCBS issued overturn letter. Full $4,210 approved. Payment expected within 30 days.',
       suggestedState: 'Resolved',
       suggestedStatus: 'Overturned — Full Payment',
       updates: {},
@@ -458,6 +467,9 @@ const SEED_STAGED: SeedEntry[] = [
     updateProposal: {
       existingDenialId: 'DN-2026-0412',
       label: 'Partial Payment Received',
+      updateType: 'payment_partial',
+      episodeResultLabel: 'Partial Payment Received',
+      episodeResultDescription: 'BCBS remit shows $2,105 paid. Original denied amount was $4,210 — 50% recovered. Case closed as partial.',
       suggestedState: 'Resolved',
       suggestedStatus: 'Overturned — Partial Payment',
       updates: { deniedAmount: 2105 },
@@ -511,6 +523,36 @@ const SEED_STAGED: SeedEntry[] = [
     deniedAmount: 3120, paidAmount: 0, adjustmentAmount: 3120,
     dos: '2026-03-11', deadline: addDays(TODAY, 12),
     uncertainFields: [],
+  },
+
+  // 9 — Update (appeal upheld): James Okafor / UHC → DN-2026-0377
+  {
+    tempId: 'seed-9', selected: false, status: 'update',
+    sourceFile: 'AppealUpheld_UHC_JamesOkafor.pdf', suggestedEngine: 'Appeal',
+    sourceType: 'appeal-upheld' as const,
+    patientName: 'James Okafor', mrn: 'MRN-318740',
+    claimId: 'CLM-6634882', har: 'HAR-559001',
+    payer: 'UnitedHealthcare',
+    denialType: 'Authorization', denialSubtype: 'No Prior Authorization on File',
+    carc: 'CARC-15', rarc: 'N130',
+    deniedAmount: 6750,
+    dos: '2026-03-01', deadline: addDays(TODAY, 14),
+    furtherAppealRights: 'Level 2 external review available within 60 days.',
+    uncertainFields: [],
+    updateProposal: {
+      existingDenialId: 'DN-2026-0377',
+      label: 'L1 Appeal Upheld by Payer',
+      updateType: 'denial_upheld' as const,
+      suggestedState: 'Active' as const,
+      suggestedStatus: 'In Progress' as const,
+      updates: {},
+      diffs: [
+        { field: 'state',  label: 'Suggested State',  from: 'Submitted', to: 'Active — reopen for escalation' },
+        { field: 'status', label: 'Payer Decision',    from: 'Submission Failed', to: 'L1 upheld — consider L2 or IRO' },
+      ],
+      episodeResultLabel: 'L1 Appeal Upheld by Payer',
+      episodeResultDescription: 'UnitedHealthcare upheld the authorization denial. L1 appeal reviewed and denied. Level 2 external review available within 60 days.',
+    },
   },
 ]
 
@@ -619,13 +661,14 @@ function fmt(n: number) {
 // ─── Review drawer ────────────────────────────────────────────────────────────
 
 function RecordDrawer({
-  record, open, onClose, onUpdate, onApplyUpdate, onViewRaw, hasRaw,
+  record, open, onClose, onUpdate, onApplyUpdate, onViewRaw, hasRaw, matchedDenial,
 }: {
   record: StagedRecord | null; open: boolean; onClose: () => void
   onUpdate: <K extends keyof StagedRecord>(key: K, value: StagedRecord[K]) => void
   onApplyUpdate: (proposal: UpdateProposal, updates: Partial<DenialRecord>) => void
   onViewRaw: () => void
   hasRaw: boolean
+  matchedDenial?: DenialRecord
 }) {
   if (!record) return null
   const u = record.uncertainFields
@@ -689,6 +732,41 @@ function RecordDrawer({
               <Typography variant="caption" sx={{ color: '#1E40AF', fontSize: '0.75rem', lineHeight: 1.4, display: 'block' }}>
                 {record.possibleMatches.map(m => m.existingDenialId).join(', ')} — linking decisions will be made during intake review.
               </Typography>
+            </Box>
+          </Box>
+        )}
+
+        {/* ── Matched Instance ─────────────────────────────────────────────── */}
+        {isUpdate && record.updateProposal && matchedDenial && (
+          <Box sx={{ p: 2, bgcolor: 'grey.50', border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+            <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.07em', display: 'block', mb: 1 }}>
+              Matched Instance
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>{matchedDenial.patient.name}</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: '0.7rem' }}>{record.updateProposal.existingDenialId}</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <Chip label={matchedDenial.state} size="small" sx={{ height: 18, fontSize: '0.65rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 } }} />
+                <Chip label={matchedDenial.status} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem', '& .MuiChip-label': { px: 0.75 } }} />
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+              <Box>
+                <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem', display: 'block' }}>Payer</Typography>
+                <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>{matchedDenial.payer}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem', display: 'block' }}>Denial Type</Typography>
+                <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>{matchedDenial.denialType}</Typography>
+              </Box>
+              {matchedDenial.assignedTo && (
+                <Box>
+                  <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem', display: 'block' }}>Assigned To</Typography>
+                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>{matchedDenial.assignedTo.name}</Typography>
+                </Box>
+              )}
             </Box>
           </Box>
         )}
@@ -966,7 +1044,8 @@ function RecordDrawer({
           <>
             <Button fullWidth variant="outlined" onClick={onClose} sx={{ color: 'text.secondary', borderColor: 'divider' }}>Ignore</Button>
             <Button
-              fullWidth variant="contained" disableElevation color="warning"
+              fullWidth variant="contained" disableElevation
+              color={record.updateProposal?.updateType === 'payment_full' || record.updateProposal?.updateType === 'payment_partial' ? 'success' : 'warning'}
               onClick={() => {
                 onApplyUpdate(record.updateProposal!, {
                   state: record.updateProposal!.suggestedState,
@@ -976,7 +1055,12 @@ function RecordDrawer({
                 onClose()
               }}
             >
-              Apply Update
+              {record.updateProposal?.updateType === 'payment_full'    ? 'Apply — Mark Overturned'
+               : record.updateProposal?.updateType === 'payment_partial' ? 'Apply — Record Partial Payment'
+               : record.updateProposal?.updateType === 'denial_upheld'   ? 'Apply — Record Payer Response'
+               : record.updateProposal?.updateType === 'denial_new_reason' ? 'Apply — Update Denial'
+               : record.updateProposal?.updateType === 'recoupment'      ? 'Apply — Record Recoupment'
+               : 'Apply Update'}
             </Button>
           </>
         ) : (
@@ -1090,7 +1174,17 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
   }
 
   function handleApplyUpdate(proposal: UpdateProposal, updates: Partial<DenialRecord>) {
-    onUpdate(proposal.existingDenialId, updates)
+    const today = new Date().toISOString().split('T')[0]!
+    const fullUpdates: Partial<DenialRecord> = { ...updates }
+    if (proposal.episodeResultLabel) {
+      fullUpdates.incomingEpisodeResult = {
+        label: proposal.episodeResultLabel,
+        date: today,
+        source: proposal.label,
+        description: proposal.episodeResultDescription,
+      }
+    }
+    onUpdate(proposal.existingDenialId, fullUpdates)
     setStaged(prev => prev.filter(r => r.updateProposal?.existingDenialId !== proposal.existingDenialId))
   }
 
@@ -1143,6 +1237,9 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
   }
 
   const drawerRecord = staged.find(r => r.tempId === drawerId) ?? null
+  const drawerMatchedDenial = drawerRecord?.updateProposal
+    ? denials.find(d => d.id === drawerRecord.updateProposal!.existingDenialId) ?? null
+    : null
 
   return (
     <Box sx={{ flex: 1, overflow: 'auto', p: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -1379,6 +1476,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
         onApplyUpdate={handleApplyUpdate}
         hasRaw={Boolean(drawerRecord && rawFiles[drawerRecord.sourceFile])}
         onViewRaw={() => drawerRecord && setRawViewFile(drawerRecord.sourceFile)}
+        matchedDenial={drawerMatchedDenial ?? undefined}
       />
 
       {/* ── Raw file viewer ────────────────────────────────────────────────── */}

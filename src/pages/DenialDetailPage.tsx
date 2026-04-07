@@ -66,7 +66,7 @@ import {
   BlockOutlined,
   RemoveCircleOutlineOutlined,
 } from '@mui/icons-material'
-import { SEED_DENIALS, TEAM_MEMBERS, REVERSE_RELATIONSHIP, type TeamMember, type DenialRecord, type ActiveStatus, type ResolvedStatus, type DenialStatus, type AppealRound, type AppealRoundType, type RelationshipType, type RelatedInstance, type PossibleMatch } from '../data/denials'
+import { SEED_DENIALS, TEAM_MEMBERS, REVERSE_RELATIONSHIP, type TeamMember, type DenialRecord, type ActiveStatus, type ResolvedStatus, type DenialStatus, type AppealRound, type AppealRoundType, type RelationshipType, type RelatedInstance, type PossibleMatch, type IncomingEpisodeResult } from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
 import {
   CARC_DESCRIPTIONS, RARC_DESCRIPTIONS,
@@ -75,6 +75,7 @@ import {
   type TimelineEvent, type TimelineEventType,
   type SubmissionEpisode, type DeliveryMethod,
   type EpisodeAttachment, type AttachmentType,
+  type EpisodeResult,
 } from '../data/denialDetail'
 import {
   APPEAL_LETTERS, APPEAL_TEMPLATES, getDefaultTemplate, getAvailableTemplates, getGenericLetter,
@@ -3985,6 +3986,32 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
 
   const [events, setEvents] = useState<TimelineEvent[]>(() => TIMELINE_EVENTS[denialId] ?? [])
   const [episodes, setEpisodes] = useState<SubmissionEpisode[]>(() => SUBMISSION_EPISODES[denialId] ?? [])
+
+  // Write incoming episode result from ingest update into the activity log
+  useEffect(() => {
+    if (!denial.incomingEpisodeResult) return
+    const result: EpisodeResult = {
+      label: denial.incomingEpisodeResult.label,
+      date: denial.incomingEpisodeResult.date,
+      source: denial.incomingEpisodeResult.source,
+      description: denial.incomingEpisodeResult.description,
+    }
+    setEpisodes(prev => {
+      const last = prev[prev.length - 1]
+      if (last && !last.result) {
+        return prev.map((ep, i) => i === prev.length - 1 ? { ...ep, result } : ep)
+      }
+      const roundNum = prev.length + 1
+      const roundLabel = roundNum === 1 ? 'Initial Review' : roundNum === 2 ? 'Level 2 Review' : `Round ${roundNum} Response`
+      return [...prev, {
+        id: `ep-${denialId}-incoming-${Date.now()}`,
+        round: roundLabel,
+        openedAt: result.date,
+        result,
+      }]
+    })
+    onDenialUpdate({ incomingEpisodeResult: undefined })
+  }, [denial.incomingEpisodeResult?.label])
 
   // Appeal packet state — lifted so AttachmentsTab can read it
   const [appealLetterPdf, setAppealLetterPdf] = useState<PacketDoc | null>(null)
