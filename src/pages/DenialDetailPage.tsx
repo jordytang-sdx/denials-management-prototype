@@ -3948,11 +3948,18 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
             {denial.id}
           </Typography>
 
-          <Chip
-            label={denial.state}
-            size="small"
-            sx={{ height: 20, fontWeight: 600, fontSize: '0.7rem', bgcolor: '#EBF4FF', color: '#2C5282' }}
-          />
+          {(() => {
+            const STATE_CHIP: Record<string, { bg: string; color: string }> = {
+              Intake:    { bg: '#EDF2F7', color: '#4A5568' },
+              Active:    { bg: '#EBF4FF', color: '#2C5282' },
+              Submitted: { bg: '#E6FFFA', color: '#276749' },
+              Resolved:  { bg: '#F0FFF4', color: '#22543D' },
+              Closed:    { bg: '#F7FAFC', color: '#718096' },
+              Archived:  { bg: '#F3F0FF', color: '#6B46C1' },
+            }
+            const sc = STATE_CHIP[denial.state] ?? STATE_CHIP['Active']!
+            return <Chip label={denial.state} size="small" sx={{ height: 20, fontWeight: 600, fontSize: '0.7rem', bgcolor: sc.bg, color: sc.color }} />
+          })()}
 
           {(denial.alerts ?? []).map(alert => {
             const ALERT_COLORS: Record<string, { color: string; bg: string }> = {

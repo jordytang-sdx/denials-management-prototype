@@ -36,12 +36,11 @@ export interface WorklistFilters {
   payer: string[]
   denialType: string[]
   assignedTo: string[]
-  status: string[]
   hasAlertsOnly: boolean
 }
 
 export const DEFAULT_WORKLIST_FILTERS: WorklistFilters = {
-  payer: [], denialType: [], assignedTo: [], status: [], hasAlertsOnly: false,
+  payer: [], denialType: [], assignedTo: [], hasAlertsOnly: false,
 }
 
 const ALERT_TYPE_LABELS: Record<string, string> = {
@@ -229,7 +228,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
 
   function handleStateChange(_: React.SyntheticEvent, newState: WorklistActiveTab) {
     setActiveState(newState)
-    setFilters(prev => ({ ...prev, status: [] }))
+    setFilters(prev => ({ ...prev }))
   }
 
   // ── Derived filter options ──────────────────────────────────────────────────
@@ -244,7 +243,6 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
     const names = inState.map(d => d.assignedTo?.name ?? 'Unassigned')
     return [...new Set(names)].sort()
   }, [inState])
-  const allStatuses    = useMemo(() => [...new Set(inState.map(d => d.status))].sort(), [inState])
 
   // ── Filtered + sorted rows ─────────────────────────────────────────────────
 
@@ -261,9 +259,6 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
       )
     }
 
-    if (filters.status.length > 0) {
-      rows = rows.filter(r => filters.status.includes(r.status))
-    }
     if (filters.hasAlertsOnly) {
       rows = rows.filter(r => (r.alerts?.length ?? 0) > 0)
     }
@@ -336,7 +331,6 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
     payer:          filters.payer.length > 0,
     denialType:     filters.denialType.length > 0,
     assignedTo:     filters.assignedTo.length > 0,
-    status:         filters.status.length > 0,
     hasAlerts: filters.hasAlertsOnly,
   }
 
@@ -510,7 +504,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
               <ColHeader label="Denial Type"   colId="denialType"   filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} />
               <ColHeader label="Denied Amount" colId="deniedAmount" sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={132} align="right" />
               <ColHeader label="Deadline"      colId="deadline"     sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={132} />
-              <ColHeader label="Status"        colId="status"       filterable activeSort={sort} hasFilter={activeFilters.status}    onOpen={openColPopover} width={168} />
+              <ColHeader label="Outcome"       colId="outcome"                 activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={168} />
               <ColHeader label="Assigned To"   colId="assignedTo"   filterable activeSort={sort} hasFilter={activeFilters.assignedTo} onOpen={openColPopover} width={134} />
               <ColHeader label="Notes"         colId="notes"                   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={58}  align="right" />
               {/* Attention toggle — icon only */}
@@ -643,20 +637,30 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                     </Box>
                   </TableCell>
 
-                  {/* Status */}
+                  {/* Outcome — only meaningful for terminal states */}
                   <TableCell sx={{ py: 1.25 }}>
-                    <Chip
-                      label={denial.status}
-                      size="small"
-                      sx={{
-                        bgcolor: stateStyle.bg,
-                        color: stateStyle.color,
-                        fontWeight: 500,
-                        fontSize: '0.7rem',
-                        height: 20,
-                        border: 'none',
-                      }}
-                    />
+                    {(denial.state === 'Resolved' || denial.state === 'Closed') && (() => {
+                      const OUTCOME_STYLES: Record<string, { color: string; bg: string }> = {
+                        'Overturned — Full Payment':    { color: '#166534', bg: '#DCFCE7' },
+                        'Overturned — Partial Payment': { color: '#166534', bg: '#DCFCE7' },
+                        'Corrected Claim Paid':         { color: '#166534', bg: '#DCFCE7' },
+                        'Secondary Payer Paid':         { color: '#166534', bg: '#DCFCE7' },
+                        'Partial Settlement':           { color: '#92400E', bg: '#FEF3C7' },
+                        'Upheld by Payer':              { color: '#991B1B', bg: '#FEE2E2' },
+                        'Will Not Appeal':              { color: '#6B7280', bg: '#F3F4F6' },
+                        'Dismissed':                    { color: '#6B7280', bg: '#F3F4F6' },
+                        'Escalated to DRG Dispute':     { color: '#1E40AF', bg: '#DBEAFE' },
+                        'Closed':                       { color: '#6B7280', bg: '#F3F4F6' },
+                      }
+                      const s = OUTCOME_STYLES[denial.status] ?? { color: '#6B7280', bg: '#F3F4F6' }
+                      return (
+                        <Chip
+                          label={denial.status}
+                          size="small"
+                          sx={{ bgcolor: s.bg, color: s.color, fontWeight: 600, fontSize: '0.7rem', height: 20, border: 'none', '& .MuiChip-label': { px: 0.75 } }}
+                        />
+                      )
+                    })()}
                   </TableCell>
 
                   {/* Assigned To */}
@@ -771,8 +775,8 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
         {colPopover && (() => {
           const { colId } = colPopover
           const isSortable = ['patient', 'deniedAmount', 'deadline'].includes(colId)
-          const filterKey = colId === 'payer' ? 'payer' : colId === 'denialType' ? 'denialType' : colId === 'assignedTo' ? 'assignedTo' : colId === 'status' ? 'status' : null
-          const filterOptions = colId === 'payer' ? allPayers : colId === 'denialType' ? allDenialTypes : colId === 'assignedTo' ? allAssignees : colId === 'status' ? allStatuses : []
+          const filterKey = colId === 'payer' ? 'payer' : colId === 'denialType' ? 'denialType' : colId === 'assignedTo' ? 'assignedTo' : null
+          const filterOptions = colId === 'payer' ? allPayers : colId === 'denialType' ? allDenialTypes : colId === 'assignedTo' ? allAssignees : []
           const currentFilterValues = filterKey ? filters[filterKey] : []
 
           return (
