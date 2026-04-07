@@ -509,30 +509,34 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
               )}
               <ColHeader label="Assigned To"   colId="assignedTo"   filterable activeSort={sort} hasFilter={activeFilters.assignedTo} onOpen={openColPopover} width={116} />
               <ColHeader label="Notes"         colId="notes"                   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={48}  align="right" />
-              {/* Attention toggle — icon only */}
+              {/* Alerts column header — no fixed width so it takes remaining space */}
               <TableCell
-                align="center"
                 sx={{
-                  width: 44, py: 1.25,
+                  py: 1.25,
                   bgcolor: activeFilters.hasAlerts ? 'rgba(183,119,13,0.07)' : undefined,
                   borderBottom: activeFilters.hasAlerts ? '2px solid' : undefined,
                   borderBottomColor: activeFilters.hasAlerts ? 'warning.main' : undefined,
                 }}
               >
-                <Tooltip title={activeFilters.hasAlerts ? 'Showing alerts only — click to clear' : 'Show alerts only'} placement="left">
-                  <IconButton
-                    size="small"
-                    onClick={() => setFilters(prev => ({ ...prev, hasAlertsOnly: !prev.hasAlertsOnly }))}
-                    sx={{
-                      p: 0.25,
-                      color: activeFilters.hasAlerts ? 'warning.main' : 'text.disabled',
-                      opacity: activeFilters.hasAlerts ? 1 : 0.45,
-                      '&:hover': { opacity: 1, color: 'warning.main', bgcolor: 'transparent' },
-                    }}
-                  >
-                    <WarningAmberOutlined sx={{ fontSize: 15 }} />
-                  </IconButton>
-                </Tooltip>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Alerts
+                  </Typography>
+                  <Tooltip title={activeFilters.hasAlerts ? 'Showing alerts only — click to clear' : 'Show alerts only'} placement="left">
+                    <IconButton
+                      size="small"
+                      onClick={() => setFilters(prev => ({ ...prev, hasAlertsOnly: !prev.hasAlertsOnly }))}
+                      sx={{
+                        p: 0.25,
+                        color: activeFilters.hasAlerts ? 'warning.main' : 'text.disabled',
+                        opacity: activeFilters.hasAlerts ? 1 : 0.45,
+                        '&:hover': { opacity: 1, color: 'warning.main', bgcolor: 'transparent' },
+                      }}
+                    >
+                      <WarningAmberOutlined sx={{ fontSize: 13 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </TableCell>
             </TableRow>
           </TableHead>
@@ -707,7 +711,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                   </TableCell>
 
                   {/* Alerts */}
-                  <TableCell sx={{ py: 1.25, width: 120, maxWidth: 120 }}>
+                  <TableCell sx={{ py: 1.25 }}>
                     {(denial.alerts ?? []).map(alert => {
                       const ALERT_STYLES: Record<string, { color: string; bg: string; label: string }> = {
                         deadline:           { color: '#DC2626', bg: '#FEF2F2', label: '⏰' },
