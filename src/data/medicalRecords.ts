@@ -740,7 +740,7 @@ export const MEDICAL_RECORDS: Record<string, MedicalRecord> = {
     ],
   },
 
-  'MRN-9034': {  // Rafael Torres — Cigna Coding Error (lumbar fusion diagnosis sequencing)
+  'MRN-9034': {  // Daniel Forsythe — Cigna Coding Error (lumbar fusion diagnosis sequencing)
     patientId: 'MRN-9034',
     dob: '1971-04-22',
     sex: 'M',

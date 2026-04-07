@@ -185,12 +185,12 @@ const FILE_EXTRACTIONS: Record<string, RawExtraction[]> = {
     uncertainFields: [],
   }],
 
-  // Med nec denial letter — Cigna Rafael Torres: lumbar fusion
+  // Med nec denial letter — Cigna Daniel Forsythe: lumbar fusion
   // Extracted: clinical criteria, reviewing physician, level of care
   // Not extracted with confidence: CARC, HAR, exact denied amount
   'DenialLetter_Cigna_RafaelTorres.pdf': [{
     sourceType: 'med-nec-denial',
-    patientName: 'Rafael Torres', mrn: 'MRN-9034',
+    patientName: 'Daniel Forsythe', mrn: 'MRN-9034',
     claimId: 'CLM-NEW-5002', har: '',
     payer: 'Cigna',
     denialType: 'Medical Necessity', denialSubtype: 'Lumbar Spinal Fusion — L4-L5',
@@ -216,12 +216,12 @@ const FILE_EXTRACTIONS: Record<string, RawExtraction[]> = {
     uncertainFields: ['har', 'claimId'],
   }],
 
-  // Auth denial letter — Cigna Marcus Webb: cardiac cath, no prior auth
+  // Auth denial letter — Cigna Daniel Forsythe: cardiac cath, no prior auth
   // Extracted: auth required for service, no auth number on file
   // Not extracted: exact denied amount, HAR
   'AuthDenial_Cigna_MarcusWebb.pdf': [{
     sourceType: 'auth-denial',
-    patientName: 'Marcus Webb', mrn: 'MRN-6643',
+    patientName: 'Daniel Forsythe', mrn: 'MRN-6643',
     claimId: 'CLM-NEW-5004', har: '',
     payer: 'Cigna',
     denialType: 'Authorization', denialSubtype: 'No Prior Authorization — Cardiac Catheterization',

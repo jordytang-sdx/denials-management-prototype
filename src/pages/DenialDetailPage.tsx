@@ -1091,7 +1091,7 @@ function AppealRoundsSection({ rounds, denialState, onAddRound }: {
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachment, events, episodes, onAddFile, assignedTo, onChangeAssignee }: {
+function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachment, events, episodes, onAddFile, assignedTo, onChangeAssignee, onNavigateToDenial }: {
   denial: DenialRecord
   denialId: string
   onViewRemit: () => void
@@ -1102,6 +1102,7 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
   onAddFile: (episodeId: string, rowType: 'signal' | 'action' | 'result', fileName: string) => void
   assignedTo: TeamMember | null
   onChangeAssignee: (m: TeamMember | null) => void
+  onNavigateToDenial?: (id: string) => void
 }) {
   const remit = REMIT_DATA[denialId]
   const latestEpisode = episodes.length > 0 ? episodes[episodes.length - 1] : null
@@ -1396,7 +1397,16 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
                     escalated_from:        'Escalated from ADR',
                   }
                   return (
-                    <Box key={relId} sx={{ px: 2, py: 1.5, borderBottom: idx < related.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
+                    <Box
+                      key={relId}
+                      onClick={() => onNavigateToDenial?.(relId)}
+                      sx={{
+                        px: 2, py: 1.5,
+                        borderBottom: idx < related.length - 1 ? '1px solid' : 'none', borderColor: 'divider',
+                        cursor: onNavigateToDenial ? 'pointer' : 'default',
+                        '&:hover': onNavigateToDenial ? { bgcolor: 'action.hover' } : {},
+                      }}
+                    >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
                         <LinkOutlined sx={{ fontSize: 12, color: 'text.disabled' }} />
                         <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem', fontStyle: 'italic' }}>
@@ -3839,9 +3849,10 @@ interface DenialDetailPageProps {
   onBack: () => void
   onDenialUpdate: (updates: Partial<DenialRecord>) => void
   onSubmitSuccess?: (channel: string, payer: string, patientName: string) => void
+  onNavigateToDenial?: (id: string) => void
 }
 
-export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSubmitSuccess }: DenialDetailPageProps) {
+export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSubmitSuccess, onNavigateToDenial }: DenialDetailPageProps) {
   const denialId = denial.id
   const [tab, setTab] = useState(0)
   const [remitOpen, setRemitOpen] = useState(false)
@@ -4095,7 +4106,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
 
       {/* ── Tab content ───────────────────────────────────────────────────────── */}
       {denial.state !== 'Intake' && <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'background.default' }}>
-        {tab === 0 && <OverviewTab denial={denial} denialId={denialId} onViewRemit={() => setRemitOpen(true)} onViewClaim={() => setClaim837Open(true)} onOpenAttachment={handleOpenAttachment} events={events} episodes={episodes} onAddFile={handleAddFile} assignedTo={assignedTo} onChangeAssignee={setAssignedTo} />}
+        {tab === 0 && <OverviewTab denial={denial} denialId={denialId} onViewRemit={() => setRemitOpen(true)} onViewClaim={() => setClaim837Open(true)} onOpenAttachment={handleOpenAttachment} events={events} episodes={episodes} onAddFile={handleAddFile} assignedTo={assignedTo} onChangeAssignee={setAssignedTo} onNavigateToDenial={onNavigateToDenial} />}
         {tab === 1 && engine === 'appeal'          && <AppealTab denial={denial} denialId={denialId} denialState={denial.state} appealLetterPdf={appealLetterPdf} setAppealLetterPdf={setAppealLetterPdf} supportingDocs={supportingDocs} setSupportingDocs={setSupportingDocs} priorCorrespondence={priorCorrespondence} setPriorCorrespondence={setPriorCorrespondence} onSubmit={() => applyTransition('Submitted', 'Awaiting Payer Decision')} onSubmitSuccess={(channel, payer, patientName) => {
           const channelLabel = CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG]?.label ?? channel
           const newEvent: TimelineEvent = {

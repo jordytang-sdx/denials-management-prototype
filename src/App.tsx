@@ -50,10 +50,10 @@ interface AppNotification {
 
 const SEED_NOTIFICATIONS: AppNotification[] = [
   { id: 'n1', type: 'overturned', title: 'Appeal Overturned',        body: 'BCBS approved full payment of $12,450 — Margaret Holloway',      timestamp: '2026-04-03T09:15:00', read: false },
-  { id: 'n2', type: 'deadline',   title: 'Deadline in 2 days',       body: 'Appeal due Apr 5 — Rafael Torres · Cigna Medical Necessity',      timestamp: '2026-04-03T08:00:00', read: false },
+  { id: 'n2', type: 'deadline',   title: 'Deadline in 2 days',       body: 'Appeal due Apr 5 — Daniel Forsythe · Cigna Medical Necessity',      timestamp: '2026-04-03T08:00:00', read: false },
   { id: 'n3', type: 'ingested',   title: '6 records ingested',       body: 'UHC batch processed — 4 new appeals pending assignment',          timestamp: '2026-04-02T16:30:00', read: true  },
   { id: 'n4', type: 'attention',  title: 'Records ready for review', body: 'HealthSource submitted ADR records for Vivienne Okafor',          timestamp: '2026-04-02T14:00:00', read: true  },
-  { id: 'n5', type: 'deadline',   title: 'Deadline tomorrow',        body: 'Filing defense due Apr 4 — Marcus Webb · Cigna Authorization',    timestamp: '2026-04-02T08:00:00', read: true  },
+  { id: 'n5', type: 'deadline',   title: 'Deadline tomorrow',        body: 'Filing defense due Apr 4 — Daniel Forsythe · Cigna Authorization',    timestamp: '2026-04-02T08:00:00', read: true  },
 ]
 
 const NOTIF_ICON_COLORS: Record<AppNotification['type'], string> = {
@@ -363,6 +363,7 @@ export default function App() {
                   onBack={handleBack}
                   onDenialUpdate={updates => setDenials(prev => prev.map(d => d.id === selectedDenialId ? { ...d, ...updates } : d))}
                   onSubmitSuccess={handleSubmitSuccess}
+                  onNavigateToDenial={id => setSelectedDenialId(id)}
                 />
               )
             })()}
