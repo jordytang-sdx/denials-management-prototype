@@ -164,6 +164,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Unreviewed',
     assignedTo: null,
     notes: '',
+    possibleMatches: [
+      { denialId: 'DN-2025-1201', confidence: 'medium', reasons: ['Same patient (MRN)', 'Prior Medical Necessity — Inpatient Stay denial on file'] },
+    ],
   },
   {
     id: 'DN-2026-0401',
@@ -295,6 +298,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     state: 'Intake', status: 'Pending Acceptance',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: '',
+    possibleMatches: [
+      { denialId: 'DN-2026-0103', confidence: 'medium', reasons: ['Same patient (MRN)', 'Same denial type — Medical Necessity, Length of Stay'] },
+    ],
   },
   {
     id: 'DN-2026-0278',
