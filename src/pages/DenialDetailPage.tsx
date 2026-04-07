@@ -3613,7 +3613,6 @@ function IntakeReviewPanel({
 
   const engine = getResolutionEngine(localType)
   const engineLabel = ENGINE_LABELS[engine]
-  const engineColors = ENGINE_CHIP_COLORS[engine]
   const localAssignee = TEAM_MEMBERS.find(m => m.id === localAssigneeId) ?? null
 
   const carcDesc = CARC_DESCRIPTIONS[denial.carc]?.short ?? ''
@@ -3692,6 +3691,7 @@ function IntakeReviewPanel({
                       </Box>
                 }
               />
+              <IntakeInfoRow label="Denial Type" value={denial.denialType || '—'} />
               <IntakeInfoRow label="Denied Amount" value={<Typography component="span" variant="body2" sx={{ fontWeight: 700, color: 'error.main' }}>{formatCurrency(denial.deniedAmount)}</Typography>} />
               <IntakeInfoRow
                 label="Deadline"
@@ -3745,31 +3745,25 @@ function IntakeReviewPanel({
 
         {/* ── Right: Triage decisions ─────────────────────────────────────── */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-            <Box sx={{ px: 2, py: 1.25, bgcolor: 'background.default', borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="overline" sx={{ fontSize: '0.6875rem', color: 'text.secondary' }}>Classification</Typography>
-            </Box>
-            <Box sx={{ px: 2, py: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <FormControl size="small" fullWidth>
-                <InputLabel>Denial Type</InputLabel>
-                <Select
-                  label="Denial Type"
-                  value={localType}
-                  onChange={e => setLocalType(e.target.value)}
-                >
-                  {DENIAL_TYPES.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-                </Select>
-              </FormControl>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Routes to:</Typography>
-                <Chip
-                  label={engineLabel}
-                  size="small"
-                  sx={{ height: 22, fontSize: '0.75rem', fontWeight: 600, bgcolor: engineColors.bg, color: engineColors.color, '& .MuiChip-label': { px: 1 } }}
-                />
+          {(!localType || localType === '?') && (
+            <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid', borderColor: 'warning.light' }}>
+              <Box sx={{ px: 2, py: 1.25, bgcolor: '#FFFBEB', borderBottom: '1px solid', borderColor: 'warning.light' }}>
+                <Typography variant="overline" sx={{ fontSize: '0.6875rem', color: 'warning.dark' }}>Classification Required</Typography>
               </Box>
-            </Box>
-          </Paper>
+              <Box sx={{ px: 2, py: 2 }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Denial Type</InputLabel>
+                  <Select
+                    label="Denial Type"
+                    value={localType}
+                    onChange={e => setLocalType(e.target.value)}
+                  >
+                    {DENIAL_TYPES.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Box>
+            </Paper>
+          )}
 
           <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
             <Box sx={{ px: 2, py: 1.25, bgcolor: 'background.default', borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -3942,6 +3936,7 @@ function IntakeReviewPanel({
           variant="contained"
           disableElevation
           size="small"
+          disabled={!localType || localType === '?'}
           onClick={() => {
             const relatedInstances: RelatedInstance[] = Object.entries(matchDecisions)
               .filter(([, d]) => d.action === 'link' && d.relationship)
