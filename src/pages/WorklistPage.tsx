@@ -495,20 +495,20 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
 
       {/* Table */}
       <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
-        <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%', minWidth: 1100 }}>
+        <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%', minWidth: 960 }}>
           <TableHead>
             <TableRow>
-              <ColHeader label="Patient"       colId="patient"      sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={148} />
-              <ColHeader label="Claim ID"      colId="claimId"                 activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={126} />
-              <ColHeader label="Payer"         colId="payer"        filterable activeSort={sort} hasFilter={activeFilters.payer}      onOpen={openColPopover} width={148} />
-              <ColHeader label="Denial Type"   colId="denialType"   filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={160} />
-              <ColHeader label="Denied Amount" colId="deniedAmount" sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={132} align="right" />
-              <ColHeader label="Deadline"      colId="deadline"     sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={132} />
+              <ColHeader label="Patient"       colId="patient"      sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={136} />
+              <ColHeader label="Claim ID"      colId="claimId"                 activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={104} />
+              <ColHeader label="Payer"         colId="payer"        filterable activeSort={sort} hasFilter={activeFilters.payer}      onOpen={openColPopover} width={124} />
+              <ColHeader label="Denial Type"   colId="denialType"   filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={152} />
+              <ColHeader label="Denied Amount" colId="deniedAmount" sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={108} align="right" />
+              <ColHeader label="Deadline"      colId="deadline"     sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={108} />
               {(activeState === 'Resolved' || activeState === 'Closed' || activeState === 'Archived') && (
-                <ColHeader label="Outcome" colId="outcome" activeSort={sort} hasFilter={false} onOpen={openColPopover} width={168} />
+                <ColHeader label="Outcome" colId="outcome" activeSort={sort} hasFilter={false} onOpen={openColPopover} width={152} />
               )}
-              <ColHeader label="Assigned To"   colId="assignedTo"   filterable activeSort={sort} hasFilter={activeFilters.assignedTo} onOpen={openColPopover} width={134} />
-              <ColHeader label="Notes"         colId="notes"                   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={58}  align="right" />
+              <ColHeader label="Assigned To"   colId="assignedTo"   filterable activeSort={sort} hasFilter={activeFilters.assignedTo} onOpen={openColPopover} width={116} />
+              <ColHeader label="Notes"         colId="notes"                   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={48}  align="right" />
               {/* Attention toggle — icon only */}
               <TableCell
                 align="center"
@@ -570,13 +570,10 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                     </Typography>
                   </TableCell>
 
-                  {/* Claim ID + HAR */}
+                  {/* Claim ID */}
                   <TableCell sx={{ py: 1.25 }}>
                     <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
                       {denial.claim.claimId}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-                      {denial.claim.har}
                     </Typography>
                   </TableCell>
 
@@ -710,7 +707,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                   </TableCell>
 
                   {/* Alerts */}
-                  <TableCell sx={{ py: 1.25, maxWidth: 200 }}>
+                  <TableCell sx={{ py: 1.25, width: 120, maxWidth: 120 }}>
                     {(denial.alerts ?? []).map(alert => {
                       const ALERT_STYLES: Record<string, { color: string; bg: string; label: string }> = {
                         deadline:           { color: '#DC2626', bg: '#FEF2F2', label: '⏰' },
