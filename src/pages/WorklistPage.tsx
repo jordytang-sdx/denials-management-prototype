@@ -16,8 +16,6 @@ import {
   CalendarMonthOutlined,
   NoteAltOutlined,
   StickyNote2Outlined,
-  TrendingUpOutlined,
-  AccessTimeOutlined,
   SearchOutlined,
   CloseOutlined,
 } from '@mui/icons-material'
@@ -321,91 +319,10 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
 
   const tabCount = (t: WorklistActiveTab) => denials.filter(d => d.state === t).length
 
-  // ── Summary strip metrics ───────────────────────────────────────────────────
-
-  const summaryMetrics = useMemo(() => {
-    const open = denials.filter(d => d.state === 'Intake' || d.state === 'Active' || d.state === 'Submitted')
-    const atRisk = open.reduce((sum, d) => sum + d.deniedAmount, 0)
-    const overdue = open.filter(d => daysUntil(d.deadline) < 0).length
-    const dueThisWeek = open.filter(d => { const days = daysUntil(d.deadline); return days >= 0 && days <= 7 }).length
-    const resolvedCount = denials.filter(d => d.state === 'Resolved' || d.state === 'Closed').length
-    return { atRisk, overdue, dueThisWeek, resolvedCount }
-  }, [denials])
-
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-
-      {/* ── Header: title + KPI tiles ──────────────────────────────────────────── */}
-      <Box sx={{
-        display: 'flex', alignItems: 'stretch',
-        bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider',
-        flexShrink: 0, minHeight: 60,
-      }}>
-        {/* KPI tiles */}
-        {[
-          {
-            label: 'At Risk',
-            value: formatCurrency(summaryMetrics.atRisk),
-            sub: 'open denials',
-            icon: <TrendingUpOutlined sx={{ fontSize: 13, color: 'text.disabled' }} />,
-            highlight: false,
-          },
-          {
-            label: 'Overdue',
-            value: String(summaryMetrics.overdue),
-            sub: 'past deadline',
-            icon: <AccessTimeOutlined sx={{ fontSize: 13, color: summaryMetrics.overdue > 0 ? 'error.main' : 'text.disabled' }} />,
-            highlight: summaryMetrics.overdue > 0,
-            highlightColor: 'error.main',
-          },
-          {
-            label: 'Due This Week',
-            value: String(summaryMetrics.dueThisWeek),
-            sub: 'within 7 days',
-            icon: <CalendarMonthOutlined sx={{ fontSize: 13, color: summaryMetrics.dueThisWeek > 0 ? 'warning.main' : 'text.disabled' }} />,
-            highlight: summaryMetrics.dueThisWeek > 0,
-            highlightColor: 'warning.main',
-          },
-          {
-            label: 'Resolved / Closed',
-            value: String(summaryMetrics.resolvedCount),
-            sub: 'this period',
-            icon: <TrendingUpOutlined sx={{ fontSize: 13, color: 'success.main' }} />,
-            highlight: false,
-          },
-        ].map((tile, i, arr) => (
-          <Box
-            key={tile.label}
-            sx={{
-              flex: i === 0 ? '1.4 1 0' : '1 1 0',
-              px: 2, py: 1,
-              borderRight: i < arr.length - 1 ? '1px solid' : 'none',
-              borderColor: 'divider',
-              display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.125,
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              {tile.icon}
-              <Typography variant="overline" sx={{ fontSize: '0.575rem', color: 'text.secondary', letterSpacing: '0.07em', lineHeight: 1 }}>
-                {tile.label}
-              </Typography>
-            </Box>
-            <Typography
-              sx={{
-                fontSize: '0.9375rem', fontWeight: 700, lineHeight: 1.2,
-                color: tile.highlight ? (tile as { highlightColor?: string }).highlightColor : 'text.primary',
-              }}
-            >
-              {tile.value}
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.625rem' }}>
-              {tile.sub}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
 
       {/* State tabs */}
       <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
