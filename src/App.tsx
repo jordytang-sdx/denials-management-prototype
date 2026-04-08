@@ -19,7 +19,7 @@ import DenialDetailPage from './pages/DenialDetailPage'
 import DashboardPage from './pages/DashboardPage'
 import IngestPage from './pages/IngestPage'
 import RoutingRulesPage from './pages/RoutingRulesPage'
-import { SEED_DENIALS, type DenialRecord } from './data/denials'
+import { SEED_DENIALS, SCENARIO_B_DENIALS, type DenialRecord } from './data/denials'
 
 const SIDEBAR_WIDTH = 224
 const SIDEBAR_COLLAPSED_WIDTH = 56
@@ -191,6 +191,13 @@ export default function App() {
   const [worklistFilters, setWorklistFilters] = useState<WorklistFilters>(DEFAULT_WORKLIST_FILTERS)
   const [notifications, setNotifications] = useState<AppNotification[]>(SEED_NOTIFICATIONS)
   const [ingestKey, setIngestKey] = useState(0)
+  const [scenario, setScenario] = useState<'default' | 'scenarioA' | 'scenarioB'>('default')
+
+  const visibleDenials = scenario === 'scenarioA'
+    ? denials.filter(d => d.id === 'DN-2026-0292')
+    : scenario === 'scenarioB'
+      ? SCENARIO_B_DENIALS
+      : denials
   const [bellAnchor, setBellAnchor] = useState<HTMLElement | null>(null)
   const [toast, setToast] = useState<{ message: string } | null>(null)
 
@@ -425,14 +432,14 @@ export default function App() {
           <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {showingWorklist && (
               <WorklistPage
-                denials={denials} onDenialsChange={setDenials} onSelectDenial={handleSelectDenial}
+                denials={visibleDenials} onDenialsChange={setDenials} onSelectDenial={handleSelectDenial}
                 activeTab={worklistTab} onActiveTabChange={setWorklistTab}
                 sort={worklistSort} onSortChange={setWorklistSort}
                 filters={worklistFilters} onFiltersChange={setWorklistFilters}
               />
             )}
             {showingDetail && selectedDenialId && (() => {
-              const selectedDenial = denials.find(d => d.id === selectedDenialId)
+              const selectedDenial = visibleDenials.find(d => d.id === selectedDenialId)
               if (!selectedDenial) return null
               return (
                 <DenialDetailPage
@@ -441,7 +448,7 @@ export default function App() {
                   onDenialUpdate={updates => setDenials(prev => prev.map(d => d.id === selectedDenialId ? { ...d, ...updates } : d))}
                   onSubmitSuccess={handleSubmitSuccess}
                   onNavigateToDenial={id => setSelectedDenialId(id)}
-                  allDenials={denials}
+                  allDenials={visibleDenials}
                   onUpdateDenial={(id, updates) => setDenials(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d))}
                 />
               )
@@ -531,6 +538,40 @@ export default function App() {
           ))}
         </Box>
       </Popover>
+
+      {/* ── Prototype Widget ─────────────────────────────────────────────────── */}
+      <Box
+        sx={{
+          position: 'fixed', bottom: 16, left: 16, zIndex: 9999,
+          bgcolor: '#1A1A1A', color: '#fff', borderRadius: 1.5,
+          px: 2, py: 1.25, minWidth: 160,
+        }}
+      >
+        <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.5)', mb: 1 }}>
+          PROTOTYPE
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 0.75 }}>
+          {(['default', 'scenarioA', 'scenarioB'] as const).map((s) => (
+            <Box
+              key={s}
+              onClick={() => {
+                setScenario(s)
+                setActiveNav('Worklist')
+                setSelectedDenialId(null)
+                setWorklistTab('Active')
+              }}
+              sx={{
+                px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
+                bgcolor: scenario === s ? '#fff' : 'rgba(255,255,255,0.12)',
+                color: scenario === s ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
+                '&:hover': { bgcolor: scenario === s ? '#fff' : 'rgba(255,255,255,0.2)' },
+              }}
+            >
+              {s === 'default' ? 'Default' : s === 'scenarioA' ? 'Scenario A' : 'Scenario B'}
+            </Box>
+          ))}
+        </Box>
+      </Box>
 
       {/* ── Toast ────────────────────────────────────────────────────────────── */}
       <Snackbar
