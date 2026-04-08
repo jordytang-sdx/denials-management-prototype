@@ -1,3 +1,26 @@
+## Collaboration Skills
+
+### `/get-latest`
+Pull the latest changes from the shared repo before starting work.
+- Run: `git pull origin main`
+- If there are conflicts, tell the user which files conflict and ask how to resolve
+- Confirm success with: "You're up to date with Jordy's latest changes."
+
+### `/save-changes`
+Save and share your work so the other person can see it.
+- Run `git status` to show what changed
+- Ask the user: "What did you change? (This becomes the commit message)"
+- Run: `git add -A && git commit -m "<their answer>" && git push origin main`
+- Confirm with: "Done — your changes are live. Jordy can run /get-latest to see them."
+
+### `/sync`
+Pull latest changes first, then push any local changes. Use this if you forgot to pull before working.
+- Run `git pull origin main`
+- If clean (no conflicts), run `git push origin main`
+- If conflicts exist, surface them clearly and help resolve before pushing
+
+---
+
 ## Knowledge Base
 
 Before starting work, check `docs/knowledge/_index.md` for existing knowledge.

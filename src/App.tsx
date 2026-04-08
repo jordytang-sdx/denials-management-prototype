@@ -12,7 +12,6 @@ import {
   ChevronLeftOutlined, ChevronRightOutlined,
 } from '@mui/icons-material'
 import theme from './theme'
-import smarterDxLogo from './assets/SmarterDX.svg'
 import WorklistPage, {
   type WorklistActiveTab, type WorklistSort, type WorklistFilters, DEFAULT_WORKLIST_FILTERS,
 } from './pages/WorklistPage'
@@ -200,8 +199,8 @@ export default function App() {
           sx={{ zIndex: (t) => t.zIndex.drawer + 1, bgcolor: '#FFFFFF', height: 52, borderBottom: '1px solid', borderColor: 'divider' }}
         >
           <Toolbar variant="dense" sx={{ minHeight: 52, px: 2, gap: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mr: 2, bgcolor: '#0F2057', borderRadius: 1.5, px: 1.5, py: 0.625 }}>
-              <Box component="img" src={smarterDxLogo} alt="SmarterDX" sx={{ height: 22, display: 'block' }} />
+            <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
+              <Box component="img" src="/smarterdx_logo.webp" alt="SmarterDX" sx={{ height: 20, display: 'block', objectFit: 'contain' }} />
             </Box>
 
             <Chip
