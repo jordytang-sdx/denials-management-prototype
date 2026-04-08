@@ -136,7 +136,51 @@ function SettingsPage({ onReset }: { onReset: () => void }) {
   )
 }
 
+function LoginPage({ onUnlock }: { onUnlock: () => void }) {
+  const [value, setValue] = useState('')
+  const [error, setError] = useState(false)
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (value === 'f1278XZnyJ%~j3') {
+      onUnlock()
+    } else {
+      setError(true)
+      setValue('')
+    }
+  }
+
+  return (
+    <Box sx={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', bgcolor: '#F8F9FB' }}>
+      <Paper variant="outlined" sx={{ p: 4, borderRadius: 2, width: 320 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, bgcolor: '#0F2057', borderRadius: 1.5, px: 1.5, py: 0.75, width: 'fit-content' }}>
+          <Box component="img" src={smarterDxLogo} alt="SmarterDX" sx={{ height: 22, display: 'block' }} />
+        </Box>
+        <Typography variant="h6" sx={{ mb: 0.5 }}>Sign in</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>Enter the password to access the demo.</Typography>
+        <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <input
+            type="password"
+            placeholder="Password"
+            value={value}
+            onChange={e => { setValue(e.target.value); setError(false) }}
+            autoFocus
+            style={{
+              width: '100%', padding: '8px 12px', fontSize: '0.875rem',
+              border: `1px solid ${error ? '#DC2626' : '#D1D5DB'}`, borderRadius: 6,
+              outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+            }}
+          />
+          {error && <Typography variant="caption" color="error">Incorrect password.</Typography>}
+          <Button type="submit" variant="contained" fullWidth sx={{ fontWeight: 600 }}>Continue</Button>
+        </Box>
+      </Paper>
+    </Box>
+  )
+}
+
 export default function App() {
+  const [unlocked, setUnlocked] = useState(false)
   const [activeNav, setActiveNav] = useState<NavItem>('Worklist')
   const [navCollapsed, setNavCollapsed] = useState(false)
   const sidebarWidth = navCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
@@ -187,6 +231,15 @@ export default function App() {
     const days = Math.ceil((new Date(d.deadline).getTime() - Date.now()) / 86400000)
     return days >= 0 && days <= 3
   }).length
+
+  if (!unlocked) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <LoginPage onUnlock={() => setUnlocked(true)} />
+      </ThemeProvider>
+    )
+  }
 
   return (
     <ThemeProvider theme={theme}>
