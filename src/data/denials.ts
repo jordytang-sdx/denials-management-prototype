@@ -1,4 +1,4 @@
-export type DenialState = 'Intake' | 'Active' | 'Submitted' | 'Resolved' | 'Closed' | 'Archived'
+export type DenialState = 'Intake' | 'Active' | 'Submitted' | 'Won' | 'Recovered' | 'Closed' | 'Archived'
 
 // ── Per-state status types ────────────────────────────────────────────────────
 // Intake: describes how far along the triage/acceptance decision is
@@ -17,21 +17,22 @@ export type ActiveStatus =
 // Submitted: describes why it hasn't resolved yet
 export type SubmittedStatus = 'Awaiting Payer Decision' | 'Submission Failed' | 'Response Overdue'
 
-// Resolved/Closed: mirrors the outcome — status IS the outcome for terminal states
-export type ResolvedStatus =
+// Won: positive decision received, awaiting 835 payment confirmation
+// Recovered: 835 matched, payment confirmed
+export type WonStatus =
   | 'Overturned — Full Payment'
   | 'Overturned — Partial Payment'
-  | 'Upheld by Payer'
   | 'Partial Settlement'
   | 'Corrected Claim Paid'
   | 'Secondary Payer Paid'
-  | 'Will Not Appeal'
 
-export type ClosedStatus = 'Will Not Appeal' | 'Dismissed' | 'Escalated to DRG Dispute' | 'Closed'
+export type RecoveredStatus = WonStatus
+
+export type ClosedStatus = 'Upheld by Payer' | 'Will Not Appeal' | 'Dismissed' | 'Escalated to DRG Dispute' | 'Closed'
 
 export type ArchivedStatus = 'Archived'
 
-export type DenialStatus = IntakeStatus | ActiveStatus | SubmittedStatus | ResolvedStatus | ClosedStatus | ArchivedStatus
+export type DenialStatus = IntakeStatus | ActiveStatus | SubmittedStatus | WonStatus | RecoveredStatus | ClosedStatus | ArchivedStatus
 
 export type AppealRoundType = 'L1_internal' | 'L2_external' | 'IRO' | 'redetermination' | 'reconsideration' | 'reopening'
 export type AppealDecision = 'overturned' | 'upheld' | 'partial' | 'pending' | 'withdrawn'
@@ -95,6 +96,7 @@ export interface DenialRecord {
   carc: string
   rarc?: string
   deniedAmount: number
+  paidAmount?: number
   deadline: string   // ISO date string YYYY-MM-DD
   createdAt: string  // ISO date string YYYY-MM-DD
   dos: string        // date of service
@@ -346,7 +348,61 @@ export const SEED_DENIALS: DenialRecord[] = [
     relatedInstances: [{ denialId: 'DN-2025-1144', relationship: 'corrected_claim_led_to' }],
   },
 
-  // ── Resolved / Closed historical records ──────────────────────────────────
+  // ── Won: positive decision received, awaiting 835 ─────────────────────────
+
+  {
+    id: 'DN-2026-0388',
+    patient: { name: 'Victor Osei', mrn: 'MRN-209341' },
+    claim: { claimId: 'CLM-4412881', har: 'HAR-330712' },
+    payer: 'Cigna',
+    denialType: 'Medical Necessity',
+    denialSubtype: 'Inpatient Level of Care — CHF Exacerbation',
+    carc: 'CARC-50', rarc: 'M86',
+    deniedAmount: 11240.00,
+    deadline: d(12), createdAt: d(-42), dos: '2026-02-08',
+    state: 'Won', status: 'Overturned — Full Payment',
+    assignedTo: TEAM_MEMBERS[0]!,
+    notes: 'L1 appeal submitted with clinical documentation. Cigna issued overturn letter 4/05 — full $11,240 approved. Awaiting 835 remit to confirm payment posted.',
+    appealRounds: [
+      { id: 'r-0388-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: d(-14), submissionMethod: 'portal', decision: 'overturned', decisionDate: d(-3) },
+    ],
+  },
+  {
+    id: 'DN-2026-0341',
+    patient: { name: 'Sandra Pruitt', mrn: 'MRN-771204' },
+    claim: { claimId: 'CLM-7709002', har: 'HAR-558341' },
+    payer: 'UnitedHealthcare',
+    denialType: 'DRG Downgrade',
+    denialSubtype: 'MS-DRG 470 → 483',
+    carc: 'CARC-4', rarc: 'N115',
+    deniedAmount: 5830.00,
+    deadline: d(8), createdAt: d(-30), dos: '2026-02-22',
+    state: 'Won', status: 'Overturned — Partial Payment',
+    assignedTo: TEAM_MEMBERS[2]!,
+    notes: 'UHC peer-to-peer resulted in partial overturn — MS-DRG 483 restored to MS-DRG 470 for 3 of 5 days. Estimated recovery ~$3,500. Awaiting 835 to confirm exact amount.',
+    appealRounds: [
+      { id: 'r-0341-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: d(-18), submissionMethod: 'portal', decision: 'upheld', decisionDate: d(-10) },
+      { id: 'r-0341-2', roundNumber: 2, roundType: 'L2_external', submittedAt: d(-8), submissionMethod: 'mail', decision: 'partial', decisionDate: d(-1) },
+    ],
+  },
+  {
+    id: 'DN-2026-0295',
+    patient: { name: 'Marcus Webb', mrn: 'MRN-448812' },
+    claim: { claimId: 'CLM-3301447', har: 'HAR-219004' },
+    payer: 'Aetna',
+    denialType: 'Administrative',
+    denialSubtype: 'Missing Billing NPI on Claim',
+    carc: 'CARC-16',
+    deniedAmount: 2190.00,
+    deadline: d(20), createdAt: d(-25), dos: '2026-03-05',
+    state: 'Won', status: 'Corrected Claim Paid',
+    assignedTo: TEAM_MEMBERS[3]!,
+    notes: 'Corrected claim submitted 3/28 with billing NPI added. Aetna confirmed claim accepted for processing 4/06. Awaiting 835 remit.',
+  },
+
+  // ── Recovered: 835 confirmed, payment posted ───────────────────────────────
+
+  // ── Recovered / Closed / Archived historical records ─────────────────────
 
   {
     id: 'DN-2025-0847',
@@ -357,8 +413,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'Inpatient Stay Not Medically Necessary',
     carc: 'CARC-50', rarc: 'M86',
     deniedAmount: 8940.00,
+    paidAmount: 8940.00,
     deadline: '2025-10-20', createdAt: '2025-07-28', dos: '2025-07-20',
-    state: 'Resolved', status: 'Overturned — Full Payment',
+    state: 'Recovered', status: 'Overturned — Full Payment',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: 'L1 upheld, L2 upheld, external independent review overturned denial. Full $8,940 payment received 2025-10-18.',
     appealRounds: [
@@ -409,8 +466,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'MS-DRG 194 → 195',
     carc: 'CARC-4', rarc: 'N115',
     deniedAmount: 3840.00,
+    paidAmount: 3840.00,
     deadline: '2025-11-01', createdAt: '2025-08-20', dos: '2025-06-15',
-    state: 'Resolved', status: 'Overturned — Full Payment',
+    state: 'Recovered', status: 'Overturned — Full Payment',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'DRG downgrade issued after ADR record review (see DN-2025-0932). L2 appeal overturned — MS-DRG 194 restored. $3,840 recovered.',
     relatedInstances: [{ denialId: 'DN-2025-0932', relationship: 'escalated_from' }],
@@ -428,8 +486,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'No Prior Authorization on File',
     carc: 'CARC-15', rarc: 'N130',
     deniedAmount: 9450.00,
+    paidAmount: 9450.00,
     deadline: '2026-01-15', createdAt: '2025-10-22', dos: '2025-10-15',
-    state: 'Resolved', status: 'Overturned — Full Payment',
+    state: 'Recovered', status: 'Overturned — Full Payment',
     assignedTo: TEAM_MEMBERS[2]!,
     notes: 'Retro-auth request denied. L1 appeal + peer-to-peer with Cigna MD resulted in overturn. Full $9,450 recovered.',
     appealRounds: [
@@ -462,8 +521,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'Overpayment — Post-Payment Audit',
     carc: 'CARC-45',
     deniedAmount: 12400.00,
+    paidAmount: 6200.00,
     deadline: '2025-10-10', createdAt: '2025-08-18', dos: '2025-08-10',
-    state: 'Resolved', status: 'Partial Settlement',
+    state: 'Recovered', status: 'Partial Settlement',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'Medicare recoupment disputed with full clinical record. Settlement reached: $6,200 repaid, $6,200 written off by Medicare. Case closed 2025-11-14.',
     appealRounds: [
@@ -479,8 +539,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'Claim Received After 180-Day Limit',
     carc: 'CARC-29',
     deniedAmount: 3100.00,
+    paidAmount: 3100.00,
     deadline: '2025-09-10', createdAt: '2025-07-15', dos: '2025-05-10',
-    state: 'Resolved', status: 'Overturned — Full Payment',
+    state: 'Recovered', status: 'Overturned — Full Payment',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: '277-CA confirmed timely transmission within filing window. Aetna accepted defense — full $3,100 paid.',
     appealRounds: [
@@ -496,8 +557,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'Missing Billing NPI on Claim',
     carc: 'CARC-16',
     deniedAmount: 635.00,
+    paidAmount: 635.00,
     deadline: '2026-01-15', createdAt: '2025-10-22', dos: '2025-10-18',
-    state: 'Resolved', status: 'Corrected Claim Paid',
+    state: 'Recovered', status: 'Corrected Claim Paid',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: 'Same issue as current denial — billing NPI missing on original claim. Corrected claim submitted 11/04, Cigna processed and paid $635 on 11/19.',
     relatedInstances: [{ denialId: 'DN-2026-0261', relationship: 'corrected_claim_of' }],
@@ -511,8 +573,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'ICD-10 Principal Dx Sequencing',
     carc: 'CARC-4',
     deniedAmount: 1240.00,
+    paidAmount: 1240.00,
     deadline: '2026-02-20', createdAt: '2025-12-01', dos: '2025-09-20',
-    state: 'Resolved', status: 'Corrected Claim Paid',
+    state: 'Recovered', status: 'Corrected Claim Paid',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'ICD-10 sequencing corrected per CDI review. BCBS processed corrected claim — $1,240 paid 2026-01-08.',
   },
@@ -525,8 +588,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'Coverage Inactive on DOS',
     carc: 'CARC-31',
     deniedAmount: 2340.00,
+    paidAmount: 2340.00,
     deadline: '2026-03-10', createdAt: '2026-01-08', dos: '2025-12-10',
-    state: 'Resolved', status: 'Secondary Payer Paid',
+    state: 'Recovered', status: 'Secondary Payer Paid',
     assignedTo: TEAM_MEMBERS[3]!,
     notes: 'Medicaid coverage confirmed inactive on DOS. Medicare identified as primary — billed and paid in full. $2,340 recovered.',
   },
@@ -648,8 +712,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'Inpatient Stay Not Justified — COPD Exacerbation',
     carc: 'CARC-50', rarc: 'M86',
     deniedAmount: 9840.00,
+    paidAmount: 9840.00,
     deadline: d(-120), createdAt: d(-180), dos: '2025-10-04',
-    state: 'Resolved', status: 'Overturned — Full Payment',
+    state: 'Recovered', status: 'Overturned — Full Payment',
     assignedTo: TEAM_MEMBERS[1]!,
     notes: 'Appeal overturned on clinical criteria argument. MCG criteria met per peer-to-peer.',
   },
@@ -662,8 +727,9 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'Length of Stay Exceeds Criteria — Knee Replacement',
     carc: 'CARC-50', rarc: 'M86',
     deniedAmount: 6120.00,
+    paidAmount: 3672.00,
     deadline: d(-60), createdAt: d(-90), dos: '2026-01-12',
-    state: 'Resolved', status: 'Overturned — Partial Payment',
+    state: 'Recovered', status: 'Overturned — Partial Payment',
     assignedTo: TEAM_MEMBERS[0]!,
     notes: 'Partial overturn — 3 of 5 days approved. Accepted partial.',
   },

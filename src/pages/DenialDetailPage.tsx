@@ -67,7 +67,7 @@ import {
   BlockOutlined,
   RemoveCircleOutlineOutlined,
 } from '@mui/icons-material'
-import { SEED_DENIALS, TEAM_MEMBERS, REVERSE_RELATIONSHIP, type TeamMember, type DenialRecord, type ActiveStatus, type ResolvedStatus, type DenialStatus, type AppealRound, type AppealRoundType, type RelationshipType, type RelatedInstance, type PossibleMatch, type IncomingEpisodeResult } from '../data/denials'
+import { SEED_DENIALS, TEAM_MEMBERS, REVERSE_RELATIONSHIP, type TeamMember, type DenialRecord, type ActiveStatus, type WonStatus, type DenialStatus, type AppealRound, type AppealRoundType, type RelationshipType, type RelatedInstance, type PossibleMatch, type IncomingEpisodeResult } from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
 import {
   CARC_DESCRIPTIONS, RARC_DESCRIPTIONS,
@@ -1430,8 +1430,8 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
                           size="small"
                           sx={{
                             height: 18, fontSize: '0.625rem', fontWeight: 700,
-                            bgcolor: rel.state === 'Resolved' ? 'success.light' : rel.state === 'Closed' ? 'action.selected' : 'warning.light',
-                            color: rel.state === 'Resolved' ? 'success.dark' : rel.state === 'Closed' ? 'text.secondary' : 'warning.dark',
+                            bgcolor: (rel.state === 'Won' || rel.state === 'Recovered') ? 'success.light' : rel.state === 'Closed' ? 'action.selected' : 'warning.light',
+                            color: (rel.state === 'Won' || rel.state === 'Recovered') ? 'success.dark' : rel.state === 'Closed' ? 'text.secondary' : 'warning.dark',
                             '& .MuiChip-label': { px: 0.75 },
                           }}
                         />
@@ -3597,7 +3597,7 @@ function AttachmentsTab({ denial, episodes, appealLetterPdf, supportingDocs, pri
 function OutcomeTab({ denialId, currentState }: { denialId: string; currentState: string }) {
   const outcome = DENIAL_OUTCOMES[denialId]
 
-  if (!outcome || (currentState !== 'Resolved' && currentState !== 'Closed')) {
+  if (!outcome || (currentState !== 'Won' && currentState !== 'Recovered' && currentState !== 'Closed')) {
     return (
       <Box sx={{ p: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
         <Box sx={{ textAlign: 'center', color: 'text.disabled' }}>
@@ -4245,7 +4245,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
     })
   }
 
-  const DISPOSITION_LABELS: Record<OutcomeDisposition, ResolvedStatus> = {
+  const DISPOSITION_LABELS: Record<OutcomeDisposition, WonStatus> = {
     overturned_full:    'Overturned — Full Payment',
     overturned_partial: 'Overturned — Partial Payment',
     upheld:             'Upheld by Payer',
@@ -4344,14 +4344,16 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
           const primary: { label: string; type: TransitionType } | null =
             state === 'Active'    ? { label: 'Mark as Submitted',     type: 'mark_submitted'  } :
             state === 'Submitted' ? { label: 'Record Payer Decision', type: 'record_decision' } :
-            state === 'Resolved'  ? { label: 'Close Case',            type: 'close_case'      } :
+            state === 'Won'       ? { label: 'Close Case',            type: 'close_case'      } :
+            state === 'Recovered' ? { label: 'Close Case',            type: 'close_case'      } :
             state === 'Archived'  ? { label: 'Restore',               type: 'restore'         } :
             null
 
           const secondaries: { label: string; type: TransitionType }[] =
             state === 'Active'    ? [{ label: 'Will Not Appeal', type: 'will_not_appeal' }, { label: 'Dismiss', type: 'dismiss' }, { label: 'Archive', type: 'archive' }] :
             state === 'Submitted' ? [{ label: 'Begin Next Round', type: 'next_round' }, { label: 'Archive', type: 'archive' }] :
-            state === 'Resolved'  ? [{ label: 'Archive', type: 'archive' }] :
+            state === 'Won'       ? [{ label: 'Archive', type: 'archive' }] :
+            state === 'Recovered' ? [{ label: 'Archive', type: 'archive' }] :
             state === 'Closed'    ? [{ label: 'Archive', type: 'archive' }] :
             []
 
@@ -4624,8 +4626,8 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setTransitionModal(null)} sx={{ color: 'text.secondary' }}>Cancel</Button>
           <Button variant="contained" disableElevation
-            onClick={() => applyTransition('Resolved', DISPOSITION_LABELS[decisionDisposition])}>
-            Record & Resolve
+            onClick={() => applyTransition('Won', DISPOSITION_LABELS[decisionDisposition])}>
+            Record Decision
           </Button>
         </DialogActions>
       </Dialog>

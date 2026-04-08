@@ -231,7 +231,7 @@ export default function App() {
   const showingDetail  = activeNav === 'Worklist' && selectedDenialId !== null
   const showingWorklist = activeNav === 'Worklist' && !showingDetail
 
-  const isTerminal = (s: string) => s === 'Resolved' || s === 'Closed' || s === 'Archived'
+  const isTerminal = (s: string) => s === 'Won' || s === 'Recovered' || s === 'Closed' || s === 'Archived'
   const openCount     = denials.filter(d => !isTerminal(d.state)).length
   const deadlineCount = denials.filter(d => {
     if (isTerminal(d.state)) return false

@@ -21,7 +21,7 @@ import { DENIAL_OUTCOMES, type OutcomeDisposition } from '../data/denialDetail'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const TODAY_DATE = new Date('2026-04-03')
-const isTerminal = (s: string) => s === 'Resolved' || s === 'Closed' || s === 'Archived'
+const isTerminal = (s: string) => s === 'Won' || s === 'Recovered' || s === 'Closed' || s === 'Archived'
 
 function daysUntil(dateStr: string) {
   return Math.ceil((new Date(dateStr).getTime() - TODAY_DATE.getTime()) / 86400000)
@@ -36,7 +36,7 @@ function formatCurrency(n: number) {
 // ── Colors ────────────────────────────────────────────────────────────────────
 
 const STATE_COLORS: Record<string, string> = {
-  Intake: '#718096', Active: '#2C5282', Submitted: '#276749', Resolved: '#22543D', Closed: '#A0AEC0',
+  Intake: '#718096', Active: '#2C5282', Submitted: '#276749', Won: '#22543D', Recovered: '#14532D', Closed: '#A0AEC0',
 }
 
 type DispositionGroup = 'Overturned' | 'Upheld' | 'Will Not Appeal' | 'Other'
@@ -629,7 +629,7 @@ export default function DashboardPage({ denials }: DashboardPageProps) {
     .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
     .slice(0, 7)
 
-  const stateCounts = (['Intake', 'Active', 'Submitted', 'Resolved', 'Closed'] as DenialState[]).map(s => ({
+  const stateCounts = (['Intake', 'Active', 'Submitted', 'Won', 'Recovered', 'Closed'] as DenialState[]).map(s => ({
     state: s, count: denials.filter(d => d.state === s).length,
   }))
 

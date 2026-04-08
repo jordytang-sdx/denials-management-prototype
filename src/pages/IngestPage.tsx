@@ -138,10 +138,10 @@ interface OutcomeOption {
 
 const UPDATE_OUTCOMES: Partial<Record<NonNullable<UpdateProposal['updateType']>, OutcomeOption[]>> = {
   payment_full: [
-    { label: 'Resolved — Full Payment', sublabel: 'Mark case as fully resolved', state: 'Resolved', status: 'Overturned — Full Payment' },
+    { label: 'Recovered — Full Payment', sublabel: 'Payment confirmed via 835', state: 'Recovered', status: 'Overturned — Full Payment' },
   ],
   payment_partial: [
-    { label: 'Resolved — Accept Partial', sublabel: 'Close case, accept the recovered amount', state: 'Resolved', status: 'Overturned — Partial Payment' },
+    { label: 'Recovered — Partial Payment', sublabel: 'Payment confirmed via 835', state: 'Recovered', status: 'Overturned — Partial Payment' },
     { label: 'Active — Pursue Remaining Balance', sublabel: 'Continue appealing for the outstanding difference', state: 'Active', status: 'In Progress' },
   ],
   denial_upheld: [
@@ -269,13 +269,13 @@ const FILE_EXTRACTIONS: Record<string, RawExtraction[]> = {
       updateType: 'payment_partial',
       episodeResultLabel: 'Partial Payment Received',
       episodeResultDescription: 'BCBS remit shows $2,105 paid. Original denied amount was $4,210 — 50% recovered. Case closed as partial.',
-      suggestedState: 'Resolved',
+      suggestedState: 'Recovered',
       suggestedStatus: 'Overturned — Partial Payment',
       updates: { deniedAmount: 2105.00 },
       diffs: [
         { field: 'deniedAmount', label: 'Denied Amount',    from: '$4,210.00', to: '$2,105.00 (partial)' },
         { field: 'status',       label: 'Suggested Status', from: 'Appeal Drafting', to: 'Overturned — Partial Payment' },
-        { field: 'state',        label: 'Suggested State',  from: 'Active', to: 'Resolved' },
+        { field: 'state',        label: 'Suggested State',  from: 'Active', to: 'Recovered' },
       ],
     },
   }],
@@ -357,12 +357,12 @@ const FILE_EXTRACTIONS: Record<string, RawExtraction[]> = {
       updateType: 'payment_full',
       episodeResultLabel: 'Appeal Overturned — Full Payment Authorized',
       episodeResultDescription: 'BCBS issued overturn letter. Full $4,210 approved. Payment expected within 30 days.',
-      suggestedState: 'Resolved',
+      suggestedState: 'Recovered',
       suggestedStatus: 'Overturned — Full Payment',
       updates: {},
       diffs: [
         { field: 'status', label: 'Suggested Status', from: 'Appeal Drafting',   to: 'Overturned — Full Payment' },
-        { field: 'state',  label: 'Suggested State',  from: 'Active',            to: 'Resolved' },
+        { field: 'state',  label: 'Suggested State',  from: 'Active',            to: 'Recovered' },
         { field: 'amount', label: 'Approved Amount',  from: '—',                 to: '$4,210.00 (full payment authorized)' },
       ],
     },
@@ -458,11 +458,11 @@ const SEED_STAGED: SeedEntry[] = [
       existingDenialId: 'DN-2026-0412',
       label: 'Appeal Overturned — Full Payment',
       updateType: 'payment_full',
-      suggestedState: 'Resolved',
+      suggestedState: 'Recovered',
       suggestedStatus: 'Overturned — Full Payment',
       updates: {},
       diffs: [
-        { field: 'state',  label: 'Suggested State',  from: 'Active',          to: 'Resolved' },
+        { field: 'state',  label: 'Suggested State',  from: 'Active',          to: 'Recovered' },
         { field: 'status', label: 'Suggested Status', from: 'Appeal Drafting', to: 'Overturned — Full Payment' },
         { field: 'amount', label: 'Payment',           from: '—',               to: '$4,210.00 paid in full' },
       ],
@@ -507,12 +507,12 @@ IEA*1*000018847~`,
       existingDenialId: 'DN-2026-0318',
       label: 'Partial Payment Received',
       updateType: 'payment_partial',
-      suggestedState: 'Resolved',
+      suggestedState: 'Recovered',
       suggestedStatus: 'Overturned — Partial Payment',
       updates: { deniedAmount: 2820 },
       diffs: [
         { field: 'deniedAmount', label: 'Denied Amount',    from: '$5,640.00', to: '$2,820.00 (50% recovered)' },
-        { field: 'state',        label: 'Suggested State',  from: 'Active',    to: 'Resolved' },
+        { field: 'state',        label: 'Suggested State',  from: 'Active',    to: 'Recovered' },
         { field: 'status',       label: 'Suggested Status', from: 'Appeal Drafting', to: 'Overturned — Partial Payment' },
       ],
       episodeResultLabel: 'Partial Payment Received',
@@ -1507,7 +1507,7 @@ function RecordDrawer({
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.5, bgcolor: '#ECFDF5', borderColor: '#6EE7B7' }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, color: '#065F46' }}>Appeal Overturned</Typography>
-                <Typography variant="caption" color="text.secondary">Payment authorized. Apply update to mark as Resolved.</Typography>
+                <Typography variant="caption" color="text.secondary">Payment authorized. Apply update to mark as Won.</Typography>
               </Paper>
               <DrawerField label="Approved Amount ($)" value={String(record.approvedAmount ?? 0)} onChange={v => { const n = parseFloat(v); if (!isNaN(n)) onUpdate('approvedAmount', n) }} />
             </Box>
@@ -1639,12 +1639,13 @@ function RecordDrawer({
             <Button fullWidth variant="outlined" onClick={onClose} sx={{ color: 'text.secondary', borderColor: 'divider' }}>Ignore</Button>
             <Button
               fullWidth variant="contained" disableElevation
-              color={chosenOutcome?.state === 'Resolved' || chosenOutcome?.state === 'Closed' ? 'success' : 'warning'}
+              color={chosenOutcome?.state === 'Won' || chosenOutcome?.state === 'Recovered' || chosenOutcome?.state === 'Closed' ? 'success' : 'warning'}
               onClick={() => {
                 onApplyUpdate(record.updateProposal!, {
                   state: chosenOutcome?.state ?? record.updateProposal!.suggestedState,
                   status: chosenOutcome?.status ?? record.updateProposal!.suggestedStatus,
                   ...record.updateProposal!.updates,
+                  ...(record.paidAmount !== undefined ? { paidAmount: record.paidAmount } : {}),
                 })
                 onClose()
               }}

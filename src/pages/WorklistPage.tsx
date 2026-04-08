@@ -25,7 +25,7 @@ import { getDenialTypeConfig } from '../data/denialTypeConfig'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type SortDir = 'asc' | 'desc'
-export type SortCol = 'patient' | 'deniedAmount' | 'deadline'
+export type SortCol = 'patient' | 'deniedAmount' | 'paidAmount' | 'deadline'
 export type WorklistSort = { colId: SortCol; dir: SortDir } | null
 export type WorklistActiveTab = DenialState
 
@@ -51,7 +51,7 @@ interface InlinePopoverState {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS: WorklistActiveTab[] = ['Active', 'Submitted', 'Resolved', 'Closed', 'Archived']
+const TABS: WorklistActiveTab[] = ['Active', 'Submitted', 'Won', 'Recovered', 'Closed', 'Archived']
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -77,7 +77,8 @@ function formatCurrency(n: number): string {
 const STATE_COLORS: Partial<Record<DenialState, { bg: string; color: string }>> = {
   Active:    { bg: '#EBF4FF', color: '#2C5282' },
   Submitted: { bg: '#E6FFFA', color: '#276749' },
-  Resolved:  { bg: '#F0FFF4', color: '#22543D' },
+  Won:       { bg: '#F0FFF4', color: '#22543D' },
+  Recovered: { bg: '#DCFCE7', color: '#14532D' },
   Closed:    { bg: '#F7FAFC', color: '#718096' },
   Archived:  { bg: '#F3F0FF', color: '#6B46C1' },
 }
@@ -261,6 +262,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
         let cmp = 0
         if (sort.colId === 'patient')      cmp = a.patient.name.localeCompare(b.patient.name)
         else if (sort.colId === 'deniedAmount') cmp = a.deniedAmount - b.deniedAmount
+        else if (sort.colId === 'paidAmount')   cmp = (a.paidAmount ?? 0) - (b.paidAmount ?? 0)
         else if (sort.colId === 'deadline')    cmp = new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
         return sort.dir === 'asc' ? cmp : -cmp
       })
@@ -397,7 +399,10 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
               <ColHeader label="Denial Type"   colId="denialType"   filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={185} />
               <ColHeader label="Denied Amount" colId="deniedAmount" sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} align="right" width={105} />
               <ColHeader label="Deadline"      colId="deadline"     sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={120} />
-              {(activeState === 'Resolved' || activeState === 'Closed' || activeState === 'Archived') && (
+              {(activeState === 'Recovered' || activeState === 'Closed' || activeState === 'Archived') && (
+                <ColHeader label="Paid Amount" colId="paidAmount" sortable activeSort={sort} hasFilter={false} onOpen={openColPopover} align="right" width={105} />
+              )}
+              {(activeState === 'Recovered' || activeState === 'Closed' || activeState === 'Archived') && (
                 <ColHeader label="Outcome" colId="outcome" activeSort={sort} hasFilter={false} onOpen={openColPopover} width={140} />
               )}
               <ColHeader label="Assigned To"   colId="assignedTo"   filterable activeSort={sort} hasFilter={activeFilters.assignedTo} onOpen={openColPopover} width={140} />
@@ -504,8 +509,21 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                     </Box>
                   </TableCell>
 
+                  {/* Paid Amount — only shown on terminal state tabs */}
+                  {(activeState === 'Recovered' || activeState === 'Closed' || activeState === 'Archived') && (
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      {denial.paidAmount !== undefined ? (
+                        <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'success.dark' }}>
+                          {formatCurrency(denial.paidAmount)}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                      )}
+                    </TableCell>
+                  )}
+
                   {/* Outcome — only shown on terminal state tabs */}
-                  {(activeState === 'Resolved' || activeState === 'Closed' || activeState === 'Archived') && <TableCell sx={{ py: 1.25 }}>
+                  {(activeState === 'Recovered' || activeState === 'Closed' || activeState === 'Archived') && <TableCell sx={{ py: 1.25 }}>
                     {(() => {
                       const OUTCOME_STYLES: Record<string, { color: string; bg: string }> = {
                         'Overturned — Full Payment':    { color: '#166534', bg: '#DCFCE7' },
