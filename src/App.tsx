@@ -154,7 +154,7 @@ function LoginPage({ onUnlock }: { onUnlock: () => void }) {
     <Box sx={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', bgcolor: '#F8F9FB' }}>
       <Paper variant="outlined" sx={{ p: 4, borderRadius: 2, width: 320 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, bgcolor: '#0F2057', borderRadius: 1.5, px: 1.5, py: 0.75, width: 'fit-content' }}>
-          <Box component="img" src={smarterDxLogo} alt="SmarterDX" sx={{ height: 22, display: 'block' }} />
+          <Box component="img" src="/smarterdx_logo.webp" alt="SmarterDX" sx={{ height: 20, display: 'block', objectFit: 'contain' }} />
         </Box>
         <Typography variant="h6" sx={{ mb: 0.5 }}>Sign in</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>Enter the password to access the demo.</Typography>
