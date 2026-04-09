@@ -17,6 +17,7 @@ import {
 } from 'recharts'
 import { TEAM_MEMBERS, type DenialRecord, type DenialState } from '../data/denials'
 import { DENIAL_OUTCOMES, type OutcomeDisposition } from '../data/denialDetail'
+import { type UnderpaymentRecord } from '../data/underpayments'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -604,9 +605,10 @@ function AgingAndWriteoffRisk() {
 
 interface DashboardPageProps {
   denials: DenialRecord[]
+  underpayments: UnderpaymentRecord[]
 }
 
-export default function DashboardPage({ denials }: DashboardPageProps) {
+export default function DashboardPage({ denials, underpayments }: DashboardPageProps) {
   const [tab, setTab] = useState(0)
 
   // Trends filter bar state (display only — static data)
@@ -623,6 +625,11 @@ export default function DashboardPage({ denials }: DashboardPageProps) {
   const totalWrittenOff = outcomes.reduce((s, o) => s + o.writtenOffAmount, 0)
   const recoveryRate    = totalRecovered + totalWrittenOff > 0
     ? (totalRecovered / (totalRecovered + totalWrittenOff)) * 100 : 0
+
+  // ── Underpayment metrics ─────────────────────────────────────────────────────
+  const upOpen         = underpayments.filter(u => u.state === 'Active' || u.state === 'Submitted')
+  const upVarianceOpen = upOpen.reduce((s, u) => s + u.varianceAmount, 0)
+  const upRecovered    = underpayments.filter(u => u.state === 'Recovered').reduce((s, u) => s + (u.recoveredAmount ?? 0), 0)
 
   const urgentList = [...open]
     .filter(d => daysUntil(d.deadline) <= 14)
@@ -667,11 +674,13 @@ export default function DashboardPage({ denials }: DashboardPageProps) {
         <Box sx={{ p: 3, overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
           {/* KPI strip */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
-            <StatCard label="Open Denials"    value={open.length}        sub={`${denials.length} total in system`} />
-            <StatCard label="Due This Week"   value={dueThisWeek.length} sub="deadline within 7 days"
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
+            <StatCard label="Open Denials"       value={open.length}        sub={`${denials.length} total in system`} />
+            <StatCard label="Due This Week"       value={dueThisWeek.length} sub="deadline within 7 days"
               color={dueThisWeek.length > 0 ? '#9B2C2C' : undefined} />
-            <StatCard label="Recovery Rate"   value={`${recoveryRate.toFixed(1)}%`}  sub={`${formatCurrency(totalRecovered)} recovered`} color="#22543D" />
+            <StatCard label="Denial Recovery Rate" value={`${recoveryRate.toFixed(1)}%`} sub={`${formatCurrency(totalRecovered)} recovered`} color="#22543D" />
+            <StatCard label="Variance at Risk"    value={formatCurrency(upVarianceOpen)} sub={`${upOpen.length} open underpayments`} color="#C2410C" />
+            <StatCard label="UP Recovered"        value={formatCurrency(upRecovered)}    sub="underpayment recovery confirmed" color="#14532D" />
           </Box>
 
           {/* Deadlines */}

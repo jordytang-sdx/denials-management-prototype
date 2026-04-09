@@ -1,0 +1,26 @@
+{
+  "groups": [
+    {
+      "group_id": "lifecycle_1",
+      "description": "ADR followed by determination and adjusted remit",
+      "file_names": [
+        "837_claim_Aetna_MaryJohnson.txt",
+        "pdf_ADR_Aetna_MaryJohnson.pdf",
+        "medrec_discharge_MaryJohnson.txt",
+        "pdf_determination_Aetna_MaryJohnson.pdf",
+        "835_remit_Aetna_MaryJohnson_denial.txt",
+        "835_remit_Aetna_MaryJohnson_adjusted.txt"
+      ]
+    },
+    {
+      "group_id": "lifecycle_2",
+      "description": "Recoupment following prior payment",
+      "file_names": [
+        "837_claim_Cigna_RobertLee.txt",
+        "medrec_discharge_RobertLee.txt",
+        "pdf_recoupment_Cigna_RobertLee.pdf",
+        "835_remit_Cigna_RobertLee_recoupment.txt"
+      ]
+    }
+  ]
+}

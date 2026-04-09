@@ -1,0 +1,29 @@
+BAYVIEW MEDICAL CENTER
+DISCHARGE SUMMARY
+
+Patient Name: Robert Lee
+MRN: BV-00077854
+DOB: 04/22/1971
+Member ID: CIG9981002
+Claim Number: CIG-CLM-44191
+Admit Date: 02/01/2024
+Discharge Date: 02/03/2024
+Attending Physician: Emily Chan, MD
+
+Chief Complaint:
+Acute flank pain and decreased urine output.
+
+Hospital Course:
+The patient is a 52-year-old male admitted for evaluation and treatment of acute kidney injury with dehydration. He received IV fluids, serial laboratory monitoring, pain control, and inpatient observation.
+
+Pertinent Findings:
+- Elevated creatinine on admission
+- Reduced urine output
+- Improvement after IV fluid resuscitation
+
+Discharge Diagnoses:
+1. Acute kidney injury
+2. Dehydration
+
+Discharge Condition:
+Improved and stable for discharge home.

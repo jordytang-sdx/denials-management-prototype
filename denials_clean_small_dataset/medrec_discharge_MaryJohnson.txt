@@ -1,0 +1,31 @@
+BAYVIEW MEDICAL CENTER
+DISCHARGE SUMMARY
+
+Patient Name: Mary Johnson
+MRN: BV-00044321
+DOB: 09/14/1958
+Member ID: AET44556677
+Claim Number: AET99887766
+Admit Date: 01/03/2024
+Discharge Date: 01/07/2024
+Attending Physician: Rina Patel, MD
+
+Chief Complaint:
+Shortness of breath, lower extremity edema, and productive cough.
+
+Hospital Course:
+The patient is a 65-year-old female with acute on chronic diastolic heart failure exacerbation, diabetes mellitus, and community-acquired pneumonia. She presented with hypoxia and tachypnea and required inpatient admission for IV diuresis, oxygen support, IV antibiotics, and serial reassessments.
+
+Pertinent Findings:
+- Oxygen saturation 87% on room air on presentation
+- Elevated BNP
+- Chest imaging consistent with pneumonia
+- Required IV Lasix and IV antibiotics
+
+Discharge Diagnoses:
+1. Acute on chronic diastolic heart failure exacerbation
+2. Community-acquired pneumonia
+3. Type 2 diabetes mellitus
+
+Discharge Condition:
+Improved and stable for discharge home with close follow-up.

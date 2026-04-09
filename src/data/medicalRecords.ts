@@ -30,6 +30,76 @@ export interface MedicalRecord {
 
 export const MEDICAL_RECORDS: Record<string, MedicalRecord> = {
 
+  // ── Underpayment patients ────────────────────────────────────────────────────
+
+  'MRN-558821': {  // Harold Nguyen — UP-2026-0041 BCBS Total Hip Arthroplasty
+    patientId: 'MRN-558821',
+    dob: '1948-07-22',
+    sex: 'M',
+    insuranceId: 'BCBS-PPO-558821-01',
+    admitDate: '2026-02-10',
+    dischargeDate: '2026-02-14',
+    admitType: 'Inpatient',
+    attendingPhysician: 'Dr. David Choi, MD',
+    attendingNPI: '3456789012',
+    facility: 'Memorial Health System — Main Campus',
+    diagnoses: [
+      { code: 'M16.11', description: 'Primary osteoarthritis, right hip',                type: 'primary' },
+      { code: 'Z96.641', description: 'Presence of right artificial hip joint',           type: 'secondary' },
+      { code: 'Z79.4',  description: 'Long-term (current) use of anticoagulants',        type: 'secondary' },
+      { code: 'I10',    description: 'Essential (primary) hypertension',                 type: 'secondary' },
+    ],
+    procedures: [
+      { code: '27130', description: 'Total hip arthroplasty, right',         date: '2026-02-10' },
+      { code: '73721', description: 'MRI, hip joint without contrast',       date: '2026-01-15' },
+      { code: '93010', description: 'Electrocardiogram, routine ECG',        date: '2026-02-10' },
+    ],
+    drg: { billed: 'MS-DRG 470', billedWeight: 2.0428 },
+    clinicalSummary: `Mr. Nguyen, a 77-year-old male with a longstanding history of primary right hip osteoarthritis, was admitted for elective total hip arthroplasty on February 10, 2026. Pre-operative workup confirmed end-stage joint degeneration with a Harris Hip Score of 34/100, MRI evidence of Grade 4 cartilage loss, and documented failure of conservative management including analgesics, corticosteroid injections, and six months of structured physical therapy.\n\nThe procedure was performed without complication by Dr. David Choi using a posterior approach with an uncemented acetabular and cemented femoral component. The patient's anticoagulation history (long-term warfarin for paroxysmal atrial fibrillation) required a bridging protocol with enoxaparin pre-operatively and a managed INR on admission of 1.4. Post-operatively the patient was placed on rivaroxaban for VTE prophylaxis per protocol.\n\nDischarge on February 14, 2026 followed successful ambulation with physical therapy clearance, stable vitals, and pain controlled on oral medications. The patient was discharged to home with outpatient PT arranged. MS-DRG 470 (Major Joint Replacement, Lower Extremity, without MCC) appropriately reflects the complexity and resource utilization of this admission.`,
+    keyFacts: [
+      'Harris Hip Score 34/100 pre-operatively — severe functional disability documented',
+      'Grade 4 osteoarthritis confirmed on MRI (Jan 15, 2026)',
+      'Conservative management failure: analgesics, corticosteroid injections, 6 months PT',
+      'Anticoagulation bridging protocol required — increased nursing and pharmacy complexity',
+      'MS-DRG 470 supported by principal procedure CPT 27130 and ICD-10 M16.11',
+      'Correct 2025 DRG 470 base rate per Amendment 3: $12,180 (BCBS applied 2024 rate of $10,420)',
+    ],
+  },
+
+  'MRN-302841': {  // Renata Okonkwo — UP-2026-0044 UHC Sepsis Outlier
+    patientId: 'MRN-302841',
+    dob: '1953-03-14',
+    sex: 'F',
+    insuranceId: 'UHC-ACO-302841-GRP',
+    admitDate: '2026-01-08',
+    dischargeDate: '2026-01-22',
+    admitType: 'Inpatient',
+    attendingPhysician: 'Dr. Priya Sharma, MD',
+    attendingNPI: '4567890123',
+    facility: 'Memorial Health System — Main Campus',
+    diagnoses: [
+      { code: 'A41.9',  description: 'Sepsis, unspecified organism',                       type: 'primary' },
+      { code: 'N18.4',  description: 'Chronic kidney disease, stage 4',                   type: 'secondary' },
+      { code: 'E11.65', description: 'Type 2 diabetes mellitus with hyperglycemia',       type: 'secondary' },
+      { code: 'J96.00', description: 'Acute respiratory failure, unspecified type',        type: 'secondary' },
+    ],
+    procedures: [
+      { code: '36620', description: 'Arterial catheterization, percutaneous', date: '2026-01-08' },
+      { code: '31500', description: 'Intubation, endotracheal, emergency',   date: '2026-01-08' },
+      { code: '90935', description: 'Hemodialysis, one physician evaluation', date: '2026-01-10' },
+    ],
+    drg: { billed: 'MS-DRG 871', billedWeight: 5.2891 },
+    clinicalSummary: `Ms. Okonkwo, a 72-year-old female with CKD Stage 4 and Type 2 diabetes, presented to the Emergency Department on January 8, 2026 in septic shock with a source identified as a urinary tract infection with bacteremia (E. coli). On admission, she was hypotensive (BP 82/54), tachycardic, and febrile at 39.1°C with a lactate of 4.8 mmol/L and WBC of 22,400/μL. She required immediate intubation for acute respiratory failure and transfer to the Medical ICU.\n\nOver the 14-day ICU stay, the patient required continuous vasopressor support (norepinephrine and vasopressin), broad-spectrum antibiotic therapy, and three sessions of continuous renal replacement therapy (CRRT) for acute-on-chronic kidney injury with oliguria and metabolic acidosis. Blood cultures grew E. coli, which was later found to be ESBL-producing, requiring escalation to ertapenem. Repeat echocardiogram showed preserved EF but increased pulmonary pressures consistent with septic physiology.\n\nThe patient was successfully weaned from mechanical ventilation on day 9 and transferred to the step-down unit on day 11. Renal function recovered partially (creatinine improved from 6.2 to 3.8 mg/dL) without requiring long-term dialysis. Discharge to a short-term skilled nursing facility occurred January 22, 2026, following completion of antibiotic course and rehabilitation clearance.`,
+    keyFacts: [
+      'ICU admission: 14 days — vasopressor support, mechanical ventilation days 1–9',
+      'CRRT initiated day 3 for AKI with oliguria — 3 sessions documented',
+      'ESBL E. coli bacteremia requiring escalation to ertapenem',
+      'MS-DRG 871 (Septicemia or Severe Sepsis with MCC) — complexity supports outlier threshold',
+      'Total charges $385,000 exceed UHC outlier threshold — outlier payment triggered',
+      'UHC CCR discrepancy: applied 0.41 vs. contract-specified 0.52 → $17,500 shortfall in outlier payment',
+    ],
+  },
+
   'MRN-104823': {  // Margaret Holloway — BCBS DRG Downgrade
     patientId: 'MRN-104823',
     dob: '1951-03-17',
