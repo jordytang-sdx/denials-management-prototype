@@ -1,48 +1,44 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import {
   Box, Typography, Paper, Button, Chip, Table, TableHead, TableBody,
   TableRow, TableCell, TableContainer, Checkbox, TextField, IconButton,
   LinearProgress, Divider, Alert, Drawer, Tooltip, MenuItem, Select,
-  FormControl, InputLabel, Dialog, DialogTitle, DialogContent,
+  FormControl, InputLabel, Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material'
 import {
   UploadFileOutlined, CloseOutlined, WarningAmberOutlined, AutoFixHighOutlined,
   UpdateOutlined, ChevronRightOutlined, CodeOutlined, AccountTreeOutlined,
+  PolicyOutlined, AccessTimeOutlined,
 } from '@mui/icons-material'
 import { type DenialRecord, type DenialState, type DenialStatus, type PossibleMatch, REVERSE_RELATIONSHIP, TEAM_MEMBERS, type TeamMember } from '../data/denials'
+import { AUDIT_COHORTS, PROGRAM_CONFIG, type AuditProgram } from '../data/auditCohorts'
 
 // ─── Source type ──────────────────────────────────────────────────────────────
 
 type SourceType =
   | 'edi-835'
   | 'med-nec-denial'
-  | 'auth-denial'
   | 'drg-downgrade'
   | 'adr'
   | 'appeal-upheld'
   | 'appeal-overturned'
-  | 'underpayment'
 
 const SOURCE_LABELS: Record<SourceType, string> = {
   'edi-835':           '835 Remit',
   'med-nec-denial':    'Med Nec Denial',
-  'auth-denial':       'Auth Denial',
   'drg-downgrade':     'DRG Downgrade',
   'adr':               'ADR',
   'appeal-upheld':     'Appeal Upheld',
   'appeal-overturned': 'Appeal Overturned',
-  'underpayment':      'Underpayment EOB',
 }
 
 const SOURCE_COLORS: Record<SourceType, { bg: string; color: string }> = {
   'edi-835':           { bg: '#EBF4FF', color: '#1B3A5C' },
   'med-nec-denial':    { bg: '#FFF5F5', color: '#9B1C1C' },
-  'auth-denial':       { bg: '#FFF8E6', color: '#7D5A00' },
   'drg-downgrade':     { bg: '#F5F0FF', color: '#553C9A' },
   'adr':               { bg: '#F0FFF4', color: '#276749' },
   'appeal-upheld':     { bg: '#FEF2F2', color: '#991B1B' },
   'appeal-overturned': { bg: '#ECFDF5', color: '#065F46' },
-  'underpayment':      { bg: '#FFF7ED', color: '#92400E' },
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -163,11 +159,8 @@ const UPDATE_OUTCOMES: Partial<Record<NonNullable<UpdateProposal['updateType']>,
 const CARC_TO_DENIAL_TYPE: Record<string, string> = {
   '4':  'DRG Downgrade',   '6':  'DRG Downgrade',   '97': 'DRG Downgrade',
   '50': 'Medical Necessity','51': 'Medical Necessity','96': 'Medical Necessity','167':'Medical Necessity',
-  '15': 'Authorization',   '55': 'Authorization',   '56': 'Authorization',   '57': 'Authorization',
-  '16': 'Authorization',   '18': 'Authorization',
-  '29': 'Timely Filing',
-  '22': 'Eligibility',     '23': 'Eligibility',     '31': 'Eligibility',
-  '45': 'Underpayment',
+  '18': 'ADR',
+  '45': 'Recoupment',
 }
 
 function denialTypeFromCarc(carc: string): string | null {
@@ -181,14 +174,8 @@ function denialTypeFromCarc(carc: string): string | null {
 const ENGINE_FROM_TYPE: Record<string, string> = {
   'Medical Necessity':  'Appeal',
   'DRG Downgrade':      'Appeal',
-  'Authorization':      'Appeal',
   'ADR':                'Records Request',
-  'Coding Error':       'Corrected Claim',
-  'Administrative':     'Corrected Claim',
-  'Timely Filing':      'Filing Defense',
   'Recoupment':         'Recoupment',
-  'Eligibility':        'Eligibility',
-  'Underpayment':       'Payment Dispute',
 }
 
 // Some source types determine the engine regardless of denial type
@@ -198,7 +185,7 @@ const ENGINE_FROM_SOURCE: Partial<Record<SourceType, string>> = {
   'appeal-overturned': 'Appeal',
 }
 
-const ALL_ENGINES = ['Appeal', 'Corrected Claim', 'Records Request', 'Filing Defense', 'Recoupment', 'Eligibility']
+const ALL_ENGINES = ['Appeal', 'Records Request', 'Recoupment']
 
 function classifyEngine(sourceType: SourceType, denialType: string, uncertainDenialType: boolean): string {
   if (ENGINE_FROM_SOURCE[sourceType]) return ENGINE_FROM_SOURCE[sourceType]!
@@ -325,22 +312,6 @@ const FILE_EXTRACTIONS: Record<string, RawExtraction[]> = {
     uncertainFields: ['har', 'claimId'],
   }],
 
-  // Auth denial letter — Cigna Carolyn Brandt: no prior auth for cardiac procedure
-  // Brandt already has active Cigna Med Nec denial (DN-2026-0358) — same MRN + same payer
-  // → fuzzy match expected: high confidence (MRN + payer match)
-  'AuthDenial_Cigna_MarcusWebb.pdf': [{
-    sourceType: 'auth-denial',
-    patientName: 'Carolyn Brandt', mrn: 'MRN-447129',
-    claimId: 'CLM-NEW-5004', har: '',
-    payer: 'Cigna',
-    denialType: 'Authorization', denialSubtype: 'No Prior Authorization — Cardiac Catheterization',
-    carc: 'CARC-15', rarc: 'N30', deniedAmount: 0,
-    authNumber: '',
-    serviceRequiringAuth: 'Diagnostic Cardiac Catheterization (CPT 93458)',
-    dos: '2026-03-28', deadline: addDays(TODAY, 45),
-    uncertainFields: ['deniedAmount', 'har', 'authNumber'],
-  }],
-
   // Appeal overturned letter — BCBS Margaret Holloway: full payment authorized
   'AppealOverturned_BCBS_MargaretHolloway.pdf': [{
     sourceType: 'appeal-overturned',
@@ -368,20 +339,6 @@ const FILE_EXTRACTIONS: Record<string, RawExtraction[]> = {
     },
   }],
 
-  'EOB_UHC_HaroldSimmons_CLM9921847.pdf': [{
-    sourceType: 'underpayment' as const,
-    patientName: 'Harold Simmons',
-    mrn: 'MRN-109432',
-    claimId: 'CLM-9921847',
-    payer: 'UnitedHealthcare',
-    denialType: 'Underpayment',
-    denialSubtype: 'Contracted Rate Dispute',
-    dos: '2026-02-18',
-    deadline: '2026-04-28',
-    uncertainFields: [],
-    paidAmount: 8430,
-    adjustmentAmount: 4820,
-  }],
 }
 
 const TYPE_EXTRACTIONS: Record<string, RawExtraction[]> = {
@@ -394,15 +351,6 @@ const TYPE_EXTRACTIONS: Record<string, RawExtraction[]> = {
       carc: 'CARC-50', rarc: 'N386',
       deniedAmount: 7340.00, paidAmount: 0, adjustmentAmount: 7340.00,
       dos: '2026-03-10', deadline: addDays(TODAY, 52), uncertainFields: [],
-    },
-    {
-      sourceType: 'edi-835',
-      patientName: 'Lucinda Park', mrn: 'MRN-441902',
-      claimId: 'CLM-9901235', har: 'HAR-882002',
-      payer: 'Aetna', denialType: 'Authorization', denialSubtype: 'No Prior Authorization',
-      carc: 'CARC-15', rarc: 'N30',
-      deniedAmount: 3120.00, paidAmount: 0, adjustmentAmount: 3120.00,
-      dos: '2026-03-11', deadline: addDays(TODAY, 38), uncertainFields: [],
     },
   ],
   pdf: [
@@ -423,8 +371,8 @@ const TYPE_EXTRACTIONS: Record<string, RawExtraction[]> = {
       sourceType: 'edi-835',
       patientName: 'Yvonne Castellano', mrn: 'MRN-330281',
       claimId: 'CLM-5512001', har: 'HAR-660400',
-      payer: 'UnitedHealthcare', denialType: 'Authorization', denialSubtype: 'Retro Auth Denied',
-      carc: 'CARC-15', rarc: 'N30',
+      payer: 'UnitedHealthcare', denialType: 'DRG Downgrade', denialSubtype: 'MS-DRG 470 → 483',
+      carc: 'CARC-4', rarc: 'N115',
       deniedAmount: 9100.00, paidAmount: 0, adjustmentAmount: 9100.00,
       dos: '2026-03-05', deadline: addDays(TODAY, 30), uncertainFields: [],
     },
@@ -538,128 +486,9 @@ GE*1*22091~
 IEA*1*000022091~`,
   },
 
-  // 3 — UPDATE: L1 appeal upheld — reopen for escalation decision
-  //     James Okafor / UHC → DN-2026-0377 (Submitted, Submission Failed)
-  {
-    tempId: 'seed-3', selected: false, status: 'update',
-    sourceFile: 'AppealUpheld_UHC_JamesOkafor.pdf', suggestedEngine: 'Appeal',
-    sourceType: 'appeal-upheld' as const,
-    patientName: 'James Okafor', mrn: 'MRN-318740',
-    claimId: 'CLM-6634882', har: 'HAR-559001',
-    payer: 'UnitedHealthcare',
-    denialType: 'Authorization', denialSubtype: 'No Prior Authorization on File',
-    carc: 'CARC-15', rarc: 'N130',
-    deniedAmount: 6750,
-    dos: '2026-03-01', deadline: addDays(TODAY, 14),
-    furtherAppealRights: 'Level 2 external review available within 60 days.',
-    uncertainFields: [],
-    updateProposal: {
-      existingDenialId: 'DN-2026-0377',
-      label: 'L1 Appeal Upheld by Payer',
-      updateType: 'denial_upheld' as const,
-      suggestedState: 'Active' as const,
-      suggestedStatus: 'In Progress' as const,
-      updates: {},
-      diffs: [
-        { field: 'state',  label: 'Suggested State',  from: 'Submitted',         to: 'Active — reopen for escalation' },
-        { field: 'status', label: 'Payer Decision',    from: 'Submission Failed', to: 'L1 upheld — consider L2 or IRO' },
-      ],
-      episodeResultLabel: 'L1 Appeal Upheld by Payer',
-      episodeResultDescription: 'UnitedHealthcare upheld the authorization denial. L1 appeal reviewed and denied. Level 2 external review available within 60 days.',
-    },
-    rawContent: `UNITEDHEALTHCARE
-APPEAL REVIEW DECISION NOTICE
-
-Date: April 1, 2026
-Reference: UHC-APPEAL-2026-66348
-Provider: Regional Medical Center
-NPI: 1982736450
-
-Patient: James Okafor
-Member ID: MRN318740
-Date of Service: March 1, 2026
-Claim Number: CLM-6634882
-
-RE: FIRST LEVEL APPEAL DECISION — UPHELD
-
-Dear Provider Relations,
-
-UnitedHealthcare has completed its review of the first level appeal submitted for the above-referenced
-claim. After review by our medical director, the original coverage determination has been upheld.
-
-DENIAL REASON:
-Services billed under CPT procedure code(s) were rendered without prior authorization on file. Per
-the member's benefit plan, services require prior authorization to be eligible for coverage.
-Denial Code: CARC-15 / RARC N130.
-
-YOUR FURTHER APPEAL RIGHTS:
-You may request a Level 2 external independent review within 60 days of this notice. To initiate
-an external review, submit a written request to:
-
-  UnitedHealthcare External Review Unit
-  PO Box 30880, Salt Lake City, UT 84130
-
-Amount at issue: $6,750.00
-
-If you have questions, contact Provider Services at 1-877-842-3210.
-
-Sincerely,
-Dr. R. Ellison, MD — UnitedHealthcare Medical Director`,
-  },
-
-  // 4 — UPDATE: Payer changed denial reason on re-adjudication — strategy change needed
-  //     Carolyn Brandt / Cigna 835 → DN-2026-0358 (Active, Appeal Drafting)
-  //     Originally denied as Medical Necessity (CARC-50), now re-adjudicated to Authorization (CARC-15)
-  {
-    tempId: 'seed-4', selected: false, status: 'update',
-    sourceFile: '835_Cigna_CarolynBrandt_readjudicated.edi', suggestedEngine: 'Appeal',
-    sourceType: 'edi-835',
-    patientName: 'Carolyn Brandt', mrn: 'MRN-447129',
-    claimId: 'CLM-5521334', har: 'HAR-430887',
-    payer: 'Cigna',
-    denialType: 'Authorization', denialSubtype: 'No Prior Authorization on File',
-    carc: 'CARC-15', rarc: 'N130',
-    deniedAmount: 3210.75, paidAmount: 0, adjustmentAmount: 3210.75,
-    dos: '2026-03-10', deadline: addDays(TODAY, 35),
-    uncertainFields: [],
-    updateProposal: {
-      existingDenialId: 'DN-2026-0358',
-      label: 'Denial Reason Changed on Re-adjudication',
-      updateType: 'denial_new_reason' as const,
-      suggestedState: 'Active' as const,
-      suggestedStatus: 'In Progress' as const,
-      updates: { carc: 'CARC-15', denialType: 'Authorization' },
-      diffs: [
-        { field: 'carc',       label: 'Denial Code',  from: 'CARC-50 — Medical Necessity', to: 'CARC-15 — Authorization' },
-        { field: 'denialType', label: 'Denial Type',  from: 'Medical Necessity',            to: 'Authorization' },
-        { field: 'status',     label: 'Status',       from: 'Appeal Drafting',              to: 'In Progress — strategy reassessment needed' },
-      ],
-      episodeResultLabel: 'Payer Changed Denial Reason on Re-adjudication',
-      episodeResultDescription: 'Cigna re-adjudicated from Medical Necessity (CARC-50) to Authorization (CARC-15). In-progress appeal strategy needs to change — auth denial requires retro-auth pathway, not clinical criteria argument.',
-    },
-    rawContent: `ISA*00*          *00*          *ZZ*CIGNA          *ZZ*RMCPROVIDER    *260407*1015*^*00501*000033213*0*P*:~
-GS*HP*CIGNA*RMCPROVIDER*20260407*1015*33213*X*005010X221A1~
-ST*835*0001~
-BPR*I*0.00*C*ACH*CTX*01*CIGNA*DA*021000021*4400000031*01*RMCPROVIDER*DA*111222333*20260407~
-TRN*1*835-CIGNA-33213*1928374650~
-DTM*405*20260407~
-N1*PR*CIGNA HEALTH AND LIFE INSURANCE CO*XV*60052~
-N1*PE*REGIONAL MEDICAL CENTER*XX*1982736450~
-CLP*CLM-5521334*4*3210.75*0.00**13*CIGNA-ADJ-33213*11*1~
-CAS*CO*15*3210.75~
-NM1*QC*1*BRANDT*CAROLYN****MI*MRN447129~
-SVC*HC:93458*3210.75*0.00**1~
-DTM*472*20260310~
-CAS*CO*15*3210.75~
-REF*6R*CIGNA-READJ-55213~
-SE*14*0001~
-GE*1*33213~
-IEA*1*000033213~`,
-  },
-
   // ── NEW RECORDS: 835 batch — clean extractions ───────────────────────────
 
-  // 5 — NEW: 835 batch, Medical Necessity, full denial
+  // 3 — NEW: 835 batch, Medical Necessity, full denial
   //     Dorothy Simmonds / UHC — new patient, clean extraction
   {
     tempId: 'seed-5', selected: true, status: 'new',
@@ -725,72 +554,6 @@ REF*LU*N115~
 SE*14*0002~
 GE*1*44002~
 IEA*1*000044002~`,
-  },
-
-  // 7 — NEW: 835 batch, Timely Filing defense needed
-  //     Lucinda Park / Aetna — denial for late submission
-  {
-    tempId: 'seed-7', selected: true, status: 'new',
-    sourceFile: '835_Aetna_batch_20260403.edi', suggestedEngine: 'Filing Defense',
-    sourceType: 'edi-835',
-    patientName: 'Lucinda Park', mrn: 'MRN-441902',
-    claimId: 'CLM-9901235', har: 'HAR-882002',
-    payer: 'Aetna',
-    denialType: 'Timely Filing', denialSubtype: 'Claim Received After 90-Day Limit',
-    carc: 'CARC-29',
-    deniedAmount: 3120, paidAmount: 0, adjustmentAmount: 3120,
-    dos: '2025-12-15', deadline: addDays(TODAY, 12),
-    uncertainFields: [],
-    rawContent: `ISA*00*          *00*          *ZZ*AETNA          *ZZ*RMCPROVIDER    *260403*1100*^*00501*000044003*0*P*:~
-GS*HP*AETNA*RMCPROVIDER*20260403*1100*44003*X*005010X221A1~
-ST*835*0003~
-BPR*I*0.00*C*ACH*CTX*01*AETNA*DA*011000015*8800000012*01*RMCPROVIDER*DA*987654321*20260403~
-TRN*1*835-AETNA-44003*1357924682~
-DTM*405*20260403~
-N1*PR*AETNA HEALTH PLANS*XV*60001~
-N1*PE*REGIONAL MEDICAL CENTER*XX*1982736450~
-CLP*CLM-9901235*4*3120.00*0.00**13*AETNA-ADJ-44003*11*1~
-CAS*CO*29*3120.00~
-NM1*QC*1*PARK*LUCINDA****MI*MRN441902~
-SVC*HC:99234*3120.00*0.00**1~
-DTM*472*20251215~
-CAS*CO*29*3120.00~
-SE*13*0003~
-GE*1*44003~
-IEA*1*000044003~`,
-  },
-
-  // 8 — NEW: 835 batch, Eligibility / COB issue
-  //     Elena Vasquez / Medicare — coverage inactive on DOS
-  {
-    tempId: 'seed-8', selected: true, status: 'new',
-    sourceFile: '835_Medicare_batch_20260403.edi', suggestedEngine: 'Eligibility',
-    sourceType: 'edi-835',
-    patientName: 'Elena Vasquez', mrn: 'MRN-771203',
-    claimId: 'CLM-9901236', har: 'HAR-882003',
-    payer: 'Medicare',
-    denialType: 'Eligibility', denialSubtype: 'Coverage Inactive on Date of Service',
-    carc: 'CARC-31',
-    deniedAmount: 4480, paidAmount: 0, adjustmentAmount: 4480,
-    dos: '2026-03-08', deadline: addDays(TODAY, 40),
-    uncertainFields: [],
-    rawContent: `ISA*00*          *00*          *ZZ*MEDICARE       *ZZ*RMCPROVIDER    *260403*1100*^*00501*000044004*0*P*:~
-GS*HP*MEDICARE*RMCPROVIDER*20260403*1100*44004*X*005010X221A1~
-ST*835*0001~
-BPR*I*0.00*C*ACH*CTX*01*MEDICARE*DA*021030004*3700000044*01*RMCPROVIDER*DA*777888999*20260403~
-TRN*1*835-MCR-44004*2938475610~
-DTM*405*20260403~
-N1*PR*CENTERS FOR MEDICARE AND MEDICAID SERVICES*XV*00001~
-N1*PE*REGIONAL MEDICAL CENTER*XX*1982736450~
-CLP*CLM-9901236*4*4480.00*0.00**13*MCR-ADJ-44004*11*1~
-CAS*CO*31*4480.00~
-NM1*QC*1*VASQUEZ*ELENA****MI*MRN771203~
-SVC*HC:99234*4480.00*0.00**1~
-DTM*472*20260308~
-CAS*CO*31*4480.00~
-SE*13*0001~
-GE*1*44004~
-IEA*1*000044004~`,
   },
 
   // ── NEW RECORDS: PDF/letter extractions — uncertain fields ───────────────
@@ -896,135 +659,493 @@ Failure to respond will result in claim denial.
 Palmetto GBA Medical Review Department`,
   },
 
-  // 11 — NEW: Auth denial letter, uncertain amount + HAR, HIGH fuzzy match
-  //      Carolyn Brandt / Cigna — MRN-447129 + same payer matches DN-2026-0358
-  {
-    tempId: 'seed-11', selected: true, status: 'new',
-    sourceFile: 'AuthDenial_Cigna_CarolynBrandt_NewClaim.pdf', suggestedEngine: 'Appeal',
-    sourceType: 'auth-denial',
-    patientName: 'Carolyn Brandt', mrn: 'MRN-447129',
-    claimId: 'CLM-NEW-5004', har: '',
-    payer: 'Cigna',
-    denialType: 'Authorization', denialSubtype: 'No Prior Authorization — Cardiac Catheterization',
-    carc: 'CARC-15', rarc: 'N30', deniedAmount: 0,
-    authNumber: '',
-    serviceRequiringAuth: 'Diagnostic Cardiac Catheterization (CPT 93458)',
-    dos: '2026-03-28', deadline: addDays(TODAY, 45),
-    uncertainFields: ['deniedAmount', 'har', 'authNumber'],
-    rawContent: `CIGNA HEALTH AND LIFE INSURANCE COMPANY
-EXPLANATION OF BENEFITS / NOTICE OF NON-COVERED SERVICES
+]
 
-Date: April 2, 2026
-Document Reference: CGN-EOB-2026-55204
-Provider: Regional Medical Center
+// ─── Audit ingestion types ────────────────────────────────────────────────────
 
-Patient Name: Carolyn Brandt
-Member ID: U44712900
-Date of Service: March 28, 2026
-Service: Diagnostic Cardiac Catheterization (CPT 93458)
+interface AuditClaim {
+  claimId: string
+  patientName: string
+  mrn: string
+  dos: string
+  amount?: number
+  drgCode?: string
+}
 
-CLAIM STATUS: DENIED
+interface AuditExtraction {
+  program: AuditProgram
+  name: string
+  contractor: string
+  probeFocus: string
+  auditPeriodStart: string
+  auditPeriodEnd: string
+  responseDeadline?: string
+  responseDeadlineLabel?: string
+  notes?: string
+  claims: AuditClaim[]
+  existingCohortId?: string
+  rawContent?: string
+}
 
-REASON FOR DENIAL:
-  CARC 15 — Claim/service denied. The submitted service required prior authorization which
-  is not on file with Cigna at the time of adjudication.
-  RARC N30 — No prior authorization was obtained for this service.
+interface TagUpdate {
+  denialId: string
+  auditCohortId: string
+  auditProgram: AuditProgram
+}
 
-NOTE: Our records do not show a prior authorization request for CPT 93458 for this member
-on the date of service. Please verify authorization records. If authorization was obtained
-in error, submit corrected claim with authorization number.
+// ─── Audit file mock extractions ──────────────────────────────────────────────
 
-AMOUNT BILLED: [Not legible — see claim file]
-AMOUNT COVERED: $0.00
-PATIENT RESPONSIBILITY: $0.00 (provider adjustment)
+const AUDIT_FILE_EXTRACTIONS: Record<string, AuditExtraction> = {
 
-APPEAL RIGHTS:
-You may appeal this determination within 180 days. Submit to:
-  Cigna Appeals & Grievances — Provider Division
-  PO Box 188011, Chattanooga, TN 37422
-
-Questions: 1-800-244-6224`,
-  },
-
-  // 12 — NEW: Underpayment EOB — contracted rate dispute
-  //      Michael Torres / Humana — paid at wrong rate, new patient
-  {
-    tempId: 'seed-12', selected: true, status: 'new',
-    sourceFile: 'EOB_Humana_MichaelTorres.pdf', suggestedEngine: 'Payment Dispute',
-    sourceType: 'underpayment',
-    patientName: 'Michael Torres', mrn: 'MRN-662910',
-    claimId: 'CLM-NEW-5005', har: 'HAR-NEW-5005',
-    payer: 'Humana',
-    denialType: 'Underpayment', denialSubtype: 'Contracted Rate Dispute',
-    carc: 'CARC-45',
-    deniedAmount: 3180, paidAmount: 6840, adjustmentAmount: 3180,
-    dos: '2026-03-05', deadline: addDays(TODAY, 55),
-    uncertainFields: [],
-    rawContent: `HUMANA HEALTH PLAN
-EXPLANATION OF BENEFITS
+  // RAC probe notice with 3 claims: 2 already tagged in AC-2026-001, 1 new
+  'RAC_Cotiviti_BCBS_DRG_Audit.pdf': {
+    program: 'RAC',
+    name: 'BCBS DRG Overpayment Probe — Surgical Implant Cases',
+    contractor: 'Cotiviti',
+    probeFocus: 'MS-DRG 470/480/481/483 — CC/MCC validation, device carveout documentation',
+    auditPeriodStart: '2024-01-01',
+    auditPeriodEnd: '2025-12-31',
+    responseDeadline: addDays(TODAY, 6),
+    responseDeadlineLabel: 'Discussion Period expires',
+    existingCohortId: 'AC-2026-001',
+    claims: [
+      { claimId: 'CLM-8847291', patientName: 'Margaret Holloway', mrn: 'MRN-104823', dos: '2026-02-14', amount: 4210.00, drgCode: 'MS-DRG 291 → 292' },
+      { claimId: 'CLM-3317661', patientName: 'Nancy Whitfield',   mrn: 'MRN-612847', dos: '2026-01-30', amount: 8920.00, drgCode: 'MS-DRG 470' },
+      { claimId: 'CLM-7743092', patientName: 'Robert Ellison',    mrn: 'MRN-992041', dos: '2025-11-22', amount: 6340.00, drgCode: 'MS-DRG 481' },
+    ],
+    rawContent: `COTIVITI
+RECOVERY AUDIT CONTRACTOR — AUDIT NOTIFICATION LETTER
 
 Date: April 3, 2026
-Humana Reference: HUM-EOB-2026-66291
+RAC Reference: COT-RAC-2026-00441
 Provider: Regional Medical Center (NPI: 1982736450)
+Contractor Region: Jurisdiction E — BCBS Illinois
 
-Patient: Michael Torres
-Member ID: HUM662910
-Date of Service: March 5, 2026
+RE: POST-PAYMENT AUDIT — MS-DRG 470/480/481/483 SURGICAL ADMISSIONS
 
-CPT Code: 27447 — Total Knee Arthroplasty (Bilateral)
-Billed Amount: $10,020.00
-Contracted Rate (per agreement): $10,020.00
-Amount Paid: $6,840.00
-Adjustment: $3,180.00
-  CARC 45 — Charge exceeds fee schedule / maximum allowable
+Dear Provider,
 
-NOTE: Payment was issued at the non-facility rate (POS 11) rather than the
-contracted facility rate (POS 21). Please verify place of service coding.
-If facility rate applies, submit a corrected claim with correct POS code for
-re-adjudication at contracted facility rate.
+Cotiviti, on behalf of Blue Cross Blue Shield of Illinois, has identified
+claims for post-payment review under the Recovery Audit program. The
+following claims have been selected for MS-DRG validation review:
 
-Questions regarding this payment: 1-800-457-4708 (Humana Provider Services)`,
+CLAIM SCHEDULE:
+  CLM-8847291 | Margaret Holloway   | MRN-104823 | 02/14/2026 | DRG 291→292 | $4,210.00
+  CLM-3317661 | Nancy Whitfield     | MRN-612847 | 01/30/2026 | DRG 470     | $8,920.00
+  CLM-7743092 | Robert Ellison      | MRN-992041 | 11/22/2025 | DRG 481     | $6,340.00
+
+AUDIT BASIS:
+Review is focused on MCC/CC code validation and device carveout documentation
+for surgical implant cases billed under DRG 470/480/481/483. Review period
+covers dates of service January 1, 2024 through December 31, 2025.
+
+DISCUSSION PERIOD:
+You have 30 days from the date of this letter to discuss these findings before
+the audit demand becomes final. To schedule a Discussion Period call, contact:
+  Cotiviti Provider Relations: 1-855-331-6920
+  Reference: COT-RAC-2026-00441
+
+Failure to respond will result in a formal demand for recoupment.
+
+Cotiviti, Inc. — Recovery Audit Operations
+On behalf of Blue Cross Blue Shield of Illinois`,
   },
 
-  // ── DUPLICATE: already in the system ─────────────────────────────────────
+  // TPE cohort-level notification — no claims, matches existing AC-2026-002
+  'TPE_PalmettoGBA_Sepsis_Round2.pdf': {
+    program: 'TPE',
+    name: 'Medicare Sepsis & Pneumonia Coding — Round 2 Notification',
+    contractor: 'Palmetto GBA (MAC J-M)',
+    probeFocus: 'MS-DRG 870/871/872 (sepsis) and MS-DRG 177/178/179/193/194/195 (pneumonia) — principal diagnosis sequencing, MCC/CC support',
+    auditPeriodStart: '2025-07-01',
+    auditPeriodEnd: '2026-02-28',
+    responseDeadline: addDays(TODAY, 16),
+    responseDeadlineLabel: 'Round 2 ADR window opens',
+    existingCohortId: 'AC-2026-002',
+    claims: [],
+    rawContent: `PALMETTO GBA — MEDICARE ADMINISTRATIVE CONTRACTOR
+TARGETED PROBE AND EDUCATE (TPE) — ROUND 2 NOTIFICATION
 
-  // 13 — DUPLICATE: Harold Simmons / UHC underpayment EOB — CLM-9921847 = DN-2026-0521
-  {
-    tempId: 'seed-13', selected: false, status: 'duplicate',
-    sourceFile: 'EOB_UHC_HaroldSimmons_CLM9921847.pdf', suggestedEngine: 'Payment Dispute',
-    sourceType: 'underpayment',
-    patientName: 'Harold Simmons', mrn: 'MRN-109432',
-    claimId: 'CLM-9921847', har: 'HAR-773290',
-    payer: 'UnitedHealthcare',
-    denialType: 'Underpayment', denialSubtype: 'Contracted Rate Dispute',
-    deniedAmount: 4820, paidAmount: 8430, adjustmentAmount: 4820,
-    dos: '2026-02-18', deadline: '2026-04-28',
-    uncertainFields: [],
-    rawContent: `UNITEDHEALTHCARE
-EXPLANATION OF BENEFITS
-
-Date: March 12, 2026
-UHC Reference: UHC-EOB-2026-99218
+Date: April 3, 2026
+TPE Reference: PGR-TPE-2026-00882
 Provider: Regional Medical Center (NPI: 1982736450)
+MAC Jurisdiction: J-M (Southeast)
 
-Patient: Harold Simmons
-Member ID: UHC109432
-Date of Service: February 18, 2026
-Claim Number: CLM-9921847
+RE: ROUND 2 PROBE — SEPSIS AND PNEUMONIA MS-DRG CODING
 
-CPT Code: 27447 — Total Knee Arthroplasty
-Billed Amount: $13,250.00
-Contracted Rate: $13,250.00
-Amount Paid: $8,430.00
-Adjustment: $4,820.00
-  CARC 45 — Charge exceeds fee schedule / maximum allowable (implant pricing dispute)
+Dear Provider,
 
-NOTE: This EOB was previously received on March 5, 2026. This document appears to be a
-re-transmission of the same EOB. Claim CLM-9921847 is already on file.
+Following completion of Round 1 Targeted Probe and Educate review for
+sepsis (MS-DRG 870/871/872) and pneumonia (MS-DRG 177–195) coding,
+Palmetto GBA has initiated Round 2 of the TPE process.
 
-Questions: 1-800-842-3210 (UHC Provider Services)`,
+ROUND 1 RESULTS:
+  Claims reviewed: 10
+  Error rate identified: 40%
+  Primary finding: Principal diagnosis sequencing errors and insufficient
+  clinical documentation supporting MCC/CC codes.
+
+ROUND 2 SCOPE:
+  A new probe sample will be selected from claims with dates of service
+  July 1, 2025 through February 28, 2026. Individual ADR letters will
+  follow for each selected claim.
+
+CORRECTIVE ACTION PLAN (CAP):
+  Your CAP submission addressing Round 1 findings remains due May 1, 2026.
+  Please ensure your coding team has completed the education session
+  materials provided in the Round 1 outcome letter.
+
+IMPORTANT: This notification does NOT require an immediate response.
+Individual ADR letters for Round 2 probe claims will be sent separately.
+
+For questions, contact:
+  Palmetto GBA Provider Education: 1-800-476-3126
+  Reference: PGR-TPE-2026-00882
+
+Palmetto GBA Medical Review Department`,
   },
-]
+}
+
+// ─── Audit helper functions ───────────────────────────────────────────────────
+
+function formatDateAudit(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function daysUntilAudit(dateStr: string): number {
+  return Math.ceil((new Date(dateStr).getTime() - new Date(TODAY).getTime()) / 86400000)
+}
+
+// ─── Audit ingest wizard ──────────────────────────────────────────────────────
+
+function AuditIngestWizard({
+  extraction, open, onClose, denials, onAuditCommit,
+}: {
+  extraction: AuditExtraction | null
+  open: boolean
+  onClose: () => void
+  denials: DenialRecord[]
+  onAuditCommit: (newInstances: DenialRecord[], tagUpdates: TagUpdate[]) => void
+}) {
+  const [step, setStep] = useState(0)
+  const [selectedClaimIds, setSelectedClaimIds] = useState<Set<string>>(new Set())
+
+  // Reset when extraction changes
+  const prevRef = useRef<AuditExtraction | null>(null)
+  if (extraction !== prevRef.current) {
+    prevRef.current = extraction
+    if (extraction) {
+      setStep(0)
+      setSelectedClaimIds(new Set(extraction.claims.map(c => c.claimId)))
+    }
+  }
+
+  const claimResults = useMemo(() => {
+    if (!extraction) return []
+    return extraction.claims.map(c => {
+      const matched = denials.find(d => d.claim.claimId === c.claimId)
+      const alreadyInCohort = matched?.auditCohortId === extraction.existingCohortId
+      return { ...c, matched: matched ?? null, alreadyInCohort, isNew: !matched }
+    })
+  }, [extraction, denials])
+
+  if (!extraction) return null
+
+  const prog = PROGRAM_CONFIG[extraction.program]
+  const matchedCohort = extraction.existingCohortId
+    ? AUDIT_COHORTS.find(c => c.id === extraction.existingCohortId) ?? null
+    : null
+
+  const hasClaims = extraction.claims.length > 0
+  const steps = hasClaims ? ['Cohort', 'Claims', 'Confirm'] : ['Cohort', 'Confirm']
+  const isLastStep = step === steps.length - 1
+
+  const selectedResults = claimResults.filter(c => selectedClaimIds.has(c.claimId))
+  const newToCreate     = selectedResults.filter(c => c.isNew)
+  const toTag           = selectedResults.filter(c => c.matched && !c.alreadyInCohort)
+  const alreadyLinked   = selectedResults.filter(c => c.alreadyInCohort)
+
+  function handleCommit() {
+    const targetCohortId = extraction.existingCohortId ?? `AC-2026-${Date.now()}`
+    let idOffset = 1600
+    const newInstances: DenialRecord[] = newToCreate.map(c => ({
+      id: `DN-2026-${String(idOffset++).padStart(4, '0')}`,
+      patient: { name: c.patientName, mrn: c.mrn },
+      claim: { claimId: c.claimId, har: '' },
+      payer: matchedCohort?.contractor ?? extraction.contractor,
+      denialType: 'Recoupment',
+      denialSubtype: `Overpayment — ${extraction.program} Audit`,
+      carc: 'CARC-45',
+      deniedAmount: c.amount ?? 0,
+      deadline: extraction.responseDeadline ?? addDays(TODAY, 30),
+      createdAt: TODAY,
+      dos: c.dos,
+      state: 'Active' as const,
+      status: 'Awaiting Records' as const,
+      assignedTo: null,
+      notes: `Identified via ${extraction.program} audit letter (${targetCohortId}).${c.drgCode ? ` DRG: ${c.drgCode}.` : ''}`,
+      auditProgram: extraction.program,
+      auditCohortId: targetCohortId,
+    }))
+
+    const tagUpdates: TagUpdate[] = toTag.map(c => ({
+      denialId: c.matched!.id,
+      auditCohortId: targetCohortId,
+      auditProgram: extraction.program,
+    }))
+
+    onAuditCommit(newInstances, tagUpdates)
+  }
+
+  function toggleClaim(claimId: string) {
+    setSelectedClaimIds(prev => {
+      const next = new Set(prev)
+      if (next.has(claimId)) next.delete(claimId)
+      else next.add(claimId)
+      return next
+    })
+  }
+
+  return (
+    <Dialog
+      open={open} onClose={onClose} maxWidth="md" fullWidth
+      slotProps={{ paper: { sx: { borderRadius: 2, height: '82vh', display: 'flex', flexDirection: 'column' } } }}
+    >
+      {/* Header */}
+      <DialogTitle sx={{ pb: 1.25, display: 'flex', alignItems: 'flex-start', gap: 1.5, flexShrink: 0 }}>
+        <Box sx={{ flex: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <PolicyOutlined sx={{ fontSize: 18, color: prog.color }} />
+            <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 700 }}>Audit Letter Detected</Typography>
+            <Chip label={prog.label} size="small" sx={{ height: 18, fontWeight: 700, fontSize: '0.65rem', bgcolor: prog.bg, color: prog.color, '& .MuiChip-label': { px: 0.75 } }} />
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{extraction.name}</Typography>
+        </Box>
+        <IconButton size="small" onClick={onClose}><CloseOutlined fontSize="small" /></IconButton>
+      </DialogTitle>
+
+      {/* Step indicator */}
+      <Box sx={{ px: 3, pb: 1.25, display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
+        {steps.map((s, i) => (
+          <Box key={s} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            {i > 0 && <Box sx={{ width: 28, height: 1, bgcolor: 'divider' }} />}
+            <Box sx={{
+              width: 20, height: 20, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              bgcolor: i < step ? '#16A34A' : i === step ? 'primary.main' : 'grey.300',
+            }}>
+              <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: i <= step ? '#fff' : 'text.secondary', lineHeight: 1 }}>
+                {i < step ? '✓' : i + 1}
+              </Typography>
+            </Box>
+            <Typography variant="caption" sx={{ fontWeight: i === step ? 700 : 400, color: i === step ? 'text.primary' : 'text.secondary', whiteSpace: 'nowrap' }}>
+              {s}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+
+      <Divider sx={{ flexShrink: 0 }} />
+
+      {/* Step content */}
+      <DialogContent sx={{ p: 0, overflow: 'auto', flex: 1 }}>
+
+        {/* ── Step 0: Cohort ── */}
+        {step === 0 && (
+          <Box sx={{ p: 3 }}>
+            {matchedCohort ? (
+              <Alert severity="success" sx={{ mb: 2.5, borderRadius: 1.5, fontSize: '0.8125rem' }}>
+                <strong>Existing Cohort Match — {matchedCohort.id}</strong>
+                {' '}This letter is a follow-up for "{matchedCohort.name}". New claims will be linked to this cohort.
+              </Alert>
+            ) : (
+              <Alert severity="info" sx={{ mb: 2.5, borderRadius: 1.5, fontSize: '0.8125rem' }}>
+                <strong>New Cohort</strong> — No matching open cohort found. A new {extraction.program} cohort will be created.
+              </Alert>
+            )}
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
+              <DrawerField label="Program" value={extraction.program} onChange={() => {}} readOnly />
+              <DrawerField label="Contractor" value={extraction.contractor} onChange={() => {}} readOnly />
+              <DrawerField label="Audit Period Start" value={extraction.auditPeriodStart} onChange={() => {}} readOnly />
+              <DrawerField label="Audit Period End" value={extraction.auditPeriodEnd} onChange={() => {}} readOnly />
+            </Box>
+            <Box sx={{ mb: 2 }}>
+              <DrawerField label="Probe Focus" value={extraction.probeFocus} onChange={() => {}} readOnly multiline />
+            </Box>
+
+            {extraction.responseDeadline && (() => {
+              const days = daysUntilAudit(extraction.responseDeadline)
+              return (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.25, bgcolor: days <= 7 ? '#FEF2F2' : '#FFFBEB', border: '1px solid', borderColor: days <= 7 ? '#FECACA' : '#FDE68A', borderRadius: 1.5 }}>
+                  <AccessTimeOutlined sx={{ fontSize: 14, color: days <= 7 ? '#DC2626' : '#D97706', flexShrink: 0 }} />
+                  <Typography variant="caption" sx={{ color: days <= 7 ? '#991B1B' : '#92400E', fontWeight: 500 }}>
+                    <strong>{extraction.responseDeadlineLabel}:</strong>{' '}
+                    {formatDateAudit(extraction.responseDeadline)}
+                    {' '}({days >= 0 ? `${days}d remaining` : `${Math.abs(days)}d overdue`})
+                  </Typography>
+                </Box>
+              )
+            })()}
+
+            {extraction.claims.length === 0 && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: '#F8F9FB', borderRadius: 1.5, border: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary">
+                  This is a cohort-level notification with no specific claims listed.
+                  Individual ADR letters will arrive separately and will auto-link to this cohort.
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {/* ── Step 1: Claims ── */}
+        {hasClaims && step === 1 && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+              {extraction.claims.length} claim{extraction.claims.length !== 1 ? 's' : ''} found in letter
+            </Typography>
+            <Paper variant="outlined" sx={{ borderRadius: 1.5, overflow: 'hidden' }}>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: '#F8F9FB' }}>
+                      <TableCell padding="checkbox" sx={{ width: 44, pl: 1.5 }} />
+                      <TableCell sx={{ py: 1, fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>Claim ID</TableCell>
+                      <TableCell sx={{ py: 1, fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>Patient</TableCell>
+                      <TableCell sx={{ py: 1, fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>DOS</TableCell>
+                      <TableCell sx={{ py: 1, fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary', textAlign: 'right' }}>Amount</TableCell>
+                      <TableCell sx={{ py: 1, fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>System Match</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {claimResults.map(c => (
+                      <TableRow key={c.claimId} sx={{ '&:last-child td': { border: 0 } }}>
+                        <TableCell padding="checkbox" sx={{ pl: 1.5 }}>
+                          <Checkbox size="small" checked={selectedClaimIds.has(c.claimId)} onChange={() => toggleClaim(c.claimId)} />
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem' }}>{c.claimId}</Typography>
+                          {c.drgCode && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.68rem' }}>{c.drgCode}</Typography>}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.8125rem' }}>{c.patientName}</Typography>
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: '0.68rem' }}>{c.mrn}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption" color="text.secondary">{formatDateAudit(c.dos)}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          {c.amount ? (
+                            <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'error.main', fontSize: '0.8125rem' }}>
+                              {fmt(c.amount)}
+                            </Typography>
+                          ) : <Typography variant="caption" color="text.disabled">—</Typography>}
+                        </TableCell>
+                        <TableCell>
+                          {c.alreadyInCohort ? (
+                            <Chip label="In Cohort" size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 600, bgcolor: '#DCFCE7', color: '#14532D', '& .MuiChip-label': { px: 0.75 } }} />
+                          ) : c.matched ? (
+                            <Box>
+                              <Chip label="Link to Existing" size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 600, bgcolor: '#EFF6FF', color: '#1D4ED8', '& .MuiChip-label': { px: 0.75 } }} />
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.65rem', mt: 0.25, fontFamily: 'monospace' }}>{c.matched.id}</Typography>
+                            </Box>
+                          ) : (
+                            <Chip label="New Instance" size="small" sx={{ height: 18, fontSize: '0.6rem', fontWeight: 600, bgcolor: '#FFF7ED', color: '#C2410C', '& .MuiChip-label': { px: 0.75 } }} />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </Box>
+        )}
+
+        {/* ── Confirm step ── */}
+        {isLastStep && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Review & Confirm</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+
+              {/* Cohort */}
+              <Paper variant="outlined" sx={{ borderRadius: 1.5, p: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                  <Chip label={extraction.program} size="small" sx={{ height: 18, fontWeight: 700, fontSize: '0.65rem', bgcolor: prog.bg, color: prog.color, '& .MuiChip-label': { px: 0.75 } }} />
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+                    {matchedCohort ? `Link to existing cohort ${matchedCohort.id}` : 'Create new audit cohort'}
+                  </Typography>
+                </Box>
+                <Typography variant="caption" color="text.secondary">{extraction.name}</Typography>
+              </Paper>
+
+              {alreadyLinked.length > 0 && (
+                <Paper variant="outlined" sx={{ borderRadius: 1.5, p: 2, bgcolor: '#F0FDF4', borderColor: '#BBF7D0' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem', color: '#15803D' }}>
+                    {alreadyLinked.length} claim{alreadyLinked.length !== 1 ? 's' : ''} already in cohort — no action needed
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#15803D', display: 'block', mt: 0.25, fontFamily: 'monospace' }}>
+                    {alreadyLinked.map(c => c.claimId).join(' · ')}
+                  </Typography>
+                </Paper>
+              )}
+
+              {toTag.length > 0 && (
+                <Paper variant="outlined" sx={{ borderRadius: 1.5, p: 2, bgcolor: '#EFF6FF', borderColor: '#BFDBFE' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem', color: '#1D4ED8' }}>
+                    {toTag.length} existing denial{toTag.length !== 1 ? 's' : ''} will be tagged with this audit cohort
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#1D4ED8', display: 'block', mt: 0.25 }}>
+                    {toTag.map(c => `${c.matched!.id} — ${c.patientName}`).join('; ')}
+                  </Typography>
+                </Paper>
+              )}
+
+              {newToCreate.length > 0 && (
+                <Paper variant="outlined" sx={{ borderRadius: 1.5, p: 2, bgcolor: '#FFF7ED', borderColor: '#FED7AA' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem', color: '#C2410C' }}>
+                    {newToCreate.length} new Recoupment instance{newToCreate.length !== 1 ? 's' : ''} will be created in Active worklist
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#C2410C', display: 'block', mt: 0.25, fontFamily: 'monospace' }}>
+                    {newToCreate.map(c => `${c.claimId} — ${c.patientName}`).join('; ')}
+                  </Typography>
+                </Paper>
+              )}
+
+              {extraction.claims.length === 0 && (
+                <Paper variant="outlined" sx={{ borderRadius: 1.5, p: 2, bgcolor: '#F8F9FB' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.8125rem', color: 'text.secondary' }}>
+                    Cohort-level notification only — no instances will be created.
+                    Individual ADRs will auto-link to this cohort when they arrive.
+                  </Typography>
+                </Paper>
+              )}
+            </Box>
+          </Box>
+        )}
+      </DialogContent>
+
+      {/* Footer actions */}
+      <Divider sx={{ flexShrink: 0 }} />
+      <DialogActions sx={{ px: 3, py: 1.5, gap: 1, flexShrink: 0 }}>
+        {step > 0 && (
+          <Button size="small" onClick={() => setStep(s => s - 1)} sx={{ color: 'text.secondary', fontWeight: 500 }}>Back</Button>
+        )}
+        <Box sx={{ flex: 1 }} />
+        <Button size="small" variant="outlined" onClick={onClose} sx={{ color: 'text.secondary', borderColor: 'divider', fontWeight: 500 }}>Cancel</Button>
+        {!isLastStep ? (
+          <Button size="small" variant="contained" disableElevation onClick={() => setStep(s => s + 1)} sx={{ fontWeight: 600 }}>
+            Next
+          </Button>
+        ) : (
+          <Button size="small" variant="contained" disableElevation onClick={handleCommit} sx={{ fontWeight: 600 }}>
+            Commit to Audits
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  )
+}
 
 function getFileType(name: string): 'edi' | 'pdf' | 'csv' | null {
   const ext = name.split('.').pop()?.toLowerCase()
@@ -1040,11 +1161,8 @@ let tempIdCounter = 1
 
 const ENGINE_COLORS: Record<string, { bg: string; color: string }> = {
   'Appeal':          { bg: '#EBF4FF', color: '#1B3A5C' },
-  'Corrected Claim': { bg: '#FFF8E6', color: '#7D5A00' },
   'Records Request': { bg: '#F0FFF4', color: '#276749' },
-  'Filing Defense':  { bg: '#FFF5F5', color: '#C0392B' },
   'Recoupment':      { bg: '#F5F0FF', color: '#553C9A' },
-  'Eligibility':     { bg: '#F0F4FF', color: '#2D4799' },
   '?':               { bg: '#F7F7F7', color: '#718096' },
 }
 
@@ -1460,17 +1578,6 @@ function RecordDrawer({
           </Box>
         )}
 
-        {/* ── Auth: authorization detail ───────────────────────────────────── */}
-        {st === 'auth-denial' && (
-          <Box>
-            <SectionHeading>Authorization</SectionHeading>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              <DrawerField label="Auth Number on File" value={record.authNumber ?? ''} uncertain={u.includes('authNumber')} onChange={v => onUpdate('authNumber', v)} />
-              <DrawerField label="Service Requiring Auth" value={record.serviceRequiringAuth ?? ''} uncertain={u.includes('serviceRequiringAuth')} multiline onChange={v => onUpdate('serviceRequiringAuth', v)} />
-            </Box>
-          </Box>
-        )}
-
         {/* ── DRG: comparison ─────────────────────────────────────────────── */}
         {st === 'drg-downgrade' && (
           <Box>
@@ -1683,10 +1790,34 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
   const [rawFiles, setRawFiles] = useState<Record<string, string>>({})
   const [rawViewFile, setRawViewFile] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Audit wizard state
+  const [stagedAudit, setStagedAudit] = useState<AuditExtraction | null>(null)
+  const [auditWizardOpen, setAuditWizardOpen] = useState(false)
+  const [auditCommitted, setAuditCommitted] = useState<{ name: string; program: AuditProgram } | null>(null)
 
   const existingDenialByClaimId = Object.fromEntries(denials.map(d => [d.claim.claimId, d]))
 
   function processFile(file: File) {
+    // ── Audit letter detection ─────────────────────────────────────────────
+    const auditExt = AUDIT_FILE_EXTRACTIONS[file.name]
+    if (auditExt) {
+      setProcessing(prev => [...prev, file.name])
+      setCommitted(null)
+      setAuditCommitted(null)
+      const reader = new FileReader()
+      reader.onload = e => {
+        const text = e.target?.result as string
+        if (text) setRawFiles(prev => ({ ...prev, [file.name]: text }))
+      }
+      reader.readAsText(file)
+      setTimeout(() => {
+        setProcessing(prev => prev.filter(n => n !== file.name))
+        setStagedAudit(auditExt)
+        setAuditWizardOpen(true)
+      }, 1400)
+      return
+    }
+
     const fileType = getFileType(file.name)
     if (!fileType) return
 
@@ -1859,7 +1990,7 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
         <UploadFileOutlined sx={{ fontSize: 36, color: 'text.disabled', mb: 1 }} />
         <Typography variant="body1" sx={{ fontWeight: 500 }}>Drop files here or click to browse</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          Accepts 835 EDI remits, PDF denial letters, ADR letters, appeal responses, and CSV exports
+          Accepts 835 EDI remits, PDF denial letters, ADR letters, appeal responses, audit notices, and CSV exports
         </Typography>
       </Paper>
 
@@ -1876,6 +2007,26 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
       {committed !== null && (
         <Alert severity="success" onClose={() => setCommitted(null)} sx={{ borderRadius: 1.5 }}>
           {committed} denial{committed !== 1 ? 's' : ''} added to the <strong>Active</strong> worklist.
+        </Alert>
+      )}
+      {auditCommitted && (
+        <Alert
+          severity="success"
+          icon={<PolicyOutlined fontSize="small" />}
+          onClose={() => setAuditCommitted(null)}
+          sx={{ borderRadius: 1.5 }}
+        >
+          <Chip
+            label={auditCommitted.program}
+            size="small"
+            sx={{
+              height: 16, fontSize: '0.6rem', fontWeight: 700, mr: 0.75, verticalAlign: 'middle',
+              bgcolor: PROGRAM_CONFIG[auditCommitted.program].bg,
+              color: PROGRAM_CONFIG[auditCommitted.program].color,
+              '& .MuiChip-label': { px: 0.75 },
+            }}
+          />
+          <strong>{auditCommitted.name}</strong> — cohort committed. Any new instances were added to the worklist and existing denials tagged. View in <strong>Audits</strong>.
         </Alert>
       )}
       {hasUncertain && (
@@ -2056,6 +2207,23 @@ export default function IngestPage({ denials, onCommit, onUpdate }: IngestPagePr
           </Paper>
         </Box>
       )}
+
+      {/* ── Audit ingest wizard ────────────────────────────────────────────── */}
+      <AuditIngestWizard
+        extraction={stagedAudit}
+        open={auditWizardOpen}
+        onClose={() => { setAuditWizardOpen(false); setStagedAudit(null) }}
+        denials={denials}
+        onAuditCommit={(newInstances, tagUpdates) => {
+          if (newInstances.length > 0) onCommit(newInstances)
+          for (const t of tagUpdates) {
+            onUpdate(t.denialId, { auditCohortId: t.auditCohortId, auditProgram: t.auditProgram })
+          }
+          if (stagedAudit) setAuditCommitted({ name: stagedAudit.name, program: stagedAudit.program })
+          setAuditWizardOpen(false)
+          setStagedAudit(null)
+        }}
+      />
 
       {/* ── Record drawer ──────────────────────────────────────────────────── */}
       <RecordDrawer

@@ -17,7 +17,6 @@ import {
 } from 'recharts'
 import { TEAM_MEMBERS, type DenialRecord, type DenialState } from '../data/denials'
 import { DENIAL_OUTCOMES, type OutcomeDisposition } from '../data/denialDetail'
-import { type UnderpaymentRecord } from '../data/underpayments'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -75,11 +74,10 @@ const FUNNEL_DATA = [
 ]
 
 const PREVENTION_OPPS = [
-  { rank: 1, opportunity: 'Obtain prior auth before inpatient admissions',      owner: 'Auth',   saving: 218000, type: 'Authorization' },
-  { rank: 2, opportunity: 'Strengthen CDI for sepsis / respiratory criteria',   owner: 'CDI',    saving: 164000, type: 'Medical Necessity' },
-  { rank: 3, opportunity: 'Fix DRG coding workflow for CC/MCC capture',         owner: 'Coding', saving: 141000, type: 'DRG Downgrade' },
-  { rank: 4, opportunity: 'Automate claim submission within 10-day window',     owner: 'Billing',saving:  87000, type: 'Timely Filing' },
-  { rank: 5, opportunity: 'Reconcile UHC auth criteria for cardiac procedures', owner: 'Auth',   saving:  73000, type: 'Authorization' },
+  { rank: 1, opportunity: 'Strengthen CDI for sepsis / respiratory criteria',   owner: 'CDI',    saving: 164000, type: 'Medical Necessity' },
+  { rank: 2, opportunity: 'Fix DRG coding workflow for CC/MCC capture',         owner: 'Coding', saving: 141000, type: 'DRG Downgrade' },
+  { rank: 3, opportunity: 'Improve physician documentation for LOS justification', owner: 'CDI', saving:  98000, type: 'Medical Necessity' },
+  { rank: 4, opportunity: 'Standardize ADR response process for Medicare',      owner: 'Coding', saving:  73000, type: 'ADR' },
 ]
 
 const PREVENTION_OWNER_COLORS: Record<string, { bg: string; color: string }> = {
@@ -108,11 +106,9 @@ const EXPLORER_BY_PAYER = [
 ]
 const EXPLORER_BY_TYPE = [
   { x: 'Med Nec',       deniedAmount: 287000, volume: 58, overturnRate: 54, avgDays: 38, recoveryRate: 62 },
-  { x: 'Authorization', deniedAmount: 193000, volume: 44, overturnRate: 41, avgDays: 42, recoveryRate: 55 },
   { x: 'DRG Downgrade', deniedAmount: 164000, volume: 28, overturnRate: 68, avgDays: 29, recoveryRate: 74 },
-  { x: 'Coding Error',  deniedAmount:  98000, volume: 35, overturnRate: 82, avgDays: 18, recoveryRate: 85 },
-  { x: 'Timely Filing', deniedAmount:  64000, volume: 18, overturnRate: 35, avgDays: 12, recoveryRate: 38 },
-  { x: 'Other',         deniedAmount:  72000, volume: 23, overturnRate: 49, avgDays: 25, recoveryRate: 52 },
+  { x: 'ADR',           deniedAmount:  89000, volume: 22, overturnRate: 71, avgDays: 24, recoveryRate: 78 },
+  { x: 'Recoupment',    deniedAmount:  72000, volume: 14, overturnRate: 49, avgDays: 45, recoveryRate: 52 },
 ]
 const EXPLORER_BY_MONTH = [
   { x: "Oct '25", deniedAmount: 142000, volume: 35, overturnRate: 48, avgDays: 34, recoveryRate: 55 },
@@ -232,8 +228,8 @@ function MiniBar({ fraction, color }: { fraction: number; color: string }) {
 
 const INSIGHTS = [
   { text: 'Palmetto GBA denials up 34% QoQ — 62-day avg resolution is 2× the system average; escalate to exec review.', color: '#9B2C2C' },
-  { text: 'Coding Error denials overturn at 82% — every dollar spent appealing these returns $4.20. Accelerate appeal routing.', color: '#22543D' },
-  { text: 'UHC cardiac auth denials contributed $73K in preventable write-offs last quarter; auth team alignment needed.', color: '#744210' },
+  { text: 'DRG Downgrade overturn rate at 68% — MS-DRG 470/480-series appeals are high-yield; prioritize physician attestation.', color: '#22543D' },
+  { text: 'ADR response rate improved to 71% overturn — standardized Medicare documentation packages are driving results.', color: '#744210' },
   { text: 'BCBS overturn rate improved from 51% → 64% over 6 months — CDI protocol changes are working.', color: '#2C5282' },
 ]
 
@@ -605,10 +601,9 @@ function AgingAndWriteoffRisk() {
 
 interface DashboardPageProps {
   denials: DenialRecord[]
-  underpayments: UnderpaymentRecord[]
 }
 
-export default function DashboardPage({ denials, underpayments }: DashboardPageProps) {
+export default function DashboardPage({ denials }: DashboardPageProps) {
   const [tab, setTab] = useState(0)
 
   // Trends filter bar state (display only — static data)
@@ -625,11 +620,6 @@ export default function DashboardPage({ denials, underpayments }: DashboardPageP
   const totalWrittenOff = outcomes.reduce((s, o) => s + o.writtenOffAmount, 0)
   const recoveryRate    = totalRecovered + totalWrittenOff > 0
     ? (totalRecovered / (totalRecovered + totalWrittenOff)) * 100 : 0
-
-  // ── Underpayment metrics ─────────────────────────────────────────────────────
-  const upOpen         = underpayments.filter(u => u.state === 'Active' || u.state === 'Submitted')
-  const upVarianceOpen = upOpen.reduce((s, u) => s + u.varianceAmount, 0)
-  const upRecovered    = underpayments.filter(u => u.state === 'Recovered').reduce((s, u) => s + (u.recoveredAmount ?? 0), 0)
 
   const urgentList = [...open]
     .filter(d => daysUntil(d.deadline) <= 14)
@@ -674,13 +664,11 @@ export default function DashboardPage({ denials, underpayments }: DashboardPageP
         <Box sx={{ p: 3, overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
           {/* KPI strip */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
-            <StatCard label="Open Denials"       value={open.length}        sub={`${denials.length} total in system`} />
-            <StatCard label="Due This Week"       value={dueThisWeek.length} sub="deadline within 7 days"
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
+            <StatCard label="Open Denials"        value={open.length}        sub={`${denials.length} total in system`} />
+            <StatCard label="Due This Week"        value={dueThisWeek.length} sub="deadline within 7 days"
               color={dueThisWeek.length > 0 ? '#9B2C2C' : undefined} />
             <StatCard label="Denial Recovery Rate" value={`${recoveryRate.toFixed(1)}%`} sub={`${formatCurrency(totalRecovered)} recovered`} color="#22543D" />
-            <StatCard label="Variance at Risk"    value={formatCurrency(upVarianceOpen)} sub={`${upOpen.length} open underpayments`} color="#C2410C" />
-            <StatCard label="UP Recovered"        value={formatCurrency(upRecovered)}    sub="underpayment recovery confirmed" color="#14532D" />
           </Box>
 
           {/* Deadlines */}

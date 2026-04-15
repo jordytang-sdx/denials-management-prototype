@@ -16,7 +16,7 @@ import { TEAM_MEMBERS, type TeamMember } from '../data/denials'
 
 type ConditionField = 'payer' | 'denialType' | 'carc' | 'amount' | 'serviceType'
 type ConditionOperator = 'equals' | 'contains' | 'greaterThan' | 'lessThan' | 'in'
-type ResolutionEngine = 'appeal' | 'corrected_claim' | 'underpayment' | null
+type ResolutionEngine = 'appeal' | 'recoupment' | null
 type Priority = 'High' | 'Medium' | 'Low'
 
 interface RoutingCondition {
@@ -50,9 +50,8 @@ interface RoutingRule {
 // ── Seed Data ────────────────────────────────────────────────────────────────
 
 const ENGINE_LABELS: Record<Exclude<ResolutionEngine, null>, string> = {
-  appeal:          'Appeal',
-  corrected_claim: 'Corrected Claim',
-  underpayment:    'Payment Dispute',
+  appeal:     'Appeal',
+  recoupment: 'Recoupment',
 }
 
 const FIELD_LABELS: Record<ConditionField, string> = {
@@ -72,7 +71,7 @@ const OPERATOR_LABELS: Record<ConditionOperator, string> = {
 }
 
 const PAYER_OPTIONS = ['Blue Cross Blue Shield', 'UnitedHealthcare', 'Aetna', 'Cigna', 'Medicare', 'Medicaid', 'Humana']
-const DENIAL_TYPE_OPTIONS = ['DRG Downgrade', 'Medical Necessity', 'Prior Authorization', 'Underpayment', 'Duplicate Claim', 'Timely Filing', 'Corrected Claim']
+const DENIAL_TYPE_OPTIONS = ['Medical Necessity', 'DRG Downgrade', 'ADR', 'Recoupment']
 const SERVICE_TYPE_OPTIONS = ['Inpatient', 'Outpatient', 'Emergency', 'Surgical', 'Observation', 'Rehab']
 
 const SEED_RULES: RoutingRule[] = [
@@ -120,28 +119,29 @@ const SEED_RULES: RoutingRule[] = [
   },
   {
     id: 'rr-003',
-    name: 'Prior Auth Denials → Priya Nair',
-    description: 'Route all prior authorization denials to Priya Nair for retrospective auth follow-up.',
+    name: 'Medicare ADR → Records Request Workflow',
+    description: 'ADR notices from Medicare MACs are auto-routed to Priya Nair for records coordination.',
     priority: 3,
     enabled: true,
     conditionLogic: 'AND',
     conditions: [
-      { id: 'c1', field: 'denialType', operator: 'equals', value: 'Prior Authorization' },
+      { id: 'c1', field: 'denialType', operator: 'equals', value: 'ADR' },
+      { id: 'c2', field: 'payer', operator: 'equals', value: 'Medicare' },
     ],
     action: {
       assignToId: 'pn',
       resolutionEngine: 'appeal',
-      priority: 'Medium',
+      priority: 'High',
       autoAccept: true,
-      slaDays: 21,
+      slaDays: 45,
     },
-    matchCount: 31,
-    lastMatched: '2026-03-31',
+    matchCount: 19,
+    lastMatched: '2026-04-01',
   },
   {
     id: 'rr-004',
-    name: 'Underpayment CARC-45 → Payment Dispute',
-    description: 'CARC-45 (contracted rate) denials go directly into the payment dispute workflow.',
+    name: 'Recoupment CARC-45 → Marcus Webb',
+    description: 'Post-payment audit recoupment demands are escalated to Marcus Webb for clinical dispute.',
     priority: 4,
     enabled: true,
     conditionLogic: 'AND',
@@ -149,34 +149,14 @@ const SEED_RULES: RoutingRule[] = [
       { id: 'c1', field: 'carc', operator: 'contains', value: 'CARC-45' },
     ],
     action: {
-      assignToId: 'dr',
-      resolutionEngine: 'underpayment',
-      priority: 'Medium',
+      assignToId: 'mw',
+      resolutionEngine: 'recoupment',
+      priority: 'High',
       autoAccept: true,
       slaDays: 30,
     },
-    matchCount: 18,
+    matchCount: 11,
     lastMatched: '2026-03-29',
-  },
-  {
-    id: 'rr-005',
-    name: 'Corrected Claim (CO-16) → Devon Ross',
-    description: 'Coding errors flagged by CO-16 are routed to Devon Ross for corrected claim submission.',
-    priority: 5,
-    enabled: true,
-    conditionLogic: 'AND',
-    conditions: [
-      { id: 'c1', field: 'carc', operator: 'contains', value: 'CARC-16' },
-    ],
-    action: {
-      assignToId: 'dr',
-      resolutionEngine: 'corrected_claim',
-      priority: 'Medium',
-      autoAccept: true,
-      slaDays: 14,
-    },
-    matchCount: 12,
-    lastMatched: '2026-03-27',
   },
   {
     id: 'rr-006',
@@ -467,8 +447,7 @@ function RuleDrawer({ rule, onClose, onSave }: RuleDrawerProps) {
               >
                 <MenuItem value=""><em>None (manual)</em></MenuItem>
                 <MenuItem value="appeal">Appeal</MenuItem>
-                <MenuItem value="corrected_claim">Corrected Claim</MenuItem>
-                <MenuItem value="underpayment">Payment Dispute</MenuItem>
+                <MenuItem value="recoupment">Recoupment</MenuItem>
               </Select>
             </FormControl>
 

@@ -83,6 +83,7 @@ import {
   getSubmissionInstructions, type AppealTemplate, type SubmissionInstructions,
 } from '../data/appealLetters'
 import { MEDICAL_RECORDS, type MedicalRecord } from '../data/medicalRecords'
+import { AUDIT_COHORTS, PROGRAM_CONFIG, STATUS_CONFIG } from '../data/auditCohorts'
 
 // ─── Shared ───────────────────────────────────────────────────────────────────
 
@@ -4130,9 +4131,10 @@ interface DenialDetailPageProps {
   onNavigateToDenial?: (id: string) => void
   allDenials?: DenialRecord[]
   onUpdateDenial?: (id: string, updates: Partial<DenialRecord>) => void
+  onViewAuditCohort?: (cohortId: string) => void
 }
 
-export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSubmitSuccess, onNavigateToDenial, allDenials, onUpdateDenial }: DenialDetailPageProps) {
+export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSubmitSuccess, onNavigateToDenial, allDenials, onUpdateDenial, onViewAuditCohort }: DenialDetailPageProps) {
   const denialId = denial.id
   const [tab, setTab] = useState(0)
   const [remitOpen, setRemitOpen] = useState(false)
@@ -4422,6 +4424,52 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
           )
         })()}
       </Box>
+
+      {/* ── Audit cohort banner ───────────────────────────────────────────────── */}
+      {(() => {
+        if (!denial.auditCohortId) return null
+        const auditCohort = AUDIT_COHORTS.find(c => c.id === denial.auditCohortId)
+        if (!auditCohort) return null
+        const prog = PROGRAM_CONFIG[auditCohort.program]
+        const stat = STATUS_CONFIG[auditCohort.status]
+        return (
+          <Box sx={{
+            px: 2.5, py: 0.875,
+            bgcolor: stat.bg,
+            borderBottom: '1px solid',
+            borderColor: stat.border,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.25,
+            flexShrink: 0,
+          }}>
+            <Chip
+              label={prog.label}
+              size="small"
+              sx={{ height: 18, fontSize: '0.65rem', fontWeight: 700, bgcolor: prog.bg, color: prog.color, '& .MuiChip-label': { px: 0.75 }, border: `1px solid ${prog.color}30` }}
+            />
+            <Typography variant="caption" sx={{ fontWeight: 600, color: stat.color, fontSize: '0.75rem' }}>
+              {auditCohort.name}
+            </Typography>
+            <Chip
+              label={auditCohort.status}
+              size="small"
+              sx={{ height: 18, fontSize: '0.65rem', fontWeight: 600, bgcolor: stat.bg, color: stat.color, border: `1px solid ${stat.border}`, '& .MuiChip-label': { px: 0.75 } }}
+            />
+            <Box sx={{ flex: 1 }} />
+            {onViewAuditCohort && (
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => onViewAuditCohort(auditCohort.id)}
+                sx={{ fontSize: '0.7rem', color: stat.color, py: 0.25, fontWeight: 600, textTransform: 'none', minWidth: 0 }}
+              >
+                View Cohort →
+              </Button>
+            )}
+          </Box>
+        )
+      })()}
 
       {/* ── Tab content ───────────────────────────────────────────────────────── */}
       <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'background.default' }}>

@@ -7,7 +7,7 @@ import {
 } from '@mui/material'
 import {
   DashboardOutlined, ListAltOutlined, UploadFileOutlined,
-  SettingsOutlined, AccountTreeOutlined,
+  SettingsOutlined, AccountTreeOutlined, PolicyOutlined,
   NotificationsOutlined, HelpOutlineOutlined, RestartAltOutlined,
   ChevronLeftOutlined, ChevronRightOutlined,
 } from '@mui/icons-material'
@@ -19,19 +19,20 @@ import DenialDetailPage from './pages/DenialDetailPage'
 import DashboardPage from './pages/DashboardPage'
 import IngestPage from './pages/IngestPage'
 import RoutingRulesPage from './pages/RoutingRulesPage'
-import UnderpaymentWorklistPage from './pages/UnderpaymentWorklistPage'
-import UnderpaymentDetailPage from './pages/UnderpaymentDetailPage'
+import AuditWorklistPage from './pages/AuditWorklistPage'
+import AuditCohortDetailPage from './pages/AuditCohortDetailPage'
 import { SEED_DENIALS, SCENARIO_B_DENIALS, type DenialRecord } from './data/denials'
-import { SEED_UNDERPAYMENTS } from './data/underpayments'
+import { AUDIT_COHORTS } from './data/auditCohorts'
 
 const SIDEBAR_WIDTH = 224
 const SIDEBAR_COLLAPSED_WIDTH = 56
 
-type NavItem = 'Dashboard' | 'Worklist' | 'Ingest' | 'Routing Rules' | 'Settings'
+type NavItem = 'Dashboard' | 'Worklist' | 'Audits' | 'Ingest' | 'Routing Rules' | 'Settings'
 
 const navItems: { label: NavItem; icon: React.ReactNode }[] = [
   { label: 'Dashboard',     icon: <DashboardOutlined fontSize="small" /> },
   { label: 'Worklist',      icon: <ListAltOutlined fontSize="small" /> },
+  { label: 'Audits',        icon: <PolicyOutlined fontSize="small" /> },
   { label: 'Ingest',        icon: <UploadFileOutlined fontSize="small" /> },
   { label: 'Routing Rules', icon: <AccountTreeOutlined fontSize="small" /> },
 ]
@@ -95,6 +96,7 @@ function timeAgo(timestamp: string): string {
 
 const PAGE_SUBTITLES: Omit<Record<NavItem, string>, 'Worklist'> & { Worklist?: string } = {
   Dashboard:       'Operational snapshot and trend analysis',
+  Audits:          'Compliance monitoring for RAC, TPE, OIG, and commercial audits',
   Ingest:          'Upload 835s and PDFs for processing',
   'Routing Rules': 'Configure routing logic by payer and denial type',
   Settings:        'Client configuration and system preferences',
@@ -182,16 +184,13 @@ function LoginPage({ onUnlock }: { onUnlock: () => void }) {
   )
 }
 
-type Product = 'Denials' | 'Underpayments'
-
 export default function App() {
   const [unlocked, setUnlocked] = useState(false)
-  const [activeProduct, setActiveProduct] = useState<Product>('Denials')
   const [activeNav, setActiveNav] = useState<NavItem>('Worklist')
   const [navCollapsed, setNavCollapsed] = useState(false)
   const sidebarWidth = navCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
   const [selectedDenialId, setSelectedDenialId] = useState<string | null>(null)
-  const [selectedUnderpaymentId, setSelectedUnderpaymentId] = useState<string | null>(null)
+  const [selectedAuditCohortId, setSelectedAuditCohortId] = useState<string | null>(null)
   const [denials, setDenials] = useState<DenialRecord[]>(SEED_DENIALS)
   const [worklistTab, setWorklistTab] = useState<WorklistActiveTab>('Active')
   const [worklistSort, setWorklistSort] = useState<WorklistSort>(null)
@@ -219,14 +218,7 @@ export default function App() {
   function handleNavClick(label: NavItem) {
     setActiveNav(label)
     setSelectedDenialId(null)
-    setSelectedUnderpaymentId(null)
-  }
-
-  function handleProductSwitch(product: Product) {
-    setActiveProduct(product)
-    setSelectedDenialId(null)
-    setSelectedUnderpaymentId(null)
-    setActiveNav('Worklist')
+    setSelectedAuditCohortId(null)
   }
 
   function handleSubmitSuccess(channel: string, payer: string, patientName: string) {
@@ -243,12 +235,12 @@ export default function App() {
     setToast({ message: `Appeal submitted via ${channelLabel}` })
   }
 
-  const showingDetail       = activeNav === 'Worklist' && activeProduct === 'Denials' && selectedDenialId !== null
-  const showingWorklist     = activeNav === 'Worklist' && activeProduct === 'Denials' && !showingDetail
-  const showingUPDetail     = activeNav === 'Worklist' && activeProduct === 'Underpayments' && selectedUnderpaymentId !== null
-  const showingUPWorklist   = activeNav === 'Worklist' && activeProduct === 'Underpayments' && !showingUPDetail
+  const showingDetail       = activeNav === 'Worklist' && selectedDenialId !== null
+  const showingWorklist     = activeNav === 'Worklist' && !showingDetail
+  const showingAuditList    = activeNav === 'Audits' && selectedAuditCohortId === null
+  const showingAuditDetail  = activeNav === 'Audits' && selectedAuditCohortId !== null
 
-  const upVarianceAtRisk = SEED_UNDERPAYMENTS.filter(u => u.state === 'Active' || u.state === 'Submitted').reduce((s, u) => s + u.varianceAmount, 0)
+  const openAuditCount = AUDIT_COHORTS.filter(c => c.status !== 'Closed').length
 
   const isTerminal = (s: string) => s === 'Won' || s === 'Recovered' || s === 'Closed' || s === 'Archived'
   const openCount     = denials.filter(d => !isTerminal(d.state)).length
@@ -290,31 +282,6 @@ export default function App() {
                 fontWeight: 500, fontSize: '0.75rem', border: '1px solid #C7D7FA',
               }}
             />
-
-            {/* Product switcher */}
-            <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#F1F5F9', borderRadius: 1.5, p: 0.375, gap: 0.25 }}>
-              {(['Denials', 'Underpayments'] as Product[]).map(p => (
-                <Box
-                  key={p}
-                  onClick={() => handleProductSwitch(p)}
-                  sx={{
-                    px: 1.25, py: 0.375, borderRadius: 1.25, cursor: 'pointer',
-                    bgcolor: activeProduct === p ? '#fff' : 'transparent',
-                    boxShadow: activeProduct === p ? '0 1px 3px rgba(0,0,0,0.10)' : 'none',
-                    transition: 'all 0.15s ease',
-                    '&:hover': { bgcolor: activeProduct === p ? '#fff' : 'rgba(0,0,0,0.04)' },
-                  }}
-                >
-                  <Typography sx={{
-                    fontSize: '0.75rem', fontWeight: activeProduct === p ? 700 : 500,
-                    color: activeProduct === p ? 'text.primary' : 'text.secondary',
-                    lineHeight: 1,
-                  }}>
-                    {p}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
 
             <Box sx={{ flex: 1 }} />
 
@@ -389,10 +356,16 @@ export default function App() {
                       {label === 'Worklist' && openCount > 0 && (
                         <Chip label={openCount} size="small" sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 600, bgcolor: 'error.main', color: '#fff', '& .MuiChip-label': { px: 0.75 } }} />
                       )}
+                      {label === 'Audits' && openAuditCount > 0 && (
+                        <Chip label={openAuditCount} size="small" sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 600, bgcolor: '#C2410C', color: '#fff', '& .MuiChip-label': { px: 0.75 } }} />
+                      )}
                     </>
                   )}
                   {navCollapsed && label === 'Worklist' && openCount > 0 && (
                     <Box sx={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: 'error.main' }} />
+                  )}
+                  {navCollapsed && label === 'Audits' && openAuditCount > 0 && (
+                    <Box sx={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: '#C2410C' }} />
                   )}
                 </ListItemButton>
               </Tooltip>
@@ -447,8 +420,8 @@ export default function App() {
           component="main"
           sx={{ flex: 1, display: 'flex', flexDirection: 'column', mt: '52px', overflow: 'hidden', bgcolor: 'background.default' }}
         >
-          {/* Page header — hidden for Worklist/detail views (they own their own headers) */}
-          {!showingDetail && !showingWorklist && !showingUPWorklist && !showingUPDetail && (
+          {/* Page header — hidden for Worklist/detail/Audit views (they own their own headers) */}
+          {!showingDetail && !showingWorklist && !showingAuditList && !showingAuditDetail && (
             <Box
               sx={{
                 px: 3, py: 2,
@@ -494,16 +467,25 @@ export default function App() {
                   onNavigateToDenial={id => setSelectedDenialId(id)}
                   allDenials={visibleDenials}
                   onUpdateDenial={(id, updates) => setDenials(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d))}
+                  onViewAuditCohort={id => { setActiveNav('Audits'); setSelectedAuditCohortId(id) }}
                 />
               )
             })()}
-            {showingUPWorklist && (
-              <UnderpaymentWorklistPage onSelectUnderpayment={id => setSelectedUnderpaymentId(id)} />
+            {showingAuditList && (
+              <AuditWorklistPage onSelectCohort={id => setSelectedAuditCohortId(id)} />
             )}
-            {showingUPDetail && selectedUnderpaymentId && (
-              <UnderpaymentDetailPage underpaymentId={selectedUnderpaymentId} onBack={() => setSelectedUnderpaymentId(null)} />
+            {showingAuditDetail && selectedAuditCohortId && (
+              <AuditCohortDetailPage
+                cohortId={selectedAuditCohortId}
+                onBack={() => setSelectedAuditCohortId(null)}
+                onNavigateToDenial={id => {
+                  setActiveNav('Worklist')
+                  setSelectedDenialId(id)
+                  setSelectedAuditCohortId(null)
+                }}
+              />
             )}
-            {activeNav === 'Dashboard' && <DashboardPage denials={denials} underpayments={SEED_UNDERPAYMENTS} />}
+            {activeNav === 'Dashboard' && <DashboardPage denials={denials} />}
             {activeNav === 'Ingest' && <IngestPage key={ingestKey} denials={denials} onCommit={newRecords => setDenials(prev => [...newRecords, ...prev])} onUpdate={(id, updates) => setDenials(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d))} />}
             {activeNav === 'Routing Rules' && <RoutingRulesPage />}
             {activeNav === 'Settings' && (
@@ -517,7 +499,7 @@ export default function App() {
                 setIngestKey(k => k + 1)
               }} />
             )}
-            {activeNav !== 'Worklist' && activeNav !== 'Dashboard' && activeNav !== 'Ingest' && activeNav !== 'Routing Rules' && activeNav !== 'Settings' && (
+            {activeNav !== 'Worklist' && activeNav !== 'Audits' && activeNav !== 'Dashboard' && activeNav !== 'Ingest' && activeNav !== 'Routing Rules' && activeNav !== 'Settings' && (
               <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
                 <Box
                   sx={{
