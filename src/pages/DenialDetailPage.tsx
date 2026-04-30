@@ -67,7 +67,13 @@ import {
   BlockOutlined,
   RemoveCircleOutlineOutlined,
 } from '@mui/icons-material'
-import { SEED_DENIALS, TEAM_MEMBERS, REVERSE_RELATIONSHIP, type TeamMember, type DenialRecord, type ActiveStatus, type WonStatus, type DenialStatus, type AppealRound, type AppealRoundType, type RelationshipType, type RelatedInstance, type PossibleMatch, type IncomingEpisodeResult } from '../data/denials'
+import { SEED_DENIALS, TEAM_MEMBERS, REVERSE_RELATIONSHIP, type TeamMember, type DenialRecord, type InProgressStatus, type OverturnedStatus, type DenialStatus, type AppealRound, type AppealRoundType, type RelationshipType, type RelatedInstance, type PossibleMatch, type IncomingEpisodeResult } from '../data/denials'
+import { SEED_UNDERPAYMENTS } from '../data/underpayments'
+import { SEED_AUDITS } from '../data/audits'
+import { ClaimContextStrip, type ClaimContext } from '../components/ClaimContextStrip'
+import { OnThisClaimWidget, type CaseOnClaim } from '../components/OnThisClaimWidget'
+import { ActivityTimeline } from '../components/ActivityTimeline'
+import type { TimelineEvent as CaseTimelineEvent } from '../data/caseTimeline'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
 import {
   CARC_DESCRIPTIONS, RARC_DESCRIPTIONS,
@@ -87,14 +93,15 @@ import { MEDICAL_RECORDS, type MedicalRecord } from '../data/medicalRecords'
 // ─── Shared ───────────────────────────────────────────────────────────────────
 
 function ReadOnlyBanner({ state }: { state: string }) {
+  const label = state === 'InProgress' ? 'In Progress' : state
   return (
     <Alert
-      severity={state === 'Archived' ? 'warning' : 'info'}
+      severity={state === 'Archive' ? 'warning' : 'info'}
       sx={{ mx: 3, mt: 2, borderRadius: 1.5, fontSize: '0.8125rem' }}
     >
-      {state === 'Archived'
+      {state === 'Archive'
         ? 'This denial is archived — all actions are disabled. Use "Restore" to return it to its previous state.'
-        : <>This denial is in <strong>{state}</strong> state — submission actions are disabled.
+        : <>This denial is in <strong>{label}</strong> state — submission actions are disabled.
             {state === 'Submitted' && ' Use "Record Payer Decision" above when a response is received.'}</>
       }
     </Alert>
@@ -144,7 +151,7 @@ function getResolutionEngine(denialType: string): ResolutionEngine {
   }
 }
 
-function getDefaultActiveStatus(engine: ResolutionEngine): ActiveStatus {
+function getDefaultInProgressStatus(engine: ResolutionEngine): InProgressStatus {
   switch (engine) {
     case 'appeal':          return 'Appeal Drafting'
     case 'records_request': return 'Awaiting Records'
@@ -171,11 +178,11 @@ function getEventMeta(type: TimelineEventType): EventMeta {
   const cfg: Record<TimelineEventType, EventMeta> = {
     signal_835:              { icon: <ReceiptLongOutlined sx={{ fontSize: 15 }} />,        color: '#2C5282', label: '835 Remit' },
     signal_pdf_denial:       { icon: <PictureAsPdfOutlined sx={{ fontSize: 15 }} />,       color: '#C0392B', label: 'Denial Letter' },
-    signal_pdf_adr:          { icon: <MailOutlineOutlined sx={{ fontSize: 15 }} />,         color: '#B7770D', label: 'ADR' },
+    signal_pdf_adr:          { icon: <MailOutlineOutlined sx={{ fontSize: 15 }} />,         color: '#b86823', label: 'ADR' },
     signal_pdf_recoupment:   { icon: <PictureAsPdfOutlined sx={{ fontSize: 15 }} />,       color: '#C0392B', label: 'Recoupment Notice' },
     instance_created:        { icon: <AddCircleOutlineOutlined sx={{ fontSize: 15 }} />,   color: '#718096', label: 'Instance Created' },
     routing_applied:         { icon: <AccountTreeOutlined sx={{ fontSize: 15 }} />,        color: '#718096', label: 'Routing Applied' },
-    match_flagged:           { icon: <FlagOutlined sx={{ fontSize: 15 }} />,               color: '#B7770D', label: 'Flag Set' },
+    match_flagged:           { icon: <FlagOutlined sx={{ fontSize: 15 }} />,               color: '#b86823', label: 'Flag Set' },
     action_appeal_l1:        { icon: <SendOutlined sx={{ fontSize: 15 }} />,               color: '#276749', label: 'Level 1 Appeal' },
     action_appeal_l2:        { icon: <SendOutlined sx={{ fontSize: 15 }} />,               color: '#276749', label: 'Level 2 Appeal' },
     action_appeal_l3:        { icon: <SendOutlined sx={{ fontSize: 15 }} />,               color: '#276749', label: 'Level 3 Appeal' },
@@ -185,10 +192,10 @@ function getEventMeta(type: TimelineEventType): EventMeta {
     action_note:             { icon: <StickyNote2Outlined sx={{ fontSize: 15 }} />,        color: '#4A5568', label: 'Note' },
     action_assign:           { icon: <PersonAddOutlined sx={{ fontSize: 15 }} />,          color: '#718096', label: 'Assigned' },
     action_peer_to_peer:     { icon: <PhoneOutlined sx={{ fontSize: 15 }} />,              color: '#2D7D9A', label: 'Peer-to-Peer' },
-    payer_pending:           { icon: <HourglassEmptyOutlined sx={{ fontSize: 15 }} />,     color: '#B7770D', label: 'Payer Pending' },
+    payer_pending:           { icon: <HourglassEmptyOutlined sx={{ fontSize: 15 }} />,     color: '#b86823', label: 'Payer Pending' },
     payer_upheld:            { icon: <CancelOutlined sx={{ fontSize: 15 }} />,             color: '#C0392B', label: 'Upheld' },
     payer_overturned:        { icon: <TaskAltOutlined sx={{ fontSize: 15 }} />,            color: '#1E7E4A', label: 'Overturned' },
-    payer_partial:           { icon: <TaskAltOutlined sx={{ fontSize: 15 }} />,            color: '#B7770D', label: 'Partially Overturned' },
+    payer_partial:           { icon: <TaskAltOutlined sx={{ fontSize: 15 }} />,            color: '#b86823', label: 'Partially Overturned' },
   }
   return cfg[type]
 }
@@ -809,7 +816,7 @@ function ActivityTab({ episodes, onOpenAttachment, onAddFile }: {
 // ─── Underpayment Tab ─────────────────────────────────────────────────────────
 
 function UnderpaymentTab({ denial, denialState, onSubmit, onSubmitSuccess }: { denial: DenialRecord; denialState: string; onSubmit?: () => void; onSubmitSuccess?: (channel: string, attachments?: EpisodeAttachment[]) => void }) {
-  const canAct = denialState === 'Active'
+  const canAct = denialState === 'InProgress'
   const data = UNDERPAYMENT_DATA[denial.id]
   const letterData = APPEAL_LETTERS[denial.id]
 
@@ -975,7 +982,7 @@ function AppealRoundsSection({ rounds, denialState, onAddRound }: {
   const [draftNotes, setDraftNotes] = useState('')
   const [localRounds, setLocalRounds] = useState<AppealRound[]>(rounds)
 
-  const canAdd = denialState === 'Active' || denialState === 'Submitted'
+  const canAdd = denialState === 'InProgress' || denialState === 'Submitted'
   const nextRound = localRounds.length + 1
 
   function handleAdd() {
@@ -1094,26 +1101,56 @@ function AppealRoundsSection({ rounds, denialState, onAddRound }: {
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachment, events, episodes, onAddFile, assignedTo, onChangeAssignee, onNavigateToDenial, allDenials, onDenialUpdate, onUpdateDenial }: {
+function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachment, episodes, onAddFile }: {
   denial: DenialRecord
   denialId: string
   onViewRemit: () => void
   onViewClaim: () => void
   onOpenAttachment: (a: EpisodeAttachment) => void
-  events: TimelineEvent[]
   episodes: SubmissionEpisode[]
   onAddFile: (episodeId: string, rowType: 'signal' | 'action' | 'result', fileName: string) => void
-  assignedTo: TeamMember | null
-  onChangeAssignee: (m: TeamMember | null) => void
-  onNavigateToDenial?: (id: string) => void
-  allDenials?: DenialRecord[]
-  onDenialUpdate?: (updates: Partial<DenialRecord>) => void
-  onUpdateDenial?: (id: string, updates: Partial<DenialRecord>) => void
 }) {
-  const remit = REMIT_DATA[denialId]
   const latestEpisode = episodes.length > 0 ? episodes[episodes.length - 1] : null
 
-  const [assigneeAnchor, setAssigneeAnchor] = useState<HTMLElement | null>(null)
+  return (
+    <Box sx={{ p: 3 }}>
+      {latestEpisode ? (
+        <Box>
+          <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
+            Current Submission Round
+          </Typography>
+          <Box sx={{ mt: 1.5 }}>
+            <EpisodeCard episode={latestEpisode} onOpenAttachment={onOpenAttachment} onAddFile={onAddFile} />
+          </Box>
+        </Box>
+      ) : (
+        <Box sx={{ py: 6, textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary">No submission rounds yet.</Typography>
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+// ─── Denial Right Column ───────────────────────────────────────────────────────
+
+function DenialRightColumn({ denial, events, episodes, assignedTo, onChangeAssignee, casesOnClaim, onNavigateToCase, onNavigateToDenial, onViewRemit, onViewClaim, allDenials, onDenialUpdate, onUpdateDenial, denialId }: {
+  denial: DenialRecord
+  events: TimelineEvent[]
+  episodes: SubmissionEpisode[]
+  assignedTo: TeamMember | null
+  onChangeAssignee: (m: TeamMember | null) => void
+  casesOnClaim: CaseOnClaim[]
+  onNavigateToCase: (id: string, type: 'denial' | 'underpayment' | 'audit') => void
+  onNavigateToDenial?: (id: string) => void
+  onViewRemit: () => void
+  onViewClaim: () => void
+  allDenials: DenialRecord[]
+  onDenialUpdate?: (updates: Partial<DenialRecord>) => void
+  onUpdateDenial?: (id: string, updates: Partial<DenialRecord>) => void
+  denialId: string
+}) {
+  const remit = REMIT_DATA[denialId]
   const carcInfo = CARC_DESCRIPTIONS[denial.carc]
   const rarcInfo = denial.rarc ? RARC_DESCRIPTIONS[denial.rarc] : null
   const claim837 = CLAIM_DATA_837[denialId]
@@ -1123,129 +1160,19 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
   const [selectedRelationships, setSelectedRelationships] = useState<Record<string, RelationshipType | null>>({})
 
   return (
-    <Box sx={{ display: 'flex', gap: 3, p: 3, height: '100%', overflow: 'auto' }}>
-
-      {/* Claim Context — left panel */}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
-          Claim Context
-        </Typography>
-
-        {/* Claim identifiers — full-width table */}
-        <Paper variant="outlined" sx={{ mt: 1.5, borderRadius: 1.5, overflow: 'hidden' }}>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  {['Claim ID', 'HAR', 'MRN', 'Date of Service', ...(remit ? ['Payer ICN', 'Patient Control #'] : [])].map(h => (
-                    <TableCell key={h} sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'text.secondary', py: 0.75, whiteSpace: 'nowrap' }}>{h}</TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                <TableRow>
-                  <TableCell sx={{ py: 1, fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 500 }}>{denial.claim.claimId}</TableCell>
-                  <TableCell sx={{ py: 1, fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 500 }}>{denial.claim.har}</TableCell>
-                  <TableCell sx={{ py: 1, fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 500 }}>{denial.patient.mrn}</TableCell>
-                  <TableCell sx={{ py: 1, fontSize: '0.8rem' }}>{formatDate(denial.dos)}</TableCell>
-                  {remit && <TableCell sx={{ py: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}>{remit.payerICN}</TableCell>}
-                  {remit && <TableCell sx={{ py: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}>{remit.patientControlNumber}</TableCell>}
-                </TableRow>
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-
-        {/* Financial summary */}
-        <Paper variant="outlined" sx={{ mt: 2, p: 2, borderRadius: 1.5 }}>
-          <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em' }}>Financial Summary</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mt: 1 }}>
-            {[
-              { label: 'Billed (837)', value: remit ? formatCurrency(remit.claimBilledAmount) : '—' },
-              { label: 'Allowed',      value: remit ? formatCurrency(remit.claimAllowedAmount) : '—' },
-              { label: 'Paid',         value: remit ? formatCurrency(remit.claimPaidAmount) : '—' },
-              { label: 'Denied',       value: formatCurrency(denial.deniedAmount), highlight: true },
-            ].map(({ label, value, highlight }) => (
-              <Box key={label}>
-                <Typography variant="caption" color="text.secondary">{label}</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700, color: highlight ? 'error.main' : 'text.primary', fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>
-                  {value}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        </Paper>
-
-        {/* Most recent submission round */}
-        {latestEpisode && (
-          <Box sx={{ mt: 3 }}>
-            <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
-              Current Submission Round
-            </Typography>
-            <Box sx={{ mt: 1.5 }}>
-              <EpisodeCard episode={latestEpisode} onOpenAttachment={onOpenAttachment} onAddFile={onAddFile} />
-            </Box>
-          </Box>
-        )}
-
-        {/* Timeline */}
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
-            Timeline
-          </Typography>
-          {events.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>No timeline events recorded.</Typography>
-          ) : (
-            <Box sx={{ mt: 1.5, maxHeight: 480, overflowY: 'auto', pr: 1 }}>
-              {[...events].reverse().map((event, idx) => {
-                const meta = getEventMeta(event.type)
-                const isLast = idx === events.length - 1
-                return (
-                  <Box key={event.id} sx={{ display: 'flex', gap: 2, position: 'relative' }}>
-                    {!isLast && (
-                      <Box sx={{ position: 'absolute', left: 15, top: 30, bottom: 0, width: 2, bgcolor: 'divider', zIndex: 0 }} />
-                    )}
-                    <Box sx={{ flexShrink: 0, zIndex: 1 }}>
-                      <Box sx={{
-                        width: 32, height: 32, borderRadius: '50%',
-                        bgcolor: meta.color + '18', border: '2px solid', borderColor: meta.color + '44',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: meta.color,
-                      }}>
-                        {meta.icon}
-                      </Box>
-                    </Box>
-                    <Box sx={{ flex: 1, pb: isLast ? 0 : 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
-                        <Chip label={meta.label} size="small" sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 600, bgcolor: meta.color + '14', color: meta.color, border: 'none', '& .MuiChip-label': { px: 0.75 } }} />
-                        <Typography variant="caption" color="text.secondary">{formatDateTime(event.timestamp)}</Typography>
-                        <Typography variant="caption" sx={{ color: 'text.disabled' }}>·</Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>{event.actor}</Typography>
-                      </Box>
-                      <Typography variant="body2" sx={{ fontWeight: 500, mt: 0.5, lineHeight: 1.4 }}>{event.summary}</Typography>
-                      {event.detail && (
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25, lineHeight: 1.5 }}>{event.detail}</Typography>
-                      )}
-                      <Box sx={{ display: 'flex', gap: 2, mt: 0.5, flexWrap: 'wrap' }}>
-                        {event.amount !== undefined && (
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'error.main', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(event.amount)}</Typography>
-                        )}
-                        {event.document && (
-                          <Typography variant="caption" sx={{ color: 'secondary.main', fontFamily: 'monospace', fontSize: '0.7rem', cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>{event.document}</Typography>
-                        )}
-                      </Box>
-                    </Box>
-                  </Box>
-                )
-              })}
-            </Box>
-          )}
-        </Box>
+    <Box>
+      {/* Activity Timeline */}
+      <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
+        Activity Timeline
+      </Typography>
+      <Box sx={{ mt: 1 }}>
+        <ActivityTimeline events={events as unknown as CaseTimelineEvent[]} onNavigateToCase={onNavigateToCase} />
       </Box>
 
-      {/* Metadata Sidebar — right panel */}
-      <Box sx={{ width: 280, flexShrink: 0 }}>
+      {/* Denial Context */}
+      <Box sx={{ mt: 2 }}>
         <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
-          Denial Detail
+          Denial Context
         </Typography>
 
         <Paper variant="outlined" sx={{ mt: 1.5, borderRadius: 1.5, overflow: 'hidden' }}>
@@ -1316,63 +1243,6 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
             <Typography variant="body2" sx={{ fontWeight: 500 }}>{denial.payer}</Typography>
           </Box>
 
-          {/* Assignee */}
-          <Box sx={{ p: 2 }}>
-            <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 0.75 }}>Assigned To</Typography>
-            <Box
-              onClick={e => setAssigneeAnchor(e.currentTarget)}
-              sx={{
-                display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', borderRadius: 1,
-                p: 0.5, mx: -0.5,
-                '&:hover': { bgcolor: 'action.hover' },
-                '&:hover .edit-icon': { opacity: 1 },
-              }}
-            >
-              {assignedTo ? (
-                <>
-                  <Avatar sx={{ width: 24, height: 24, fontSize: '0.6875rem', bgcolor: 'primary.light' }}>{assignedTo.initials}</Avatar>
-                  <Typography variant="body2" sx={{ fontWeight: 500, flex: 1 }}>{assignedTo.name}</Typography>
-                </>
-              ) : (
-                <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic', flex: 1 }}>Unassigned</Typography>
-              )}
-              <EditOutlined className="edit-icon" sx={{ fontSize: 14, color: 'text.disabled', opacity: 0, transition: 'opacity 0.15s' }} />
-            </Box>
-
-            <Popover
-              open={Boolean(assigneeAnchor)}
-              anchorEl={assigneeAnchor}
-              onClose={() => setAssigneeAnchor(null)}
-              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-              slotProps={{ paper: { sx: { width: 200, borderRadius: 1.5, mt: 0.5 } } }}
-            >
-              <List dense disablePadding sx={{ py: 0.5 }}>
-                {TEAM_MEMBERS.map(m => (
-                  <ListItemButton
-                    key={m.id}
-                    selected={assignedTo?.id === m.id}
-                    onClick={() => { onChangeAssignee(m); setAssigneeAnchor(null) }}
-                    sx={{ px: 1.5, py: 0.75, '&.Mui-selected': { bgcolor: 'primary.main', color: '#fff', '& .MuiListItemText-primary': { color: '#fff' } } }}
-                  >
-                    <ListItemAvatar sx={{ minWidth: 34 }}>
-                      <Avatar sx={{ width: 22, height: 22, fontSize: '0.6rem', bgcolor: assignedTo?.id === m.id ? 'rgba(255,255,255,0.25)' : 'primary.light' }}>{m.initials}</Avatar>
-                    </ListItemAvatar>
-                    <ListItemText primary={m.name} primaryTypographyProps={{ fontSize: '0.8125rem' }} />
-                  </ListItemButton>
-                ))}
-                {assignedTo && (
-                  <ListItemButton
-                    onClick={() => { onChangeAssignee(null); setAssigneeAnchor(null) }}
-                    sx={{ px: 1.5, py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}
-                  >
-                    <ListItemText primary="Unassign" primaryTypographyProps={{ fontSize: '0.8125rem', color: 'text.secondary' }} />
-                  </ListItemButton>
-                )}
-              </List>
-            </Popover>
-          </Box>
-
         </Paper>
 
         {/* Appeal Rounds */}
@@ -1430,8 +1300,8 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
                           size="small"
                           sx={{
                             height: 18, fontSize: '0.625rem', fontWeight: 700,
-                            bgcolor: (rel.state === 'Won' || rel.state === 'Recovered') ? 'success.light' : rel.state === 'Closed' ? 'action.selected' : 'warning.light',
-                            color: (rel.state === 'Won' || rel.state === 'Recovered') ? 'success.dark' : rel.state === 'Closed' ? 'text.secondary' : 'warning.dark',
+                            bgcolor: rel.state === 'Overturned' ? 'success.light' : rel.state === 'Closed' ? 'action.selected' : 'warning.light',
+                            color: rel.state === 'Overturned' ? 'success.dark' : rel.state === 'Closed' ? 'text.secondary' : 'warning.dark',
                             '& .MuiChip-label': { px: 0.75 },
                           }}
                         />
@@ -1597,6 +1467,17 @@ function OverviewTab({ denial, denialId, onViewRemit, onViewClaim, onOpenAttachm
           </Box>
         )}
 
+        {/* On This Claim */}
+        {casesOnClaim.filter(c => !c.isCurrent).length > 0 && (
+          <Box sx={{ mt: 3 }}>
+            <OnThisClaimWidget
+              claimId={denial.claim.claimId}
+              cases={casesOnClaim}
+              onNavigateToCase={onNavigateToCase}
+            />
+          </Box>
+        )}
+
       </Box>
     </Box>
   )
@@ -1733,10 +1614,10 @@ function ToolbarBtn({ onClick, active, children, title }: { onClick: () => void;
         component="button"
         onClick={onClick}
         sx={{
-          border: 'none', background: active ? 'rgba(27,58,92,0.12)' : 'transparent',
+          border: 'none', background: active ? 'rgba(21,125,157,0.12)' : 'transparent',
           borderRadius: '4px', p: '4px 6px', cursor: 'pointer', display: 'flex',
           alignItems: 'center', color: active ? 'primary.main' : 'text.secondary',
-          '&:hover': { bgcolor: 'rgba(27,58,92,0.08)' },
+          '&:hover': { bgcolor: 'rgba(21,125,157,0.08)' },
         }}
       >
         {children}
@@ -1760,7 +1641,7 @@ interface AppealTabProps {
 }
 
 function AppealTab({ denial, denialId, denialState, appealLetterPdf, setAppealLetterPdf, supportingDocs, setSupportingDocs, priorCorrespondence, setPriorCorrespondence, onSubmit, onSubmitSuccess }: AppealTabProps) {
-  const canAct = denialState === 'Active'
+  const canAct = denialState === 'InProgress'
   const letterData = APPEAL_LETTERS[denialId]
   const defaultTemplate = getDefaultTemplate(denial.payer, denial.denialType)
   const availableTemplates = getAvailableTemplates(denial.denialType)
@@ -2062,7 +1943,7 @@ If the user is asking a question rather than requesting a change, return the ori
               />
               <Tooltip title={chatOpen ? 'Hide conversation' : 'Show conversation'}>
                 <IconButton size="small" onClick={() => setChatOpen(v => !v)}
-                  sx={{ color: chatOpen ? 'primary.main' : 'text.disabled', bgcolor: chatOpen ? 'rgba(27,58,92,0.08)' : 'transparent', borderRadius: 1 }}>
+                  sx={{ color: chatOpen ? 'primary.main' : 'text.disabled', bgcolor: chatOpen ? 'rgba(21,125,157,0.08)' : 'transparent', borderRadius: 1 }}>
                   <ChatBubbleOutlineOutlined sx={{ fontSize: 16 }} />
                 </IconButton>
               </Tooltip>
@@ -2084,8 +1965,8 @@ If the user is asking a question rather than requesting a change, return the ori
               '& .tiptap': {
                 outline: 'none', minHeight: 400,
                 fontFamily: 'Georgia, serif', fontSize: '0.875rem', lineHeight: 1.7, color: '#1a202c',
-                '& h2': { fontSize: '1.1rem', fontWeight: 700, mt: 2.5, mb: 1, fontFamily: 'Inter, sans-serif', color: '#1B3A5C' },
-                '& h3': { fontSize: '0.95rem', fontWeight: 700, mt: 2, mb: 0.75, fontFamily: 'Inter, sans-serif', color: '#1B3A5C' },
+                '& h2': { fontSize: '1.1rem', fontWeight: 700, mt: 2.5, mb: 1, fontFamily: 'Inter, sans-serif', color: '#31373a' },
+                '& h3': { fontSize: '0.95rem', fontWeight: 700, mt: 2, mb: 0.75, fontFamily: 'Inter, sans-serif', color: '#31373a' },
                 '& p':  { mb: 1.25 },
                 '& ul, & ol': { pl: 3, mb: 1.25 },
                 '& li': { mb: 0.5 },
@@ -2422,7 +2303,7 @@ const HS_ADR = {
 }
 
 function RecordsRequestTab({ denial, denialState, onStatusUpdate }: { denial: DenialRecord; denialState: string; onStatusUpdate?: (s: ActiveStatus) => void }) {
-  const canAct = denialState === 'Active'
+  const canAct = denialState === 'InProgress'
   const [phase, setPhase] = useState<HsPhase>('reviewing')
   const [rejecting, setRejecting] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
@@ -2461,8 +2342,8 @@ function RecordsRequestTab({ denial, denialState, onStatusUpdate }: { denial: De
         <Box sx={{ display: 'flex', gap: 3 }}>
           <Box sx={{ flex: 1 }}>
             <Paper variant="outlined" sx={{ borderRadius: 1.5, overflow: 'hidden', mb: 2 }}>
-              <Box sx={{ px: 2, py: 1.25, bgcolor: '#FFF8E1', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1 }}>
-                <MailOutlineOutlined sx={{ fontSize: 15, color: '#B7770D' }} />
+              <Box sx={{ px: 2, py: 1.25, bgcolor: '#fef3ea', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <MailOutlineOutlined sx={{ fontSize: 15, color: '#b86823' }} />
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>ADR Details — Parsed from Document</Typography>
               </Box>
               {[
@@ -2480,7 +2361,7 @@ function RecordsRequestTab({ denial, denialState, onStatusUpdate }: { denial: De
                 </Box>
               ))}
               <Box sx={{ px: 2, py: 1 }}>
-                <Chip size="small" icon={<PictureAsPdfOutlined sx={{ fontSize: 11 }} />} label="MCR-ADR-20260321-CLM9876541.pdf" clickable sx={{ height: 22, fontSize: '0.7rem', bgcolor: '#FFF8E1', color: '#B7770D', '& .MuiChip-icon': { color: '#B7770D' } }} />
+                <Chip size="small" icon={<PictureAsPdfOutlined sx={{ fontSize: 11 }} />} label="MCR-ADR-20260321-CLM9876541.pdf" clickable sx={{ height: 22, fontSize: '0.7rem', bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-icon': { color: '#b86823' } }} />
               </Box>
             </Paper>
             <Paper variant="outlined" sx={{ borderRadius: 1.5, overflow: 'hidden' }}>
@@ -2491,7 +2372,7 @@ function RecordsRequestTab({ denial, denialState, onStatusUpdate }: { denial: De
                 <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 0.75, borderBottom: '1px solid', borderColor: 'divider' }}>
                   <CheckCircleOutlineOutlined sx={{ fontSize: 14, color: item.required ? 'primary.main' : 'text.disabled', flexShrink: 0 }} />
                   <Typography variant="caption" sx={{ flex: 1 }}>{item.label}</Typography>
-                  {item.required && <Chip size="small" label="Required" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 600, bgcolor: '#EBF4FF', color: '#2C5282', '& .MuiChip-label': { px: 0.5 } }} />}
+                  {item.required && <Chip size="small" label="Required" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 600, bgcolor: '#e8f2f5', color: '#157d9d', '& .MuiChip-label': { px: 0.5 } }} />}
                 </Box>
               ))}
             </Paper>
@@ -2726,7 +2607,7 @@ const CODING_ERROR_DX: DxCode[] = [
 ]
 
 function CorrectedClaimTab({ denial, denialState, onStatusUpdate }: { denial: DenialRecord; denialState: string; onStatusUpdate?: (s: ActiveStatus) => void }) {
-  const canAct = denialState === 'Active'
+  const canAct = denialState === 'InProgress'
   const [phase, setPhase] = useState<ClaimPhase>('editing')
   const [diagnoses, setDiagnoses] = useState<DxCode[]>(CODING_ERROR_DX)
   const [npi, setNpi] = useState('')
@@ -2794,14 +2675,14 @@ function CorrectedClaimTab({ denial, denialState, onStatusUpdate }: { denial: De
             {!isCorrectOrder && (
               <Box sx={{ px: 2, py: 1, bgcolor: '#FFFBF0', borderBottom: '1px solid', borderColor: 'divider' }}>
                 <Typography variant="caption" color="text.secondary">
-                  Current principal: <strong style={{ color: '#B7770D' }}>{diagnoses[0]?.code} — {diagnoses[0]?.description}</strong>
+                  Current principal: <strong style={{ color: '#b86823' }}>{diagnoses[0]?.code} — {diagnoses[0]?.description}</strong>
                 </Typography>
               </Box>
             )}
             {diagnoses.map((dx, idx) => (
               <Box key={dx.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: idx === 0 && !isCorrectOrder ? '#FFF5F5' : idx === 0 ? '#F0FFF4' : 'transparent' }}>
                 <Chip size="small" label={idx === 0 ? 'Principal' : `Dx ${idx + 1}`} sx={{ height: 18, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0, bgcolor: idx === 0 && !isCorrectOrder ? '#FFCDD2' : idx === 0 ? '#C8E6C9' : 'grey.200', color: idx === 0 && !isCorrectOrder ? '#C62828' : idx === 0 ? '#1B5E20' : 'text.secondary', '& .MuiChip-label': { px: 0.75 } }} />
-                <Chip size="small" label={dx.code} sx={{ fontFamily: 'monospace', height: 20, fontSize: '0.75rem', fontWeight: 700, bgcolor: '#EBF4FF', color: '#2C5282', '& .MuiChip-label': { px: 0.75 }, flexShrink: 0 }} />
+                <Chip size="small" label={dx.code} sx={{ fontFamily: 'monospace', height: 20, fontSize: '0.75rem', fontWeight: 700, bgcolor: '#e8f2f5', color: '#157d9d', '& .MuiChip-label': { px: 0.75 }, flexShrink: 0 }} />
                 <Typography variant="caption" sx={{ flex: 1 }}>{dx.description}</Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
                   <IconButton size="small" disabled={idx === 0} onClick={() => moveDx(idx, 'up')} sx={{ p: 0.25 }}><KeyboardArrowUpOutlined sx={{ fontSize: 15 }} /></IconButton>
@@ -2867,7 +2748,7 @@ function CorrectedClaimTab({ denial, denialState, onStatusUpdate }: { denial: De
 type FilingPhase = 'drafting' | 'submitted'
 
 function FilingDefenseTab({ denial, denialState }: { denial: DenialRecord; denialState: string }) {
-  const canAct = denialState === 'Active'
+  const canAct = denialState === 'InProgress'
   const [phase, setPhase] = useState<FilingPhase>('drafting')
 
   if (phase === 'submitted') {
@@ -2989,13 +2870,13 @@ function FilingDefenseTab({ denial, denialState }: { denial: DenialRecord; denia
 type RecoupmentPath = 'accept' | 'dispute' | 'audit'
 
 function RecoupmentTab({ denial, denialState }: { denial: DenialRecord; denialState: string }) {
-  const canAct = denialState === 'Active'
+  const canAct = denialState === 'InProgress'
   const [selectedPath, setSelectedPath] = useState<RecoupmentPath | null>('dispute')
   const [submitted, setSubmitted] = useState(false)
   const [installments, setInstallments] = useState(false)
 
   const paths: { id: RecoupmentPath; title: string; description: string; icon: React.ReactNode; color: string }[] = [
-    { id: 'accept',  title: 'Accept & Arrange Repayment',     description: 'Acknowledge the overpayment and arrange repayment — lump sum or installment plan.',                icon: <PaymentsOutlined sx={{ fontSize: 20 }} />,       color: '#B7770D' },
+    { id: 'accept',  title: 'Accept & Arrange Repayment',     description: 'Acknowledge the overpayment and arrange repayment — lump sum or installment plan.',                icon: <PaymentsOutlined sx={{ fontSize: 20 }} />,       color: '#b86823' },
     { id: 'dispute', title: 'Dispute with Clinical Rationale', description: 'Submit a formal dispute with clinical documentation supporting the original MS-DRG assignment.',   icon: <GavelOutlined sx={{ fontSize: 20 }} />,          color: '#2C5282' },
     { id: 'audit',   title: 'Request Formal Audit Review',     description: 'Request an independent review of the BCBS post-payment audit methodology and findings.',           icon: <AccountBalanceOutlined sx={{ fontSize: 20 }} />, color: '#276749' },
   ]
@@ -3100,7 +2981,7 @@ function RecoupmentTab({ denial, denialState }: { denial: DenialRecord; denialSt
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
             {['Medical_Record_Complete_HAR210445.pdf', 'Physician_Attestation_MS-DRG.pdf', 'CDI_Review_DRG_Assignment.pdf', 'BCBS_Recoupment_Notice_RCQ20260319.pdf'].map(doc => (
               <Chip key={doc} size="small" icon={<PictureAsPdfOutlined sx={{ fontSize: 11 }} />} label={doc} clickable
-                sx={{ height: 22, fontSize: '0.7rem', bgcolor: '#EBF4FF', color: '#2C5282', '& .MuiChip-icon': { color: '#2C5282' } }} />
+                sx={{ height: 22, fontSize: '0.7rem', bgcolor: '#e8f2f5', color: '#157d9d', '& .MuiChip-icon': { color: '#157d9d' } }} />
             ))}
           </Box>
           <Button variant="contained" disableElevation size="small" disabled={!canAct}
@@ -3133,7 +3014,7 @@ function RecoupmentTab({ denial, denialState }: { denial: DenialRecord; denialSt
 type EligibilityPath = 'reverify' | 'selfpay' | 'secondary'
 
 function EligibilityTab({ denial, denialState }: { denial: DenialRecord; denialState: string }) {
-  const canAct = denialState === 'Active'
+  const canAct = denialState === 'InProgress'
   const [selectedPath, setSelectedPath] = useState<EligibilityPath | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [memberId, setMemberId] = useState('')
@@ -3597,7 +3478,7 @@ function AttachmentsTab({ denial, episodes, appealLetterPdf, supportingDocs, pri
 function OutcomeTab({ denialId, currentState }: { denialId: string; currentState: string }) {
   const outcome = DENIAL_OUTCOMES[denialId]
 
-  if (!outcome || (currentState !== 'Won' && currentState !== 'Recovered' && currentState !== 'Closed')) {
+  if (!outcome || (currentState !== 'Overturned' && currentState !== 'Closed')) {
     return (
       <Box sx={{ p: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
         <Box sx={{ textAlign: 'center', color: 'text.disabled' }}>
@@ -3717,13 +3598,13 @@ const DENIAL_TYPES = [
 ]
 
 const ENGINE_CHIP_COLORS: Record<ResolutionEngine, { bg: string; color: string }> = {
-  appeal:          { bg: '#EBF4FF', color: '#1B3A5C' },
-  records_request: { bg: '#F0FFF4', color: '#276749' },
-  corrected_claim: { bg: '#FFF8E6', color: '#7D5A00' },
-  filing_defense:  { bg: '#FFF5F5', color: '#C0392B' },
+  appeal:          { bg: '#e8f2f5', color: '#157d9d' },
+  records_request: { bg: '#eaf6f4', color: '#227a6c' },
+  corrected_claim: { bg: '#fef3ea', color: '#b86823' },
+  filing_defense:  { bg: '#fbedee', color: '#9f383e' },
   recoupment:      { bg: '#F5F0FF', color: '#553C9A' },
-  eligibility:     { bg: '#F0F4FF', color: '#2D4799' },
-  underpayment:    { bg: '#FFF7ED', color: '#92400E' },
+  eligibility:     { bg: '#ebf5fb', color: '#2776a1' },
+  underpayment:    { bg: '#fef3ea', color: '#b86823' },
 }
 
 function IntakeInfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
@@ -4128,11 +4009,12 @@ interface DenialDetailPageProps {
   onDenialUpdate: (updates: Partial<DenialRecord>) => void
   onSubmitSuccess?: (channel: string, payer: string, patientName: string) => void
   onNavigateToDenial?: (id: string) => void
+  onNavigateToCase?: (caseId: string, caseType: 'denial' | 'underpayment' | 'audit') => void
   allDenials?: DenialRecord[]
   onUpdateDenial?: (id: string, updates: Partial<DenialRecord>) => void
 }
 
-export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSubmitSuccess, onNavigateToDenial, allDenials, onUpdateDenial }: DenialDetailPageProps) {
+export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSubmitSuccess, onNavigateToDenial, onNavigateToCase, allDenials, onUpdateDenial }: DenialDetailPageProps) {
   const denialId = denial.id
   const [tab, setTab] = useState(0)
   const [remitOpen, setRemitOpen] = useState(false)
@@ -4192,15 +4074,55 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
   }
 
   const [assignedTo, setAssignedTo] = useState<TeamMember | null>(denial.assignedTo ?? null)
+  const [assigneeAnchor, setAssigneeAnchor] = useState<HTMLElement | null>(null)
 
   const days = daysUntil(denial.deadline)
   const deadlineLabel = days < 0 ? `${Math.abs(days)}d overdue` : `${days}d to deadline`
   const engine = getResolutionEngine(denial.denialType)
 
+  // Shared component data
+  const remitForStrip = REMIT_DATA[denialId]
+  const claimCtx: ClaimContext = {
+    claimId: denial.claim.claimId,
+    har: denial.claim.har,
+    mrn: denial.patient.mrn,
+    dos: denial.dos,
+    billedAmount: remitForStrip?.claimBilledAmount,
+    allowedAmount: remitForStrip?.claimAllowedAmount,
+    paidAmount: remitForStrip?.claimPaidAmount,
+  }
+
+  const casesOnClaim: CaseOnClaim[] = [
+    { caseId: denial.id, caseType: 'denial', state: denial.state, status: denial.status, amount: denial.deniedAmount, assignee: denial.assignedTo?.name ?? undefined, isCurrent: true },
+    ...SEED_UNDERPAYMENTS.filter(u => u.claim.claimId === denial.claim.claimId).map(u => ({ caseId: u.id, caseType: 'underpayment' as const, state: u.state, status: u.status, amount: u.varianceAmount, assignee: u.assignedTo?.name ?? undefined, isCurrent: false })),
+    ...SEED_AUDITS.filter(a => a.claim.claimId === denial.claim.claimId).map(a => ({ caseId: a.id, caseType: 'audit' as const, state: a.state, status: a.status, amount: a.amountAtRisk, assignee: a.assignedTo?.name ?? undefined, isCurrent: false })),
+  ]
+
+  function handleNavigateToCase(caseId: string, caseType: 'denial' | 'underpayment' | 'audit') {
+    if (onNavigateToCase) { onNavigateToCase(caseId, caseType); return }
+    if (caseType === 'denial' && onNavigateToDenial) onNavigateToDenial(caseId)
+  }
+
   // ── Transition modal state ──────────────────────────────────────────────────
   type TransitionType = 'begin_work' | 'dismiss' | 'mark_submitted' | 'will_not_appeal' | 'next_round' | 'record_decision' | 'close_case' | 'archive' | 'restore'
   const [transitionModal, setTransitionModal] = useState<TransitionType | null>(null)
   const [moreMenuAnchor, setMoreMenuAnchor] = useState<HTMLElement | null>(null)
+
+  // ── CTA logic (extracted for use in action bar) ─────────────────────────────
+  const primary: { label: string; type: TransitionType } | null =
+    denial.state === 'Queue'      ? { label: 'Begin Work',            type: 'begin_work' }      :
+    denial.state === 'InProgress' ? { label: 'Mark as Submitted',     type: 'mark_submitted' }  :
+    denial.state === 'Submitted'  ? { label: 'Record Payer Decision', type: 'record_decision' } :
+    denial.state === 'Archive'    ? { label: 'Restore',               type: 'restore' }         :
+    null
+
+  const secondaries: { label: string; type: TransitionType }[] =
+    denial.state === 'Queue'      ? [{ label: 'Close', type: 'close_case' }, { label: 'Archive', type: 'archive' }] :
+    denial.state === 'InProgress' ? [{ label: 'Will Not Appeal', type: 'will_not_appeal' }, { label: 'Dismiss', type: 'dismiss' }, { label: 'Archive', type: 'archive' }] :
+    denial.state === 'Submitted'  ? [{ label: 'Begin Next Round', type: 'next_round' }, { label: 'Archive', type: 'archive' }] :
+    denial.state === 'Overturned' ? [{ label: 'Archive', type: 'archive' }] :
+    denial.state === 'Closed'     ? [{ label: 'Archive', type: 'archive' }] :
+    []
 
   // Form state for modals that need data
   const [dismissReason, setDismissReason] = useState('')
@@ -4245,7 +4167,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
     })
   }
 
-  const DISPOSITION_LABELS: Record<OutcomeDisposition, WonStatus> = {
+  const DISPOSITION_LABELS: Record<OutcomeDisposition, OverturnedStatus> = {
     overturned_full:    'Overturned — Full Payment',
     overturned_partial: 'Overturned — Partial Payment',
     upheld:             'Upheld by Payer',
@@ -4261,7 +4183,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
       {/* ── Sticky header ────────────────────────────────────────────────────── */}
       <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
 
-        {/* Row 1: back + identifiers + financial */}
+        {/* Row 1: back + [D] badge + case ID + state chip + spacer + Denied amount + deadline chip */}
         <Box sx={{ px: 2.5, pt: 1.5, pb: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Button
             startIcon={<ArrowBackOutlined sx={{ fontSize: 15 }} />}
@@ -4273,47 +4195,46 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
             Worklist
           </Button>
           <Divider orientation="vertical" flexItem />
-
+          {/* [D] badge */}
+          <Chip label="D" size="small" sx={{ height: 20, width: 20, fontSize: '0.625rem', fontWeight: 800, bgcolor: '#fef3ea', color: '#b86823', borderRadius: '4px', '& .MuiChip-label': { px: 0 } }} />
           <Typography variant="subtitle1" sx={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '0.875rem' }}>
             {denial.id}
           </Typography>
-
           {(() => {
             const STATE_CHIP: Record<string, { bg: string; color: string }> = {
-              Intake:    { bg: '#EDF2F7', color: '#4A5568' },
-              Active:    { bg: '#EBF4FF', color: '#2C5282' },
-              Submitted: { bg: '#E6FFFA', color: '#276749' },
-              Resolved:  { bg: '#F0FFF4', color: '#22543D' },
-              Closed:    { bg: '#F7FAFC', color: '#718096' },
-              Archived:  { bg: '#F3F0FF', color: '#6B46C1' },
+              Queue:      { bg: '#e8f2f5', color: '#157d9d' },
+              InProgress: { bg: '#fef3ea', color: '#b86823' },
+              Submitted:  { bg: '#ebf5fb', color: '#2776a1' },
+              Overturned: { bg: '#eaf6f4', color: '#227a6c' },
+              Closed:     { bg: '#f1f4f6', color: '#636a6f' },
+              Archive:    { bg: '#f1f4f6', color: '#939a9f' },
             }
-            const sc = STATE_CHIP[denial.state] ?? STATE_CHIP['Active']!
-            return <Chip label={denial.state} size="small" sx={{ height: 20, fontWeight: 600, fontSize: '0.7rem', bgcolor: sc.bg, color: sc.color }} />
+            const stateLabel = denial.state === 'InProgress' ? 'In Progress' : denial.state
+            const sc = STATE_CHIP[denial.state] ?? STATE_CHIP['InProgress']!
+            return <Chip label={stateLabel} size="small" sx={{ height: 20, fontWeight: 600, fontSize: '0.7rem', bgcolor: sc.bg, color: sc.color }} />
           })()}
-
           <Box sx={{ flex: 1 }} />
-
-          {/* Financial + deadline */}
-          <Box sx={{ display: 'flex', gap: 2.5, alignItems: 'center' }}>
-            <Box sx={{ textAlign: 'right' }}>
-              <Typography variant="caption" color="text.secondary">Denied</Typography>
-              <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                {denial.deniedAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 })}
-              </Typography>
-            </Box>
-            <Box sx={{ textAlign: 'right' }}>
-              <Typography variant="caption" color="text.secondary">Deadline</Typography>
-              <Typography variant="body2" sx={{ fontWeight: 700, color: days <= 7 ? 'error.main' : 'text.primary', lineHeight: 1 }}>
-                {formatDate(denial.deadline)}
-                <Typography component="span" variant="caption" sx={{ ml: 0.5, color: days <= 7 ? 'error.main' : 'text.secondary' }}>
-                  ({deadlineLabel})
-                </Typography>
-              </Typography>
-            </Box>
+          {/* Denied amount */}
+          <Box sx={{ textAlign: 'right' }}>
+            <Typography variant="caption" color="error.main">Denied</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+              {denial.deniedAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 })}
+            </Typography>
           </Box>
+          {/* Deadline chip */}
+          <Chip
+            label={`${formatDate(denial.deadline)} · ${deadlineLabel}`}
+            size="small"
+            sx={{
+              height: 20, fontSize: '0.6875rem', fontWeight: 600,
+              bgcolor: days <= 0 ? '#FEE2E2' : days <= 3 ? '#FED7AA' : days <= 7 ? '#FEF9C3' : 'action.selected',
+              color: days <= 0 ? '#B91C1C' : days <= 3 ? '#C2410C' : days <= 7 ? '#854D0E' : 'text.secondary',
+              '& .MuiChip-label': { px: 1 },
+            }}
+          />
         </Box>
 
-        {/* Row 2: patient + payer + denial type */}
+        {/* Row 2: patient · mrn · payer · case type · subtype · CARC · RARC */}
         <Box sx={{ px: 2.5, pb: 1.25, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>{denial.patient.name}</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{denial.patient.mrn}</Typography>
@@ -4338,131 +4259,188 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
           {denial.rarc && <Chip label={denial.rarc} size="small" sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 } }} />}
         </Box>
 
-        {/* Tabs + inline next step ─────────────────────────────────────────── */}
-        {(() => {
-          const state = denial.state
-          const primary: { label: string; type: TransitionType } | null =
-            state === 'Active'    ? { label: 'Mark as Submitted',     type: 'mark_submitted'  } :
-            state === 'Submitted' ? { label: 'Record Payer Decision', type: 'record_decision' } :
-            state === 'Won'       ? { label: 'Close Case',            type: 'close_case'      } :
-            state === 'Recovered' ? { label: 'Close Case',            type: 'close_case'      } :
-            state === 'Archived'  ? { label: 'Restore',               type: 'restore'         } :
-            null
-
-          const secondaries: { label: string; type: TransitionType }[] =
-            state === 'Active'    ? [{ label: 'Will Not Appeal', type: 'will_not_appeal' }, { label: 'Dismiss', type: 'dismiss' }, { label: 'Archive', type: 'archive' }] :
-            state === 'Submitted' ? [{ label: 'Begin Next Round', type: 'next_round' }, { label: 'Archive', type: 'archive' }] :
-            state === 'Won'       ? [{ label: 'Archive', type: 'archive' }] :
-            state === 'Recovered' ? [{ label: 'Archive', type: 'archive' }] :
-            state === 'Closed'    ? [{ label: 'Archive', type: 'archive' }] :
-            []
-
-          return (
-            <Box sx={{ display: 'flex', alignItems: 'center', pr: 2 }}>
-              <Tabs
-                value={tab}
-                onChange={(_, v) => setTab(v)}
-                sx={{
-                  flex: 1, minHeight: 36, px: 2,
-                  '& .MuiTab-root': { minHeight: 36, py: 0, fontSize: '0.8125rem', fontWeight: 500, textTransform: 'none' },
-                }}
-              >
-                <Tab label="Overview" />
-                <Tab label={ENGINE_LABELS[engine]} />
-                <Tab label="Clinical" />
-                <Tab label={`Activity${episodes.length > 0 ? ` (${episodes.length})` : ''}`} />
-                <Tab label="Outcome" />
-                <Tab label="Attachments" />
-              </Tabs>
-
-              {(primary || secondaries.length > 0) && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-                  {primary && (
-                    <Button
-                      variant="contained" size="small" disableElevation
-                      onClick={() => setTransitionModal(primary.type)}
-                      sx={{ fontWeight: 600, fontSize: '0.75rem' }}
-                    >
-                      {primary.label}
-                    </Button>
-                  )}
-                  {secondaries.length > 0 && (
-                    <>
-                      <Button
-                        size="small" variant="outlined"
-                        onClick={e => setMoreMenuAnchor(e.currentTarget)}
-                        endIcon={<ExpandMoreOutlined sx={{ fontSize: 14 }} />}
-                        sx={{ fontSize: '0.75rem', color: 'text.secondary', borderColor: 'divider' }}
+        {/* Action bar (Zone 2): assignee chip + spacer + primary CTA + More */}
+        <Box sx={{ px: 2.5, pb: 1, display: 'flex', alignItems: 'center', gap: 1.5, borderTop: '1px solid', borderColor: 'divider', pt: 0.75 }}>
+          {/* Assignee chip */}
+          <Box
+            onClick={e => setAssigneeAnchor(e.currentTarget)}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 0.75, cursor: 'pointer', borderRadius: 1,
+              px: 0.75, py: 0.375, border: '1px solid', borderColor: 'divider',
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
+          >
+            <Avatar sx={{ width: 22, height: 22, fontSize: '0.5625rem', bgcolor: '#e8f2f5', color: '#157d9d' }}>
+              {assignedTo ? assignedTo.initials : '?'}
+            </Avatar>
+            {assignedTo ? (
+              <Typography variant="caption" sx={{ fontWeight: 500, color: 'text.secondary' }}>{assignedTo.name}</Typography>
+            ) : (
+              <Typography variant="caption" sx={{ fontStyle: 'italic', color: 'text.disabled' }}>Unassigned</Typography>
+            )}
+          </Box>
+          <Popover
+            open={Boolean(assigneeAnchor)}
+            anchorEl={assigneeAnchor}
+            onClose={() => setAssigneeAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            slotProps={{ paper: { sx: { width: 200, borderRadius: 1.5, mt: 0.5 } } }}
+          >
+            <List dense disablePadding sx={{ py: 0.5 }}>
+              {TEAM_MEMBERS.map(m => (
+                <ListItemButton
+                  key={m.id}
+                  selected={assignedTo?.id === m.id}
+                  onClick={() => { setAssignedTo(m); setAssigneeAnchor(null) }}
+                  sx={{ px: 1.5, py: 0.75, '&.Mui-selected': { bgcolor: 'primary.main', color: '#fff', '& .MuiListItemText-primary': { color: '#fff' } } }}
+                >
+                  <ListItemAvatar sx={{ minWidth: 34 }}>
+                    <Avatar sx={{ width: 22, height: 22, fontSize: '0.6rem', bgcolor: assignedTo?.id === m.id ? 'rgba(255,255,255,0.25)' : 'primary.light' }}>{m.initials}</Avatar>
+                  </ListItemAvatar>
+                  <ListItemText primary={m.name} primaryTypographyProps={{ fontSize: '0.8125rem' }} />
+                </ListItemButton>
+              ))}
+              {assignedTo && (
+                <ListItemButton
+                  onClick={() => { setAssignedTo(null); setAssigneeAnchor(null) }}
+                  sx={{ px: 1.5, py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}
+                >
+                  <ListItemText primary="Unassign" primaryTypographyProps={{ fontSize: '0.8125rem', color: 'text.secondary' }} />
+                </ListItemButton>
+              )}
+            </List>
+          </Popover>
+          <Box sx={{ flex: 1 }} />
+          {/* Primary CTA + More */}
+          {(primary || secondaries.length > 0) && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+              {primary && (
+                <Button
+                  variant="contained" size="small" disableElevation
+                  onClick={() => setTransitionModal(primary.type)}
+                  sx={{ fontWeight: 600, fontSize: '0.75rem' }}
+                >
+                  {primary.label}
+                </Button>
+              )}
+              {secondaries.length > 0 && (
+                <>
+                  <Button
+                    size="small" variant="outlined"
+                    onClick={e => setMoreMenuAnchor(e.currentTarget)}
+                    endIcon={<ExpandMoreOutlined sx={{ fontSize: 14 }} />}
+                    sx={{ fontSize: '0.75rem', color: 'text.secondary', borderColor: 'divider' }}
+                  >
+                    More
+                  </Button>
+                  <Popover
+                    open={Boolean(moreMenuAnchor)}
+                    anchorEl={moreMenuAnchor}
+                    onClose={() => setMoreMenuAnchor(null)}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                    transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                    slotProps={{ paper: { sx: { mt: 0.5, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', borderRadius: 1.5, minWidth: 160 } } }}
+                  >
+                    {secondaries.map(a => (
+                      <ListItemButton
+                        key={a.type} dense
+                        onClick={() => { setMoreMenuAnchor(null); setTransitionModal(a.type) }}
+                        sx={{ px: 2, py: 1 }}
                       >
-                        More
-                      </Button>
-                      <Popover
-                        open={Boolean(moreMenuAnchor)}
-                        anchorEl={moreMenuAnchor}
-                        onClose={() => setMoreMenuAnchor(null)}
-                        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-                        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-                        slotProps={{ paper: { sx: { mt: 0.5, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', borderRadius: 1.5, minWidth: 160 } } }}
-                      >
-                        {secondaries.map(a => (
-                          <ListItemButton
-                            key={a.type} dense
-                            onClick={() => { setMoreMenuAnchor(null); setTransitionModal(a.type) }}
-                            sx={{ px: 2, py: 1 }}
-                          >
-                            <ListItemText primary={a.label} primaryTypographyProps={{ fontSize: '0.8125rem' }} />
-                          </ListItemButton>
-                        ))}
-                      </Popover>
-                    </>
-                  )}
-                </Box>
+                        <ListItemText primary={a.label} primaryTypographyProps={{ fontSize: '0.8125rem' }} />
+                      </ListItemButton>
+                    ))}
+                  </Popover>
+                </>
               )}
             </Box>
-          )
-        })()}
+          )}
+        </Box>
+
+        {/* Tabs row */}
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          sx={{
+            minHeight: 36, px: 2,
+            '& .MuiTab-root': { minHeight: 36, py: 0, fontSize: '0.8125rem', fontWeight: 500, textTransform: 'none' },
+          }}
+        >
+          <Tab label="Overview" />
+          <Tab label={ENGINE_LABELS[engine]} />
+          <Tab label="Clinical" />
+          <Tab label={`Activity${episodes.length > 0 ? ` (${episodes.length})` : ''}`} />
+          <Tab label="Outcome" />
+          <Tab label="Attachments" />
+        </Tabs>
       </Box>
 
-      {/* ── Tab content ───────────────────────────────────────────────────────── */}
-      <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'background.default' }}>
-        {tab === 0 && <OverviewTab denial={denial} denialId={denialId} onViewRemit={() => setRemitOpen(true)} onViewClaim={() => setClaim837Open(true)} onOpenAttachment={handleOpenAttachment} events={events} episodes={episodes} onAddFile={handleAddFile} assignedTo={assignedTo} onChangeAssignee={setAssignedTo} onNavigateToDenial={onNavigateToDenial} allDenials={allDenials} onDenialUpdate={onDenialUpdate} onUpdateDenial={onUpdateDenial} />}
-        {tab === 1 && engine === 'appeal'          && <AppealTab denial={denial} denialId={denialId} denialState={denial.state} appealLetterPdf={appealLetterPdf} setAppealLetterPdf={setAppealLetterPdf} supportingDocs={supportingDocs} setSupportingDocs={setSupportingDocs} priorCorrespondence={priorCorrespondence} setPriorCorrespondence={setPriorCorrespondence} onSubmit={() => applyTransition('Submitted', 'Awaiting Payer Decision')} onSubmitSuccess={(channel, payer, patientName) => {
-          const channelLabel = CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG]?.label ?? channel
-          const newEvent: TimelineEvent = {
-            id: `e-submit-${Date.now()}`,
-            type: 'action_appeal_l1',
-            timestamp: new Date().toISOString(),
-            actor: assignedTo?.name ?? 'Jordan Tang',
-            actorType: 'provider',
-            summary: `Appeal submitted via ${channelLabel}`,
-            detail: `Appeal packet submitted to ${payer} via ${channelLabel}. Packet includes appeal letter and supporting documentation.`,
-          }
-          setEvents(prev => [...prev, newEvent])
-          const packetAttachments: EpisodeAttachment[] = [
-            ...(appealLetterPdf ? [{ type: 'document' as const, label: appealLetterPdf.name }] : []),
-            ...supportingDocs.map(d => ({ type: 'document' as const, label: d.name })),
-          ]
-          recordSubmissionEpisode(channel, channelLabel, packetAttachments.length ? packetAttachments : undefined)
-          onSubmitSuccess?.(channel, payer, patientName)
-        }} />}
-        {tab === 1 && engine === 'records_request' && <RecordsRequestTab denial={denial} denialState={denial.state} onStatusUpdate={s => onDenialUpdate({ status: s })} />}
-        {tab === 1 && engine === 'corrected_claim' && <CorrectedClaimTab denial={denial} denialState={denial.state} onStatusUpdate={s => onDenialUpdate({ status: s })} />}
-        {tab === 1 && engine === 'filing_defense'  && <FilingDefenseTab  denial={denial} denialState={denial.state} />}
-        {tab === 1 && engine === 'recoupment'      && <RecoupmentTab     denial={denial} denialState={denial.state} />}
-        {tab === 1 && engine === 'eligibility'     && <EligibilityTab    denial={denial} denialState={denial.state} />}
-        {tab === 1 && engine === 'underpayment'    && <UnderpaymentTab  denial={denial} denialState={denial.state} onSubmit={() => applyTransition('Submitted', 'Awaiting Payer Decision')} onSubmitSuccess={(channel, attachments) => recordSubmissionEpisode(channel, undefined, attachments)} />}
-        {tab === 2 && <ClinicalTab denial={denial} />}
-        {tab === 3 && <ActivityTab episodes={episodes} onOpenAttachment={handleOpenAttachment} onAddFile={handleAddFile} />}
-        {tab === 4 && <OutcomeTab denialId={denialId} currentState={denial.state} />}
-        {tab === 5 && (
-          <AttachmentsTab
+      {/* ── Two-column body ───────────────────────────────────────────────────── */}
+      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+        {/* Left column */}
+        <Box sx={{ flex: '0 0 60%', display: 'flex', flexDirection: 'column', borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+          <ClaimContextStrip claim={claimCtx} />
+          <Box sx={{ flex: 1, overflowY: 'auto', bgcolor: 'background.default' }}>
+            {tab === 0 && <OverviewTab denial={denial} denialId={denialId} onViewRemit={() => setRemitOpen(true)} onViewClaim={() => setClaim837Open(true)} onOpenAttachment={handleOpenAttachment} episodes={episodes} onAddFile={handleAddFile} />}
+            {tab === 1 && engine === 'appeal'          && <AppealTab denial={denial} denialId={denialId} denialState={denial.state} appealLetterPdf={appealLetterPdf} setAppealLetterPdf={setAppealLetterPdf} supportingDocs={supportingDocs} setSupportingDocs={setSupportingDocs} priorCorrespondence={priorCorrespondence} setPriorCorrespondence={setPriorCorrespondence} onSubmit={() => applyTransition('Submitted', 'Awaiting Payer Decision')} onSubmitSuccess={(channel, payer, patientName) => {
+              const channelLabel = CHANNEL_CONFIG[channel as keyof typeof CHANNEL_CONFIG]?.label ?? channel
+              const newEvent: TimelineEvent = {
+                id: `e-submit-${Date.now()}`,
+                type: 'action_appeal_l1',
+                timestamp: new Date().toISOString(),
+                actor: assignedTo?.name ?? 'Jordan Tang',
+                actorType: 'provider',
+                summary: `Appeal submitted via ${channelLabel}`,
+                detail: `Appeal packet submitted to ${payer} via ${channelLabel}. Packet includes appeal letter and supporting documentation.`,
+              }
+              setEvents(prev => [...prev, newEvent])
+              const packetAttachments: EpisodeAttachment[] = [
+                ...(appealLetterPdf ? [{ type: 'document' as const, label: appealLetterPdf.name }] : []),
+                ...supportingDocs.map(d => ({ type: 'document' as const, label: d.name })),
+              ]
+              recordSubmissionEpisode(channel, channelLabel, packetAttachments.length ? packetAttachments : undefined)
+              onSubmitSuccess?.(channel, payer, patientName)
+            }} />}
+            {tab === 1 && engine === 'records_request' && <RecordsRequestTab denial={denial} denialState={denial.state} onStatusUpdate={s => onDenialUpdate({ status: s })} />}
+            {tab === 1 && engine === 'corrected_claim' && <CorrectedClaimTab denial={denial} denialState={denial.state} onStatusUpdate={s => onDenialUpdate({ status: s })} />}
+            {tab === 1 && engine === 'filing_defense'  && <FilingDefenseTab  denial={denial} denialState={denial.state} />}
+            {tab === 1 && engine === 'recoupment'      && <RecoupmentTab     denial={denial} denialState={denial.state} />}
+            {tab === 1 && engine === 'eligibility'     && <EligibilityTab    denial={denial} denialState={denial.state} />}
+            {tab === 1 && engine === 'underpayment'    && <UnderpaymentTab  denial={denial} denialState={denial.state} onSubmit={() => applyTransition('Submitted', 'Awaiting Payer Decision')} onSubmitSuccess={(channel, attachments) => recordSubmissionEpisode(channel, undefined, attachments)} />}
+            {tab === 2 && <ClinicalTab denial={denial} />}
+            {tab === 3 && <ActivityTab episodes={episodes} onOpenAttachment={handleOpenAttachment} onAddFile={handleAddFile} />}
+            {tab === 4 && <OutcomeTab denialId={denialId} currentState={denial.state} />}
+            {tab === 5 && (
+              <AttachmentsTab
+                denial={denial}
+                episodes={episodes}
+                appealLetterPdf={appealLetterPdf}
+                supportingDocs={supportingDocs}
+                priorCorrespondence={priorCorrespondence}
+              />
+            )}
+          </Box>
+        </Box>
+        {/* Right column */}
+        <Box sx={{ flex: '0 0 40%', overflowY: 'auto', p: 2 }}>
+          <DenialRightColumn
             denial={denial}
+            events={events}
             episodes={episodes}
-            appealLetterPdf={appealLetterPdf}
-            supportingDocs={supportingDocs}
-            priorCorrespondence={priorCorrespondence}
+            assignedTo={assignedTo}
+            onChangeAssignee={setAssignedTo}
+            casesOnClaim={casesOnClaim}
+            onNavigateToCase={handleNavigateToCase}
+            onNavigateToDenial={onNavigateToDenial}
+            onViewRemit={() => setRemitOpen(true)}
+            onViewClaim={() => setClaim837Open(true)}
+            allDenials={allDenials ?? []}
+            onDenialUpdate={onDenialUpdate}
+            onUpdateDenial={onUpdateDenial}
+            denialId={denialId}
           />
-        )}
+        </Box>
       </Box>
 
       {/* ── Transition modals ─────────────────────────────────────────────────── */}
@@ -4483,7 +4461,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setTransitionModal(null)} sx={{ color: 'text.secondary' }}>Cancel</Button>
-          <Button variant="contained" disableElevation onClick={() => applyTransition('Active', getDefaultActiveStatus(engine))}>
+          <Button variant="contained" disableElevation onClick={() => applyTransition('InProgress', getDefaultInProgressStatus(engine))}>
             Begin Work
           </Button>
         </DialogActions>
@@ -4626,7 +4604,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setTransitionModal(null)} sx={{ color: 'text.secondary' }}>Cancel</Button>
           <Button variant="contained" disableElevation
-            onClick={() => applyTransition('Won', DISPOSITION_LABELS[decisionDisposition])}>
+            onClick={() => applyTransition('Overturned', DISPOSITION_LABELS[decisionDisposition])}>
             Record Decision
           </Button>
         </DialogActions>
@@ -4637,13 +4615,13 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
         <DialogTitle sx={{ fontSize: '1rem', fontWeight: 700 }}>Begin Next Appeal Round</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           <Typography variant="body2" color="text.secondary">
-            The payer upheld the previous submission. This denial will return to <strong>Active</strong> state for the next round of appeal drafting.
+            The payer upheld the previous submission. This denial will return to the <strong>Queue</strong> for next-level appeal assignment.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setTransitionModal(null)} sx={{ color: 'text.secondary' }}>Cancel</Button>
           <Button variant="contained" disableElevation
-            onClick={() => applyTransition('Active', getDefaultActiveStatus(engine))}>
+            onClick={() => applyTransition('Queue', 'Returned — Upheld')}>
             Begin Next Round
           </Button>
         </DialogActions>
@@ -4671,7 +4649,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
         <DialogTitle sx={{ fontSize: '1rem', fontWeight: 700 }}>Archive Denial?</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           <Typography variant="body2" color="text.secondary">
-            This denial will be moved to the Archived tab. It can be restored at any time to its current state ({denial.state} / {denial.status}).
+            This denial will be moved to the Archive tab. It can be restored at any time to its current state ({denial.state === 'InProgress' ? 'In Progress' : denial.state} / {denial.status}).
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -4679,7 +4657,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
           <Button variant="contained" disableElevation
             sx={{ bgcolor: '#6B46C1', '&:hover': { bgcolor: '#553C9A' } }}
             onClick={() => {
-              onDenialUpdate({ state: 'Archived', status: 'Archived', archivedFrom: { state: denial.state, status: denial.status } })
+              onDenialUpdate({ state: 'Archive', status: 'Archived', archivedFrom: { state: denial.state, status: denial.status } })
               setTransitionModal(null)
             }}>
             Archive

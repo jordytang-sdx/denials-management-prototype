@@ -1,15 +1,34 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, Component, type ErrorInfo, type ReactNode } from 'react'
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) { super(props); this.state = { error: null } }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('Dashboard error:', error, info) }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24, fontFamily: 'monospace', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, margin: 16 }}>
+          <strong style={{ color: '#991B1B' }}>Dashboard render error:</strong>
+          <pre style={{ marginTop: 8, whiteSpace: 'pre-wrap', fontSize: 12, color: '#7F1D1D' }}>{this.state.error.message}{'\n'}{this.state.error.stack}</pre>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 import { ThemeProvider, CssBaseline } from '@mui/material'
 import {
   Box, AppBar, Toolbar, Typography, Drawer, List, ListItemButton,
   ListItemIcon, ListItemText, Divider, Chip, Avatar, Tooltip, IconButton,
-  Button, Paper, Badge, Snackbar, Alert, Popover,
+  Button, Paper, Badge, Snackbar, Alert, Popover, Menu, MenuItem,
 } from '@mui/material'
 import {
   DashboardOutlined, ListAltOutlined, UploadFileOutlined,
   SettingsOutlined, AccountTreeOutlined,
   NotificationsOutlined, HelpOutlineOutlined, RestartAltOutlined,
-  ChevronLeftOutlined, ChevronRightOutlined,
+  ChevronLeftOutlined, ChevronRightOutlined, ArchiveOutlined,
+  PaymentsOutlined, GavelOutlined, ViewListOutlined,
+  ExpandMoreOutlined, ExpandLessOutlined, UnfoldMoreOutlined,
 } from '@mui/icons-material'
 import theme from './theme'
 import WorklistPage, {
@@ -21,19 +40,30 @@ import IngestPage from './pages/IngestPage'
 import RoutingRulesPage from './pages/RoutingRulesPage'
 import UnderpaymentWorklistPage from './pages/UnderpaymentWorklistPage'
 import UnderpaymentDetailPage from './pages/UnderpaymentDetailPage'
-import { SEED_DENIALS, SCENARIO_B_DENIALS, type DenialRecord } from './data/denials'
+import { SEED_DENIALS, type DenialRecord } from './data/denials'
 import { SEED_UNDERPAYMENTS } from './data/underpayments'
+import { SEED_AUDITS, type AuditRecord } from './data/audits'
+import { SEED_STAGING } from './data/staging'
+import { DEFAULT_FLAGS, type FeatureFlags } from './data/featureFlags'
+import AuditWorklistPage from './pages/AuditWorklistPage'
+import AuditDetailPage from './pages/AuditDetailPage'
+import DenialListStyleEPage from './pages/DenialListStyleEPage'
 
 const SIDEBAR_WIDTH = 224
 const SIDEBAR_COLLAPSED_WIDTH = 56
 
-type NavItem = 'Dashboard' | 'Worklist' | 'Ingest' | 'Routing Rules' | 'Settings'
+type NavItem = 'Dashboard' | 'Denials' | 'Underpayments' | 'Audits' | 'Ingest' | 'Routing Rules' | 'Settings' | 'Archive' | 'Style E'
+type UserRole = 'Manager' | 'FrontlineWorker'
 
-const navItems: { label: NavItem; icon: React.ReactNode }[] = [
+// Full nav definition — filtered at render time based on features + role
+const ALL_NAV_ITEMS: { label: NavItem; icon: React.ReactNode; packageKey?: keyof FeatureFlags }[] = [
   { label: 'Dashboard',     icon: <DashboardOutlined fontSize="small" /> },
-  { label: 'Worklist',      icon: <ListAltOutlined fontSize="small" /> },
+  { label: 'Denials',       icon: <ListAltOutlined fontSize="small" />,   packageKey: 'denials' },
+  { label: 'Underpayments', icon: <PaymentsOutlined fontSize="small" />,  packageKey: 'underpayments' },
+  { label: 'Audits',        icon: <GavelOutlined fontSize="small" />,     packageKey: 'audits' },
   { label: 'Ingest',        icon: <UploadFileOutlined fontSize="small" /> },
   { label: 'Routing Rules', icon: <AccountTreeOutlined fontSize="small" /> },
+  { label: 'Style E',       icon: <ViewListOutlined fontSize="small" /> },
 ]
 
 const bottomNavItems: { label: NavItem; icon: React.ReactNode }[] = [
@@ -63,8 +93,8 @@ const SEED_NOTIFICATIONS: AppNotification[] = [
 const NOTIF_ICON_COLORS: Record<AppNotification['type'], string> = {
   overturned: '#16A34A',
   deadline:   '#DC2626',
-  submitted:  '#2557D6',
-  attention:  '#B7770D',
+  submitted:  '#157d9d',
+  attention:  '#b86823',
   ingested:   '#553C9A',
 }
 
@@ -93,11 +123,92 @@ function timeAgo(timestamp: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-const PAGE_SUBTITLES: Omit<Record<NavItem, string>, 'Worklist'> & { Worklist?: string } = {
+const PAGE_SUBTITLES: Partial<Record<NavItem, string>> = {
   Dashboard:       'Operational snapshot and trend analysis',
-  Ingest:          'Upload 835s and PDFs for processing',
+  Denials:         'Manage and appeal denied claims',
+  Underpayments:   'Identify and recover underpaid claims',
+  Audits:          'RAC, MAC, and payer audit responses',
   'Routing Rules': 'Configure routing logic by payer and denial type',
   Settings:        'Client configuration and system preferences',
+  Archive:         'Removed duplicates, bad ingestions, and data quality cases',
+}
+
+// Prototype reference "now" — signals arrive on 2026-04-03, last batch at t(78)=07:18
+const PROTO_NOW = new Date('2026-04-03T07:24:00')
+const PROTO_TODAY_STR = PROTO_NOW.toDateString()
+
+function isProtoToday(isoString: string): boolean {
+  return new Date(isoString).toDateString() === PROTO_TODAY_STR
+}
+
+function protoTimeAgo(timestamp: string): string {
+  const diff = PROTO_NOW.getTime() - new Date(timestamp).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+const ingestAutoRoutedToday = SEED_STAGING.filter(r =>
+  r.status === 'auto_processed' && r.autoProcessedAt != null && isProtoToday(r.autoProcessedAt)
+).length
+const ingestExceptionsToday = SEED_STAGING.filter(r =>
+  r.status === 'needs_review' && isProtoToday(r.receivedAt)
+).length
+const lastBatchTime = SEED_STAGING.map(r => r.receivedAt).sort().at(-1) ?? ''
+const ingestLastBatch = lastBatchTime ? protoTimeAgo(lastBatchTime) : null
+
+function ArchiveListView({ denials }: { denials: DenialRecord[] }) {
+  const archived = denials.filter(d => d.state === 'Archive')
+  const cols = ['Patient / HAR', 'Payer', 'Denial Type', 'Denied Amount', 'Archive Reason', 'Archived By']
+  const grid = '200px 140px 1fr 120px 1fr 150px'
+
+  return (
+    <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        {archived.length} archived case{archived.length !== 1 ? 's' : ''}
+      </Typography>
+      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+        {/* Header */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: grid, gap: 2, px: 2.5, py: 1, bgcolor: '#f8fafb', borderBottom: '1px solid', borderColor: 'divider' }}>
+          {cols.map(h => (
+            <Typography key={h} variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {h}
+            </Typography>
+          ))}
+        </Box>
+        {archived.length === 0 ? (
+          <Box sx={{ py: 6, textAlign: 'center' }}>
+            <Typography variant="body2" color="text.disabled">No archived cases</Typography>
+          </Box>
+        ) : archived.map((d, idx) => (
+          <Box
+            key={d.id}
+            sx={{
+              display: 'grid', gridTemplateColumns: grid, gap: 2,
+              px: 2.5, py: 1.5, alignItems: 'center',
+              borderBottom: idx < archived.length - 1 ? '1px solid' : 'none',
+              borderColor: 'divider',
+              bgcolor: idx % 2 === 0 ? 'transparent' : '#FAFAFA',
+            }}
+          >
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>{d.patient.name}</Typography>
+              <Typography variant="caption" color="text.secondary">{d.claim.har}</Typography>
+            </Box>
+            <Typography variant="body2" noWrap>{d.payer}</Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>{d.denialType}</Typography>
+            <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+              {d.deniedAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 })}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>{d.archiveReason ?? '—'}</Typography>
+            <Typography variant="body2" color="text.secondary">{d.archivedBy ?? '—'}</Typography>
+          </Box>
+        ))}
+      </Paper>
+    </Box>
+  )
 }
 
 function SettingsPage({ onReset }: { onReset: () => void }) {
@@ -139,72 +250,134 @@ function SettingsPage({ onReset }: { onReset: () => void }) {
   )
 }
 
-function LoginPage({ onUnlock }: { onUnlock: () => void }) {
-  const [value, setValue] = useState('')
-  const [error, setError] = useState(false)
+const EXISTING_SIDEBAR_WIDTH = 256
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (value === 'f1278XZnyJ%~j3') {
-      onUnlock()
-    } else {
-      setError(true)
-      setValue('')
-    }
-  }
+function ExistingSystemSidebar({
+  activeNav,
+  onNavChange,
+  needsReviewCount,
+}: {
+  activeNav: 'worklist' | 'ingest'
+  onNavChange: (nav: 'worklist' | 'ingest') => void
+  needsReviewCount: number
+}) {
+  const navItems: { id: 'worklist' | 'ingest'; label: string }[] = [
+    { id: 'worklist', label: 'Denials Worklist' },
+    { id: 'ingest',   label: 'Ingest' },
+  ]
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', bgcolor: '#F8F9FB' }}>
-      <Paper variant="outlined" sx={{ p: 4, borderRadius: 2, width: 320 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, bgcolor: '#0F2057', borderRadius: 1.5, px: 1.5, py: 0.75, width: 'fit-content' }}>
-          <Box component="img" src="/smarterdx_logo.webp" alt="SmarterDX" sx={{ height: 20, display: 'block', objectFit: 'contain' }} />
+    // Outer box holds space in the flex row (same pattern as MUI permanent Drawer)
+    <Box sx={{ width: EXISTING_SIDEBAR_WIDTH, flexShrink: 0 }}>
+      {/* Fixed panel — visually occupies the sidebar area */}
+      <Box
+        sx={{
+          position: 'fixed',
+          top: 52,
+          left: 0,
+          width: EXISTING_SIDEBAR_WIDTH,
+          height: 'calc(100vh - 52px)',
+          bgcolor: '#FAFAFA',
+          borderRight: '1px solid #E5E5E5',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          zIndex: 1200,
+        }}
+      >
+        {/* Nav items */}
+        <Box sx={{ flex: 1, p: 1, pt: 1.5 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+            {navItems.map(({ id, label }) => (
+              <Box
+                key={id}
+                onClick={() => onNavChange(id)}
+                sx={{
+                  px: 1, py: 1,
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: activeNav === id ? 500 : 400,
+                  color: activeNav === id ? '#0A0A0A' : '#31373A',
+                  bgcolor: activeNav === id ? 'rgba(0,0,0,0.06)' : 'transparent',
+                  transition: 'background-color 0.1s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  '&:hover': { bgcolor: activeNav === id ? 'rgba(0,0,0,0.06)' : 'rgba(0,0,0,0.04)' },
+                }}
+              >
+                {label}
+                {id === 'ingest' && needsReviewCount > 0 && (
+                  <Box sx={{
+                    minWidth: 18, height: 18, borderRadius: '9px',
+                    bgcolor: '#b86823', color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.6875rem', fontWeight: 700, px: 0.75,
+                  }}>
+                    {needsReviewCount}
+                  </Box>
+                )}
+              </Box>
+            ))}
+          </Box>
         </Box>
-        <Typography variant="h6" sx={{ mb: 0.5 }}>Sign in</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>Enter the password to access the demo.</Typography>
-        <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <input
-            type="password"
-            placeholder="Password"
-            value={value}
-            onChange={e => { setValue(e.target.value); setError(false) }}
-            autoFocus
-            style={{
-              width: '100%', padding: '8px 12px', fontSize: '0.875rem',
-              border: `1px solid ${error ? '#DC2626' : '#D1D5DB'}`, borderRadius: 6,
-              outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+
+        {/* Footer */}
+        <Box sx={{ p: 1, borderTop: '1px solid #E5E5E5' }}>
+          <Box
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 1,
+              px: 1, py: 1, borderRadius: '8px', cursor: 'pointer',
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
             }}
-          />
-          {error && <Typography variant="caption" color="error">Incorrect password.</Typography>}
-          <Button type="submit" variant="contained" fullWidth sx={{ fontWeight: 600 }}>Continue</Button>
+          >
+            <Box sx={{
+              width: 32, height: 32, borderRadius: '8px',
+              bgcolor: '#171717', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Typography sx={{ fontSize: '0.6875rem', fontWeight: 700, color: '#fff', lineHeight: 1 }}>JT</Typography>
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: '0.875rem', fontWeight: 600, color: '#0A0A0A', lineHeight: 1, display: 'block' }}>
+                Jordan Tang
+              </Typography>
+              <Typography sx={{ fontSize: '0.75rem', color: '#636A6F', lineHeight: 1, mt: '3px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                j.tang@memorialhealth.org
+              </Typography>
+            </Box>
+            <UnfoldMoreOutlined sx={{ fontSize: 16, color: '#636A6F', flexShrink: 0 }} />
+          </Box>
         </Box>
-      </Paper>
+      </Box>
     </Box>
   )
 }
 
-type Product = 'Denials' | 'Underpayments'
-
 export default function App() {
-  const [unlocked, setUnlocked] = useState(false)
-  const [activeProduct, setActiveProduct] = useState<Product>('Denials')
-  const [activeNav, setActiveNav] = useState<NavItem>('Worklist')
+  const [activeNav, setActiveNav] = useState<NavItem>('Denials')
   const [navCollapsed, setNavCollapsed] = useState(false)
   const sidebarWidth = navCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
   const [selectedDenialId, setSelectedDenialId] = useState<string | null>(null)
   const [selectedUnderpaymentId, setSelectedUnderpaymentId] = useState<string | null>(null)
+  const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null)
   const [denials, setDenials] = useState<DenialRecord[]>(SEED_DENIALS)
-  const [worklistTab, setWorklistTab] = useState<WorklistActiveTab>('Active')
+  const [audits, setAudits] = useState<AuditRecord[]>(SEED_AUDITS)
+  const [worklistTab, setWorklistTab] = useState<WorklistActiveTab>('Queue')
   const [worklistSort, setWorklistSort] = useState<WorklistSort>(null)
   const [worklistFilters, setWorklistFilters] = useState<WorklistFilters>(DEFAULT_WORKLIST_FILTERS)
   const [notifications, setNotifications] = useState<AppNotification[]>(SEED_NOTIFICATIONS)
-  const [ingestKey, setIngestKey] = useState(0)
-  const [scenario, setScenario] = useState<'default' | 'scenarioA' | 'scenarioB'>('default')
 
-  const visibleDenials = scenario === 'scenarioA'
-    ? denials.filter(d => d.id === 'DN-2026-0292')
-    : scenario === 'scenarioB'
-      ? SCENARIO_B_DENIALS
-      : denials
+  const [userRole, setUserRole] = useState<UserRole>('FrontlineWorker')
+  const [features, setFeatures] = useState<FeatureFlags>(DEFAULT_FLAGS)
+  const [systemMode, setSystemMode] = useState<'new' | 'existing'>('new')
+  const [existingNav, setExistingNav] = useState<'worklist' | 'ingest'>('worklist')
+  const [widgetExpanded, setWidgetExpanded] = useState(false)
+  const [pageKey, setPageKey] = useState(0)
+
+  // Filter out misclassified ADR and Underpayment denial records — these now live in SEED_AUDITS
+  const visibleDenials = denials.filter(d => d.denialType !== 'ADR' && d.denialType !== 'Underpayment')
   const [bellAnchor, setBellAnchor] = useState<HTMLElement | null>(null)
   const [toast, setToast] = useState<{ message: string } | null>(null)
 
@@ -220,13 +393,7 @@ export default function App() {
     setActiveNav(label)
     setSelectedDenialId(null)
     setSelectedUnderpaymentId(null)
-  }
-
-  function handleProductSwitch(product: Product) {
-    setActiveProduct(product)
-    setSelectedDenialId(null)
-    setSelectedUnderpaymentId(null)
-    setActiveNav('Worklist')
+    setSelectedAuditId(null)
   }
 
   function handleSubmitSuccess(channel: string, payer: string, patientName: string) {
@@ -243,33 +410,27 @@ export default function App() {
     setToast({ message: `Appeal submitted via ${channelLabel}` })
   }
 
-  const showingDetail       = activeNav === 'Worklist' && activeProduct === 'Denials' && selectedDenialId !== null
-  const showingWorklist     = activeNav === 'Worklist' && activeProduct === 'Denials' && !showingDetail
-  const showingUPDetail     = activeNav === 'Worklist' && activeProduct === 'Underpayments' && selectedUnderpaymentId !== null
-  const showingUPWorklist   = activeNav === 'Worklist' && activeProduct === 'Underpayments' && !showingUPDetail
+  const showingDetail        = activeNav === 'Denials' && selectedDenialId !== null
+  const showingWorklist      = activeNav === 'Denials' && !showingDetail
+  const showingUPDetail      = activeNav === 'Underpayments' && selectedUnderpaymentId !== null
+  const showingUPWorklist    = activeNav === 'Underpayments' && !showingUPDetail
+  const showingAuditWorklist = activeNav === 'Audits' && selectedAuditId === null
+  const showingAuditDetail   = activeNav === 'Audits' && selectedAuditId !== null
 
-  const upVarianceAtRisk = SEED_UNDERPAYMENTS.filter(u => u.state === 'Active' || u.state === 'Submitted').reduce((s, u) => s + u.varianceAmount, 0)
+  const isTerminal = (s: string) => s === 'Overturned' || s === 'Closed' || s === 'Archive'
+  const openCount = visibleDenials.filter(d => !isTerminal(d.state)).length
+  const openAuditCount = audits.filter(a => a.state !== 'Closed').length
+  const needsReviewCount = SEED_STAGING.filter(r =>
+    r.status === 'needs_review' &&
+    (systemMode !== 'existing' || !r.reviewReasons.includes('possible_duplicate'))
+  ).length
+  const navItems = ALL_NAV_ITEMS.filter(item => !item.packageKey || features[item.packageKey])
 
-  const isTerminal = (s: string) => s === 'Won' || s === 'Recovered' || s === 'Closed' || s === 'Archived'
-  const openCount     = denials.filter(d => !isTerminal(d.state)).length
-  const deadlineCount = denials.filter(d => {
-    if (isTerminal(d.state)) return false
-    const days = Math.ceil((new Date(d.deadline).getTime() - Date.now()) / 86400000)
-    return days >= 0 && days <= 3
-  }).length
-
-  if (!unlocked) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <LoginPage onUnlock={() => setUnlocked(true)} />
-      </ThemeProvider>
-    )
-  }
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      <ErrorBoundary>
       <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
 
         {/* ── AppBar ──────────────────────────────────────────────────────────── */}
@@ -282,39 +443,16 @@ export default function App() {
               <Box component="img" src="/smarterdx_logo.webp" alt="SmarterDX" sx={{ height: 20, display: 'block', objectFit: 'contain' }} />
             </Box>
 
-            <Chip
-              label="Memorial Health System"
-              size="small"
-              sx={{
-                bgcolor: '#EEF2FF', color: '#2557D6',
-                fontWeight: 500, fontSize: '0.75rem', border: '1px solid #C7D7FA',
-              }}
-            />
-
-            {/* Product switcher */}
-            <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#F1F5F9', borderRadius: 1.5, p: 0.375, gap: 0.25 }}>
-              {(['Denials', 'Underpayments'] as Product[]).map(p => (
-                <Box
-                  key={p}
-                  onClick={() => handleProductSwitch(p)}
-                  sx={{
-                    px: 1.25, py: 0.375, borderRadius: 1.25, cursor: 'pointer',
-                    bgcolor: activeProduct === p ? '#fff' : 'transparent',
-                    boxShadow: activeProduct === p ? '0 1px 3px rgba(0,0,0,0.10)' : 'none',
-                    transition: 'all 0.15s ease',
-                    '&:hover': { bgcolor: activeProduct === p ? '#fff' : 'rgba(0,0,0,0.04)' },
-                  }}
-                >
-                  <Typography sx={{
-                    fontSize: '0.75rem', fontWeight: activeProduct === p ? 700 : 500,
-                    color: activeProduct === p ? 'text.primary' : 'text.secondary',
-                    lineHeight: 1,
-                  }}>
-                    {p}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
+            {systemMode === 'new' && (
+              <Chip
+                label="Memorial Health System"
+                size="small"
+                sx={{
+                  bgcolor: '#e8f2f5', color: '#157d9d',
+                  fontWeight: 500, fontSize: '0.75rem', border: '1px solid #b6d7e1',
+                }}
+              />
+            )}
 
             <Box sx={{ flex: 1 }} />
 
@@ -330,16 +468,21 @@ export default function App() {
                 <HelpOutlineOutlined fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="Jordan Tang — RCM Specialist">
+            <Tooltip title="Krista Soriano">
               <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem', bgcolor: 'primary.dark', cursor: 'pointer', ml: 0.5 }}>
-                JT
+                KS
               </Avatar>
             </Tooltip>
           </Toolbar>
         </AppBar>
 
-        {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
-        <Drawer
+        {/* ── Existing System Sidebar ─────────────────────────────────────────── */}
+        {systemMode === 'existing' && (
+          <ExistingSystemSidebar activeNav={existingNav} onNavChange={setExistingNav} needsReviewCount={needsReviewCount} />
+        )}
+
+        {/* ── New System Sidebar ───────────────────────────────────────────────── */}
+        {systemMode === 'new' && <Drawer
           variant="permanent"
           sx={{
             width: sidebarWidth,
@@ -350,7 +493,7 @@ export default function App() {
               boxSizing: 'border-box',
               top: 52,
               height: 'calc(100% - 52px)',
-              bgcolor: '#F8F9FB',
+              bgcolor: '#f8fafb',
               display: 'flex',
               flexDirection: 'column',
               overflowX: 'hidden',
@@ -364,7 +507,7 @@ export default function App() {
                 Navigation
               </Typography>
             )}
-            {navItems.map(({ label, icon }) => (
+            {[...navItems, ...(userRole === 'Manager' ? [{ label: 'Archive' as NavItem, icon: <ArchiveOutlined fontSize="small" /> }] : [])].map(({ label, icon }) => (
               <Tooltip key={label} title={navCollapsed ? label : ''} placement="right">
                 <ListItemButton
                   selected={activeNav === label}
@@ -374,25 +517,38 @@ export default function App() {
                     px: navCollapsed ? 1 : 1.5, py: 0.75,
                     justifyContent: navCollapsed ? 'center' : 'flex-start',
                     minWidth: 0,
+                    position: 'relative',
                     '&.Mui-selected': {
-                      bgcolor: '#EEF2FF', color: 'primary.main',
+                      bgcolor: '#e8f2f5', color: 'primary.main',
                       '& .MuiListItemIcon-root': { color: 'primary.main' },
-                      '&:hover': { bgcolor: '#E0E9FF' },
+                      '&:hover': { bgcolor: '#dcecf0' },
                     },
-                    '&:hover': { bgcolor: 'rgba(37,87,214,0.06)' },
+                    '&:hover': { bgcolor: 'rgba(21,125,157,0.06)' },
                   }}
                 >
                   <ListItemIcon sx={{ minWidth: navCollapsed ? 0 : 32, color: 'text.secondary', justifyContent: 'center' }}>{icon}</ListItemIcon>
                   {!navCollapsed && (
                     <>
                       <ListItemText primary={label} primaryTypographyProps={{ fontSize: '0.8125rem', fontWeight: 500 }} />
-                      {label === 'Worklist' && openCount > 0 && (
+                      {label === 'Denials' && openCount > 0 && (
                         <Chip label={openCount} size="small" sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 600, bgcolor: 'error.main', color: '#fff', '& .MuiChip-label': { px: 0.75 } }} />
+                      )}
+                      {label === 'Audits' && openAuditCount > 0 && (
+                        <Chip label={openAuditCount} size="small" sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 600, bgcolor: '#C2410C', color: '#fff', '& .MuiChip-label': { px: 0.75 } }} />
+                      )}
+                      {label === 'Ingest' && needsReviewCount > 0 && (
+                        <Chip label={needsReviewCount} size="small" sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 600, bgcolor: '#b86823', color: '#fff', '& .MuiChip-label': { px: 0.75 } }} />
                       )}
                     </>
                   )}
-                  {navCollapsed && label === 'Worklist' && openCount > 0 && (
+                  {navCollapsed && label === 'Denials' && openCount > 0 && (
                     <Box sx={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: 'error.main' }} />
+                  )}
+                  {navCollapsed && label === 'Audits' && openAuditCount > 0 && (
+                    <Box sx={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: '#C2410C' }} />
+                  )}
+                  {navCollapsed && label === 'Ingest' && needsReviewCount > 0 && (
+                    <Box sx={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: '50%', bgcolor: '#b86823' }} />
                   )}
                 </ListItemButton>
               </Tooltip>
@@ -412,10 +568,10 @@ export default function App() {
                     px: navCollapsed ? 1 : 1.5, py: 0.75,
                     justifyContent: navCollapsed ? 'center' : 'flex-start',
                     '&.Mui-selected': {
-                      bgcolor: '#EEF2FF', color: 'primary.main',
+                      bgcolor: '#e8f2f5', color: 'primary.main',
                       '& .MuiListItemIcon-root': { color: 'primary.main' },
                     },
-                    '&:hover': { bgcolor: 'rgba(37,87,214,0.06)' },
+                    '&:hover': { bgcolor: 'rgba(21,125,157,0.06)' },
                   }}
                 >
                   <ListItemIcon sx={{ minWidth: navCollapsed ? 0 : 32, color: 'text.secondary', justifyContent: 'center' }}>{icon}</ListItemIcon>
@@ -430,7 +586,7 @@ export default function App() {
                   borderRadius: 1.5,
                   px: navCollapsed ? 1 : 1.5, py: 0.75,
                   justifyContent: navCollapsed ? 'center' : 'flex-start',
-                  '&:hover': { bgcolor: 'rgba(37,87,214,0.06)' },
+                  '&:hover': { bgcolor: 'rgba(21,125,157,0.06)' },
                 }}
               >
                 <ListItemIcon sx={{ minWidth: navCollapsed ? 0 : 32, color: 'text.secondary', justifyContent: 'center' }}>
@@ -440,15 +596,15 @@ export default function App() {
               </ListItemButton>
             </Tooltip>
           </List>
-        </Drawer>
+        </Drawer>}
 
         {/* ── Main Content ─────────────────────────────────────────────────────── */}
         <Box
           component="main"
           sx={{ flex: 1, display: 'flex', flexDirection: 'column', mt: '52px', overflow: 'hidden', bgcolor: 'background.default' }}
         >
-          {/* Page header — hidden for Worklist/detail views (they own their own headers) */}
-          {!showingDetail && !showingWorklist && !showingUPWorklist && !showingUPDetail && (
+          {/* Page header — hidden for Worklist/detail views and in existing mode */}
+          {systemMode === 'new' && !showingDetail && !showingWorklist && !showingUPWorklist && !showingUPDetail && !showingAuditWorklist && !showingAuditDetail && (
             <Box
               sx={{
                 px: 3, py: 2,
@@ -461,20 +617,96 @@ export default function App() {
                 flexShrink: 0,
               }}
             >
-              <Box>
+              <Box sx={{ flex: 1 }}>
                 <Typography variant="h6" sx={{ lineHeight: 1.2 }}>{activeNav}</Typography>
-                <Typography variant="body2">
-                  {activeNav === 'Worklist'
-                    ? `${openCount} open denial${openCount !== 1 ? 's' : ''}${deadlineCount > 0 ? ` · ${deadlineCount} approaching deadline` : ''}`
-                    : PAGE_SUBTITLES[activeNav]}
+                {activeNav === 'Ingest' ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      {ingestAutoRoutedToday} auto-routed today
+                    </Typography>
+                    <Typography variant="body2" color="text.disabled" sx={{ mx: 0.25 }}>·</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {ingestExceptionsToday} need review
+                    </Typography>
+                    {ingestLastBatch && (
+                      <>
+                        <Typography variant="body2" color="text.disabled" sx={{ mx: 0.25 }}>·</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Last batch {ingestLastBatch}
+                        </Typography>
+                      </>
+                    )}
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    {PAGE_SUBTITLES[activeNav]}
+                  </Typography>
+                )}
+              </Box>
+              {activeNav === 'Ingest' && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<UploadFileOutlined sx={{ fontSize: 14 }} />}
+                  sx={{ textTransform: 'none', fontSize: '0.75rem', flexShrink: 0 }}
+                >
+                  Upload file
+                </Button>
+              )}
+            </Box>
+          )}
+
+          {/* Existing system page sub-header — only shown for ingest; worklist owns its own header */}
+          {systemMode === 'existing' && existingNav === 'ingest' && (
+            <Box sx={{ px: 3, py: 2, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="h6" sx={{ lineHeight: 1.2 }}>
+                  {existingNav === 'worklist' ? 'Cases' : 'Ingest'}
                 </Typography>
               </Box>
+              {existingNav === 'ingest' && (
+                <Button
+                  variant="contained"
+                  sx={{ bgcolor: '#157d9d', borderRadius: '4px', fontSize: '0.8125rem', fontWeight: 500, px: 2, '&:hover': { bgcolor: '#11647e' } }}
+                >
+                  Add Manually
+                </Button>
+              )}
             </Box>
           )}
 
           {/* Page body */}
-          <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            {showingWorklist && (
+          <Box key={pageKey} sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {systemMode === 'existing' && existingNav === 'worklist' && <DenialListStyleEPage />}
+            {systemMode === 'existing' && existingNav === 'ingest' && (
+              <>
+                <Box
+                  sx={{
+                    mx: 3, my: 2, flexShrink: 0,
+                    border: '2px dashed #e2e6e9', borderRadius: 2,
+                    p: 3, display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center', gap: 0.75,
+                    cursor: 'pointer', bgcolor: '#fafafa',
+                    '&:hover': { bgcolor: '#f0f4f6', borderColor: '#b6d7e1' },
+                  }}
+                >
+                  <UploadFileOutlined sx={{ fontSize: 32, color: '#939a9f' }} />
+                  <Typography sx={{ fontWeight: 600, fontSize: '0.875rem', color: '#4a5154' }}>
+                    Drop files here or click to browse
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.75rem', color: '#939a9f', textAlign: 'center' }}>
+                    Appeal letters are created using patient data. Data availability varies per location.
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.75rem', color: '#939a9f', textAlign: 'center' }}>
+                    Accepted formats: <strong>.pdf</strong> and <strong>.docx</strong>
+                  </Typography>
+                </Box>
+                <Box sx={{ mx: 3, mb: 2, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e6e9', borderRadius: 2, bgcolor: '#fff' }}>
+                  <IngestPage features={features} onNavigate={nav => { if (nav === 'Denials') setExistingNav('worklist') }} mode="existing" />
+                </Box>
+              </>
+            )}
+            {systemMode === 'new' && showingWorklist && (
               <WorklistPage
                 denials={visibleDenials} onDenialsChange={setDenials} onSelectDenial={handleSelectDenial}
                 activeTab={worklistTab} onActiveTabChange={setWorklistTab}
@@ -482,7 +714,7 @@ export default function App() {
                 filters={worklistFilters} onFiltersChange={setWorklistFilters}
               />
             )}
-            {showingDetail && selectedDenialId && (() => {
+            {systemMode === 'new' && showingDetail && selectedDenialId && (() => {
               const selectedDenial = visibleDenials.find(d => d.id === selectedDenialId)
               if (!selectedDenial) return null
               return (
@@ -494,46 +726,88 @@ export default function App() {
                   onNavigateToDenial={id => setSelectedDenialId(id)}
                   allDenials={visibleDenials}
                   onUpdateDenial={(id, updates) => setDenials(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d))}
+                  onNavigateToCase={(caseId, caseType) => {
+                    if (caseType === 'denial') { setSelectedDenialId(caseId) }
+                    else if (caseType === 'underpayment') { setActiveNav('Underpayments'); setSelectedUnderpaymentId(caseId) }
+                    else { setActiveNav('Audits'); setSelectedAuditId(caseId) }
+                  }}
                 />
               )
             })()}
-            {showingUPWorklist && (
+            {systemMode === 'new' && showingUPWorklist && (
               <UnderpaymentWorklistPage onSelectUnderpayment={id => setSelectedUnderpaymentId(id)} />
             )}
-            {showingUPDetail && selectedUnderpaymentId && (
-              <UnderpaymentDetailPage underpaymentId={selectedUnderpaymentId} onBack={() => setSelectedUnderpaymentId(null)} />
+            {systemMode === 'new' && showingUPDetail && selectedUnderpaymentId && (
+              <UnderpaymentDetailPage
+                underpaymentId={selectedUnderpaymentId}
+                onBack={() => setSelectedUnderpaymentId(null)}
+                onNavigateToCase={(caseId, caseType) => {
+                  if (caseType === 'underpayment') { setSelectedUnderpaymentId(caseId) }
+                  else if (caseType === 'denial') { setActiveNav('Denials'); setSelectedDenialId(caseId) }
+                  else { setActiveNav('Audits'); setSelectedAuditId(caseId) }
+                }}
+              />
             )}
-            {activeNav === 'Dashboard' && <DashboardPage denials={denials} underpayments={SEED_UNDERPAYMENTS} />}
-            {activeNav === 'Ingest' && <IngestPage key={ingestKey} denials={denials} onCommit={newRecords => setDenials(prev => [...newRecords, ...prev])} onUpdate={(id, updates) => setDenials(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d))} />}
-            {activeNav === 'Routing Rules' && <RoutingRulesPage />}
-            {activeNav === 'Settings' && (
+            {systemMode === 'new' && showingAuditWorklist && (
+              <AuditWorklistPage audits={audits} onSelectAudit={id => setSelectedAuditId(id)} />
+            )}
+            {systemMode === 'new' && showingAuditDetail && selectedAuditId && (() => {
+              const audit = audits.find(a => a.id === selectedAuditId)
+              if (!audit) return null
+              return (
+                <AuditDetailPage
+                  audit={audit}
+                  onBack={() => setSelectedAuditId(null)}
+                  onNavigateToCase={(caseId, caseType) => {
+                    if (caseType === 'audit') { setSelectedAuditId(caseId) }
+                    else if (caseType === 'denial') { setActiveNav('Denials'); setSelectedDenialId(caseId) }
+                    else { setActiveNav('Underpayments'); setSelectedUnderpaymentId(caseId) }
+                  }}
+                />
+              )
+            })()}
+            {systemMode === 'new' && activeNav === 'Dashboard' && (
+              <ErrorBoundary>
+                <DashboardPage
+                  denials={visibleDenials}
+                  underpayments={SEED_UNDERPAYMENTS}
+                  audits={audits}
+                  features={features}
+                  userRole={userRole}
+                  onNavigate={nav => handleNavClick(nav)}
+                  onSelectCase={(type, id) => {
+                    if (type === 'denial')      { setActiveNav('Denials');      setSelectedDenialId(id) }
+                    else if (type === 'underpayment') { setActiveNav('Underpayments'); setSelectedUnderpaymentId(id) }
+                    else                        { setActiveNav('Audits');       setSelectedAuditId(id) }
+                  }}
+                />
+              </ErrorBoundary>
+            )}
+            {systemMode === 'new' && activeNav === 'Ingest' && (
+              <Box sx={{ mx: 3, my: 2, display: 'flex', flexDirection: 'column', border: '1px solid #e2e6e9', borderRadius: 2, bgcolor: '#fff', overflow: 'auto' }}>
+                <IngestPage features={features} onNavigate={nav => handleNavClick(nav as NavItem)} />
+              </Box>
+            )}
+            {systemMode === 'new' && activeNav === 'Routing Rules' && <RoutingRulesPage />}
+            {systemMode === 'new' && activeNav === 'Style E' && <DenialListStyleEPage />}
+            {systemMode === 'new' && activeNav === 'Archive' && <ArchiveListView denials={denials} />}
+            {systemMode === 'new' && activeNav === 'Settings' && (
               <SettingsPage onReset={() => {
                 setDenials(SEED_DENIALS)
+                setAudits(SEED_AUDITS)
                 setSelectedDenialId(null)
-                setWorklistTab('Active')
+                setSelectedAuditId(null)
+                setWorklistTab('Queue')
                 setWorklistSort(null)
                 setWorklistFilters(DEFAULT_WORKLIST_FILTERS)
                 setNotifications(SEED_NOTIFICATIONS)
-                setIngestKey(k => k + 1)
               }} />
-            )}
-            {activeNav !== 'Worklist' && activeNav !== 'Dashboard' && activeNav !== 'Ingest' && activeNav !== 'Routing Rules' && activeNav !== 'Settings' && (
-              <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
-                <Box
-                  sx={{
-                    height: '100%', minHeight: 400, border: '2px dashed',
-                    borderColor: 'divider', borderRadius: 2,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'text.secondary',
-                  }}
-                >
-                  <Typography variant="body2">{activeNav} content area</Typography>
-                </Box>
-              </Box>
             )}
           </Box>
         </Box>
 
       </Box>
+      </ErrorBoundary>
 
       {/* ── Notifications Popover ─────────────────────────────────────────────── */}
       <Popover
@@ -563,13 +837,13 @@ export default function App() {
               key={n.id}
               onClick={() => {
                 setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x))
-                if (n.denialId) { setActiveNav('Worklist'); setSelectedDenialId(n.denialId) }
+                if (n.denialId) { setActiveNav('Denials'); setSelectedDenialId(n.denialId) }
                 if (!n.denialId) setBellAnchor(null)
               }}
               sx={{
                 px: 2, py: 1.5, display: 'flex', gap: 1.5, alignItems: 'flex-start',
                 borderBottom: '1px solid', borderColor: 'divider',
-                bgcolor: n.read ? 'transparent' : '#F5F8FF',
+                bgcolor: n.read ? 'transparent' : '#e8f2f5',
                 cursor: 'pointer',
                 '&:hover': { bgcolor: 'grey.50' },
                 '&:last-child': { borderBottom: 'none' },
@@ -594,33 +868,133 @@ export default function App() {
         sx={{
           position: 'fixed', bottom: 16, left: 16, zIndex: 9999,
           bgcolor: '#1A1A1A', color: '#fff', borderRadius: 1.5,
-          px: 2, py: 1.25, minWidth: 160,
+          px: 2, py: 1.25, display: 'flex', flexDirection: 'column', gap: 1,
         }}
       >
-        <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.5)', mb: 1 }}>
-          PROTOTYPE
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 0.75 }}>
-          {(['default', 'scenarioA', 'scenarioB'] as const).map((s) => (
+        {/* Header row with SYSTEM label + refresh */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.5)' }}>
+            SYSTEM
+          </Typography>
+          <Tooltip title="Reset page" placement="top">
+            <IconButton
+              size="small"
+              onClick={() => setPageKey(k => k + 1)}
+              sx={{ p: 0.25, color: 'rgba(255,255,255,0.4)', '&:hover': { color: 'rgba(255,255,255,0.8)', bgcolor: 'transparent' } }}
+            >
+              <RestartAltOutlined sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+        <Box>
+          <Box sx={{ display: 'flex', gap: 0.75 }}>
+            {([
+              { mode: 'existing' as const, label: 'Existing' },
+              { mode: 'new' as const,      label: 'New' },
+            ]).map(({ mode, label }) => (
+              <Box
+                key={mode}
+                onClick={() => setSystemMode(mode)}
+                sx={{
+                  px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
+                  bgcolor: systemMode === mode ? '#fff' : 'rgba(255,255,255,0.12)',
+                  color: systemMode === mode ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
+                  '&:hover': { bgcolor: systemMode === mode ? '#fff' : 'rgba(255,255,255,0.2)' },
+                }}
+              >
+                {label}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+
+        {systemMode === 'new' && (
+          <>
+            {/* Expand/collapse toggle */}
             <Box
-              key={s}
-              onClick={() => {
-                setScenario(s)
-                setActiveNav('Worklist')
-                setSelectedDenialId(null)
-                setWorklistTab('Active')
-              }}
+              onClick={() => setWidgetExpanded(e => !e)}
               sx={{
-                px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
-                bgcolor: scenario === s ? '#fff' : 'rgba(255,255,255,0.12)',
-                color: scenario === s ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
-                '&:hover': { bgcolor: scenario === s ? '#fff' : 'rgba(255,255,255,0.2)' },
+                display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer',
+                color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem', fontWeight: 600,
+                letterSpacing: '0.08em', userSelect: 'none',
+                '&:hover': { color: 'rgba(255,255,255,0.65)' },
               }}
             >
-              {s === 'default' ? 'Default' : s === 'scenarioA' ? 'Scenario A' : 'Scenario B'}
+              {widgetExpanded
+                ? <ExpandLessOutlined sx={{ fontSize: 14 }} />
+                : <ExpandMoreOutlined sx={{ fontSize: 14 }} />}
+              {widgetExpanded ? 'FEWER OPTIONS' : 'MORE OPTIONS'}
             </Box>
-          ))}
-        </Box>
+
+            {widgetExpanded && (
+              <>
+                {/* VIEW AS */}
+                <Box>
+                  <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.5)', mb: 0.75 }}>
+                    VIEW AS
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.75 }}>
+                    {([
+                      { role: 'Manager' as UserRole, label: 'Manager' },
+                      { role: 'FrontlineWorker' as UserRole, label: 'Frontline' },
+                    ]).map(({ role, label }) => (
+                      <Box
+                        key={role}
+                        onClick={() => {
+                          setUserRole(role)
+                          if (role === 'FrontlineWorker' && activeNav === 'Archive') {
+                            setActiveNav('Denials')
+                          }
+                        }}
+                        sx={{
+                          px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
+                          bgcolor: userRole === role ? '#fff' : 'rgba(255,255,255,0.12)',
+                          color: userRole === role ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
+                          '&:hover': { bgcolor: userRole === role ? '#fff' : 'rgba(255,255,255,0.2)' },
+                        }}
+                      >
+                        {label}
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+
+                {/* PACKAGE */}
+                <Box>
+                  <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.5)', mb: 0.75 }}>
+                    PACKAGE
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', maxWidth: 200 }}>
+                    {([
+                      { key: 'denials' as const, label: 'Denials' },
+                      { key: 'underpayments' as const, label: 'Underpay.' },
+                      { key: 'audits' as const, label: 'Audits' },
+                    ]).map(({ key, label }) => (
+                      <Box
+                        key={key}
+                        onClick={() => {
+                          const next = { ...features, [key]: !features[key] }
+                          setFeatures(next)
+                          if (!next[key] && activeNav.toLowerCase() === key) {
+                            setActiveNav('Dashboard')
+                          }
+                        }}
+                        sx={{
+                          px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
+                          bgcolor: features[key] ? '#fff' : 'rgba(255,255,255,0.12)',
+                          color: features[key] ? '#1A1A1A' : 'rgba(255,255,255,0.5)',
+                          '&:hover': { bgcolor: features[key] ? '#f0f0f0' : 'rgba(255,255,255,0.2)' },
+                        }}
+                      >
+                        {label}
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              </>
+            )}
+          </>
+        )}
       </Box>
 
       {/* ── Toast ────────────────────────────────────────────────────────────── */}

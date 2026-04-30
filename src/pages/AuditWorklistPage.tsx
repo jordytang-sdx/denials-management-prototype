@@ -9,22 +9,17 @@ import {
   ArrowUpward, ArrowDownward, SwapVert, FilterList,
   SearchOutlined, CloseOutlined, AddOutlined, ViewColumnOutlined,
 } from '@mui/icons-material'
-import {
-  SEED_UNDERPAYMENTS,
-  type UnderpaymentRecord,
-  type UnderpaymentState,
-} from '../data/underpayments'
-import { getCategoryConfig } from '../data/underpaymentCategoryConfig'
+import { type AuditRecord, type AuditState } from '../data/audits'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type SortDir = 'asc' | 'desc'
-type SortCol = 'patient' | 'varianceAmount' | 'billedAmount' | 'paidAmount' | 'deadline'
-type UPSort = { colId: SortCol; dir: SortDir } | null
+type SortCol = 'patient' | 'amountAtRisk' | 'proposedRecoupment' | 'deadline'
+type AuditSort = { colId: SortCol; dir: SortDir } | null
 
-interface UPFilters {
-  category: string[]
-  subtype: string[]
+interface AuditFilters {
+  auditType: string[]
+  payer: string[]
   assignedTo: string[]
 }
 
@@ -35,15 +30,32 @@ interface ColPopoverState {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const TABS: UnderpaymentState[] = ['Active', 'Submitted', 'Won', 'Recovered', 'Closed', 'Archived']
+const TABS: AuditState[] = ['NoticeReceived', 'RecordsPending', 'UnderReview', 'FindingsIssued', 'Disputed', 'Closed']
 
-const STATE_COLORS: Partial<Record<UnderpaymentState, { bg: string; color: string }>> = {
-  Active:    { bg: '#fef3ea', color: '#b86823' },
-  Submitted: { bg: '#ebf5fb', color: '#2776a1' },
-  Won:       { bg: '#eaf6f4', color: '#227a6c' },
-  Recovered: { bg: '#eaf6f4', color: '#227a6c' },
-  Closed:    { bg: '#f1f4f6', color: '#636a6f' },
-  Archived:  { bg: '#f1f4f6', color: '#939a9f' },
+const TAB_LABELS: Record<AuditState, string> = {
+  NoticeReceived: 'Notice Received',
+  RecordsPending: 'Records Pending',
+  UnderReview:    'Under Review',
+  FindingsIssued: 'Findings Issued',
+  Disputed:       'Disputed',
+  Closed:         'Closed',
+}
+
+const STATE_COLORS: Record<AuditState, { bg: string; color: string }> = {
+  NoticeReceived: { bg: '#fef3ea', color: '#b86823' },
+  RecordsPending: { bg: '#fef3ea', color: '#b86823' },
+  UnderReview:    { bg: '#ebf5fb', color: '#2776a1' },
+  FindingsIssued: { bg: '#fbedee', color: '#9f383e' },
+  Disputed:       { bg: '#F5F3FF', color: '#6D28D9' },
+  Closed:         { bg: '#f1f4f6', color: '#636a6f' },
+}
+
+const AUDIT_TYPE_COLORS: Record<string, { color: string; bg: string }> = {
+  RAC:        { color: '#157d9d', bg: '#e8f2f5' },
+  MAC:        { color: '#227a6c', bg: '#eaf6f4' },
+  OIG:        { color: '#9f383e', bg: '#fbedee' },
+  Commercial: { color: '#7C3AED', bg: '#F5F3FF' },
+  Internal:   { color: '#636a6f', bg: '#f1f4f6' },
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,7 +71,13 @@ function formatDate(dateStr: string): string {
 }
 
 function formatCurrency(n: number): string {
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 })
+}
+
+function deadlineColor(days: number): string {
+  if (days < 0)  return '#DC2626'
+  if (days <= 7) return '#B45309'
+  return '#374151'
 }
 
 function formatPatientName(fullName: string): string {
@@ -70,14 +88,9 @@ function formatPatientName(fullName: string): string {
   return `${lastName}, ${firstName}`
 }
 
-function formatDateShort(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-const UP_OPTIONAL_COLS: Array<{ id: string; label: string }> = [
+const AUDIT_OPTIONAL_COLS: Array<{ id: string; label: string }> = [
   { id: 'lineOfBusiness', label: 'Line of Business' },
   { id: 'dos',            label: 'Date of Service' },
-  { id: 'notes',          label: 'Notes' },
 ]
 
 // ── Column Header ─────────────────────────────────────────────────────────────
@@ -87,7 +100,7 @@ interface ColHeaderProps {
   colId: string
   sortable?: boolean
   filterable?: boolean
-  activeSort: UPSort
+  activeSort: AuditSort
   hasFilter: boolean
   onOpen: (e: React.MouseEvent<HTMLElement>, colId: string) => void
   align?: 'left' | 'right'
@@ -147,27 +160,27 @@ function ColHeader({ label, colId, sortable, filterable, activeSort, hasFilter, 
 // ── Main Component ────────────────────────────────────────────────────────────
 
 interface Props {
-  onSelectUnderpayment: (id: string) => void
+  audits: AuditRecord[]
+  onSelectAudit: (id: string) => void
 }
 
-export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props) {
-  const [activeTab, setActiveTab] = useState<UnderpaymentState>('Active')
-  const [sort, setSort] = useState<UPSort>(null)
+export default function AuditWorklistPage({ audits, onSelectAudit }: Props) {
+  const [activeTab, setActiveTab] = useState<AuditState>('NoticeReceived')
+  const [sort, setSort] = useState<AuditSort>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [filters, setFilters] = useState<UPFilters>({ category: [], subtype: [], assignedTo: [] })
+  const [filters, setFilters] = useState<AuditFilters>({ auditType: [], payer: [], assignedTo: [] })
   const [colPopover, setColPopover] = useState<ColPopoverState | null>(null)
   const [optionalCols, setOptionalCols] = useState<string[]>([])
   const [addColAnchor, setAddColAnchor] = useState<HTMLElement | null>(null)
 
   const inState = useMemo(
-    () => SEED_UNDERPAYMENTS.filter(u => u.state === activeTab),
-    [activeTab]
+    () => audits.filter(a => a.state === activeTab),
+    [audits, activeTab]
   )
 
-  // Derived filter options from the current tab's records
-  const allCategories  = useMemo(() => [...new Set(inState.map(r => r.category))].sort(), [inState])
-  const allSubtypes    = useMemo(() => [...new Set(inState.map(r => r.subtype))].sort(), [inState])
-  const allAssignees   = useMemo(() => [...new Set(inState.map(r => r.assignedTo?.name ?? 'Unassigned'))].sort(), [inState])
+  const allAuditTypes = useMemo(() => [...new Set(inState.map(r => r.auditType))].sort(), [inState])
+  const allPayers     = useMemo(() => [...new Set(inState.map(r => r.payer))].sort(), [inState])
+  const allAssignees  = useMemo(() => [...new Set(inState.map(r => r.assignedTo?.name ?? 'Unassigned'))].sort(), [inState])
 
   const displayed = useMemo(() => {
     let rows = [...inState]
@@ -178,17 +191,13 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
         r.patient.name.toLowerCase().includes(q) ||
         r.claim.har.toLowerCase().includes(q) ||
         r.payer.toLowerCase().includes(q) ||
-        r.category.toLowerCase().includes(q) ||
-        r.subtype.toLowerCase().includes(q)
+        r.auditType.toLowerCase().includes(q) ||
+        (r.auditBody ?? '').toLowerCase().includes(q)
       )
     }
 
-    if (filters.category.length > 0) {
-      rows = rows.filter(r => filters.category.includes(r.category))
-    }
-    if (filters.subtype.length > 0) {
-      rows = rows.filter(r => filters.subtype.includes(r.subtype))
-    }
+    if (filters.auditType.length > 0) rows = rows.filter(r => filters.auditType.includes(r.auditType))
+    if (filters.payer.length > 0)     rows = rows.filter(r => filters.payer.includes(r.payer))
     if (filters.assignedTo.length > 0) {
       rows = rows.filter(r => filters.assignedTo.includes(r.assignedTo?.name ?? 'Unassigned'))
     }
@@ -196,10 +205,9 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
     if (sort) {
       rows.sort((a, b) => {
         let cmp = 0
-        if (sort.colId === 'patient')            cmp = formatPatientName(a.patient.name).localeCompare(formatPatientName(b.patient.name))
-        else if (sort.colId === 'varianceAmount') cmp = a.varianceAmount - b.varianceAmount
-        else if (sort.colId === 'billedAmount')   cmp = a.billedAmount - b.billedAmount
-        else if (sort.colId === 'paidAmount')     cmp = a.paidAmount - b.paidAmount
+        if (sort.colId === 'patient')             cmp = formatPatientName(a.patient.name).localeCompare(formatPatientName(b.patient.name))
+        else if (sort.colId === 'amountAtRisk')   cmp = a.amountAtRisk - b.amountAtRisk
+        else if (sort.colId === 'proposedRecoupment') cmp = (a.proposedRecoupment ?? 0) - (b.proposedRecoupment ?? 0)
         else if (sort.colId === 'deadline')       cmp = new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
         return sort.dir === 'asc' ? cmp : -cmp
       })
@@ -218,40 +226,41 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
   function handleSort(colId: SortCol, dir: SortDir) { setSort({ colId, dir }); closeColPopover() }
   function clearSort() { setSort(null); closeColPopover() }
 
-  function toggleFilter(key: keyof UPFilters, value: string) {
+  function toggleFilter(key: keyof AuditFilters, value: string) {
     setFilters(prev => {
       const current = prev[key]
       return { ...prev, [key]: current.includes(value) ? current.filter(v => v !== value) : [...current, value] }
     })
   }
 
-  function clearColumnFilter(key: keyof UPFilters) {
+  function clearColumnFilter(key: keyof AuditFilters) {
     setFilters(prev => ({ ...prev, [key]: [] }))
     closeColPopover()
   }
 
   const activeFilters = {
-    category:   filters.category.length > 0,
-    subtype:    filters.subtype.length > 0,
+    auditType:  filters.auditType.length > 0,
+    payer:      filters.payer.length > 0,
     assignedTo: filters.assignedTo.length > 0,
   }
 
-  const tabCount = (t: UnderpaymentState) => SEED_UNDERPAYMENTS.filter(u => u.state === t).length
-  const isTerminal = (s: UnderpaymentState) => s === 'Won' || s === 'Recovered' || s === 'Closed' || s === 'Archived'
+  const tabCount = (t: AuditState) => audits.filter(a => a.state === t).length
+  const isClosed = activeTab === 'Closed'
+  const showProposedRecoupment = activeTab === 'FindingsIssued' || activeTab === 'Disputed' || activeTab === 'Closed'
 
   // ── Popover content ─────────────────────────────────────────────────────────
 
   function renderPopoverContent() {
     if (!colPopover) return null
     const { colId } = colPopover
-    const isSortable = ['patient', 'varianceAmount', 'billedAmount', 'paidAmount', 'deadline'].includes(colId)
-    const filterKey: keyof UPFilters | null =
-      colId === 'category' ? 'category' :
-      colId === 'subtype' ? 'subtype' :
+    const isSortable = ['patient', 'amountAtRisk', 'proposedRecoupment', 'deadline'].includes(colId)
+    const filterKey: keyof AuditFilters | null =
+      colId === 'auditType' ? 'auditType' :
+      colId === 'payer' ? 'payer' :
       colId === 'assignedTo' ? 'assignedTo' : null
     const filterOptions =
-      colId === 'category' ? allCategories :
-      colId === 'subtype' ? allSubtypes :
+      colId === 'auditType' ? allAuditTypes :
+      colId === 'payer'     ? allPayers :
       colId === 'assignedTo' ? allAssignees : []
     const currentFilterValues = filterKey ? filters[filterKey] : []
 
@@ -266,8 +275,8 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
             </Box>
             <RadioGroup value={sort?.colId === colId ? sort.dir : ''}>
               {[
-                { val: 'asc',  label: ['varianceAmount', 'billedAmount', 'paidAmount'].includes(colId) ? 'Low → High' : colId === 'deadline' ? 'Earliest first' : 'A → Z' },
-                { val: 'desc', label: ['varianceAmount', 'billedAmount', 'paidAmount'].includes(colId) ? 'High → Low' : colId === 'deadline' ? 'Latest first' : 'Z → A' },
+                { val: 'asc',  label: ['amountAtRisk', 'proposedRecoupment'].includes(colId) ? 'Low → High' : colId === 'deadline' ? 'Earliest first' : 'A → Z' },
+                { val: 'desc', label: ['amountAtRisk', 'proposedRecoupment'].includes(colId) ? 'High → Low' : colId === 'deadline' ? 'Latest first' : 'Z → A' },
               ].map(opt => (
                 <ListItemButton key={opt.val} dense onClick={() => handleSort(colId as SortCol, opt.val as SortDir)} sx={{ px: 1.5, py: 0.5 }}>
                   <FormControlLabel
@@ -335,7 +344,7 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
       <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
         <Tabs
           value={activeTab}
-          onChange={(_, v) => { setActiveTab(v); setFilters({ category: [], subtype: [], assignedTo: [] }) }}
+          onChange={(_, v) => { setActiveTab(v); setFilters({ auditType: [], payer: [], assignedTo: [] }) }}
           sx={{
             minHeight: 40,
             '& .MuiTabs-flexContainer': { justifyContent: 'flex-start' },
@@ -346,22 +355,32 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
             },
           }}
         >
-          {TABS.map(tab => (
-            <Tab
-              key={tab}
-              value={tab}
-              label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                  <span>{tab}</span>
-                  <Chip
-                    label={tabCount(tab)}
-                    size="small"
-                    sx={{ height: 16, fontSize: '0.6875rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 } }}
-                  />
-                </Box>
-              }
-            />
-          ))}
+          {TABS.map(tab => {
+            const count = tabCount(tab)
+            return (
+              <Tab
+                key={tab}
+                value={tab}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <span>{TAB_LABELS[tab]}</span>
+                    {count > 0 && (
+                      <Chip
+                        label={count}
+                        size="small"
+                        sx={{
+                          height: 16, fontSize: '0.6875rem', fontWeight: 600,
+                          '& .MuiChip-label': { px: 0.75 },
+                          bgcolor: activeTab === tab ? STATE_COLORS[tab].bg : undefined,
+                          color: activeTab === tab ? STATE_COLORS[tab].color : undefined,
+                        }}
+                      />
+                    )}
+                  </Box>
+                }
+              />
+            )
+          })}
         </Tabs>
       </Box>
 
@@ -369,7 +388,7 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
       <Box sx={{ px: 2, py: 1, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
         <TextField
           size="small"
-          placeholder="Search by patient, HAR, payer, category…"
+          placeholder="Search by patient, HAR, payer, audit type, auditor…"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           InputProps={{
@@ -382,34 +401,29 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
               </InputAdornment>
             ) : undefined,
           }}
-          sx={{ width: 380, '& .MuiInputBase-input': { fontSize: '0.8125rem', py: 0.625 } }}
+          sx={{ width: 420, '& .MuiInputBase-input': { fontSize: '0.8125rem', py: 0.625 } }}
         />
       </Box>
 
       {/* Table */}
       <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
-        <Table stickyHeader size="small" sx={{ width: '100%', minWidth: 1060, tableLayout: 'fixed' }}>
+        <Table stickyHeader size="small" sx={{ width: '100%', minWidth: 1100, tableLayout: 'fixed' }}>
           <TableHead>
             <TableRow>
-              <ColHeader label="Patient / HAR" colId="patient"      sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={175} />
-              <ColHeader label="Payer"      colId="payer"                     activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={140} />
-              <ColHeader label="Category"   colId="category"       filterable activeSort={sort} hasFilter={activeFilters.category}  onOpen={openColPopover} width={190} />
-              <ColHeader label="Subtype"    colId="subtype"        filterable activeSort={sort} hasFilter={activeFilters.subtype}   onOpen={openColPopover} width={190} />
-              <ColHeader label="Billed"     colId="billedAmount"   sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={90} />
-              <ColHeader label="Paid"       colId="paidAmount"     sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={90} />
-              <ColHeader label="Variance"   colId="varianceAmount" sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={100} />
-              {isTerminal(activeTab) && (
-                <ColHeader label="Recovered" colId="recoveredAmount"          activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={100} />
+              <ColHeader label="Patient / HAR" colId="patient"    sortable   activeSort={sort} hasFilter={false}                  onOpen={openColPopover} width={170} />
+              <ColHeader label="Audit Type"    colId="auditType"  filterable activeSort={sort} hasFilter={activeFilters.auditType} onOpen={openColPopover} width={115} />
+              <ColHeader label="Payer"         colId="payer"      filterable activeSort={sort} hasFilter={activeFilters.payer}     onOpen={openColPopover} width={160} />
+              <ColHeader label="Auditor"       colId="auditor"               activeSort={sort} hasFilter={false}                  onOpen={openColPopover} width={150} />
+              <ColHeader label="DOS"           colId="dos"                   activeSort={sort} hasFilter={false}                  onOpen={openColPopover} width={100} />
+              <ColHeader label="At Risk"       colId="amountAtRisk" sortable activeSort={sort} hasFilter={false}                  onOpen={openColPopover} align="right" width={100} />
+              {showProposedRecoupment && (
+                <ColHeader label={isClosed ? 'Recovered' : 'Proposed Recoup.'} colId="proposedRecoupment" sortable activeSort={sort} hasFilter={false} onOpen={openColPopover} align="right" width={130} />
               )}
-              <ColHeader label="Assigned To" colId="assignedTo"   filterable activeSort={sort} hasFilter={activeFilters.assignedTo} onOpen={openColPopover} width={135} />
+              <ColHeader label="Status"        colId="status"                activeSort={sort} hasFilter={false}                  onOpen={openColPopover} width={210} />
+              <ColHeader label="Deadline"      colId="deadline"   sortable   activeSort={sort} hasFilter={false}                  onOpen={openColPopover} width={105} />
+              <ColHeader label="Assigned To"   colId="assignedTo" filterable activeSort={sort} hasFilter={activeFilters.assignedTo} onOpen={openColPopover} width={140} />
               {optionalCols.includes('lineOfBusiness') && (
                 <ColHeader label="Line of Business" colId="lineOfBusiness" activeSort={sort} hasFilter={false} onOpen={openColPopover} width={145} />
-              )}
-              {optionalCols.includes('dos') && (
-                <ColHeader label="DOS" colId="dos" activeSort={sort} hasFilter={false} onOpen={openColPopover} width={110} />
-              )}
-              {optionalCols.includes('notes') && (
-                <ColHeader label="Notes" colId="notes" activeSort={sort} hasFilter={false} onOpen={openColPopover} width={200} />
               )}
               <TableCell sx={{ width: 48, py: 1.25, px: 1 }}>
                 <Tooltip title="Add column" placement="top">
@@ -425,20 +439,22 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
             {displayed.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={11} align="center" sx={{ py: 6, color: 'text.disabled' }}>
-                  <Typography variant="body2">No underpayments match the current filters.</Typography>
+                  <Typography variant="body2">No audit cases in this stage.</Typography>
                 </TableCell>
               </TableRow>
             ) : displayed.map(record => {
-              const catConfig = getCategoryConfig(record.category)
+              const typeColors = AUDIT_TYPE_COLORS[record.auditType] ?? AUDIT_TYPE_COLORS['Internal']!
+              const days = daysUntil(record.deadline)
+              const stateColors = STATE_COLORS[record.state]
 
               return (
                 <TableRow
                   key={record.id}
                   hover
-                  onClick={() => onSelectUnderpayment(record.id)}
+                  onClick={() => onSelectAudit(record.id)}
                   sx={{
                     cursor: 'pointer',
-                    borderLeft: `4px solid ${catConfig.color}`,
+                    borderLeft: `4px solid ${typeColors.color}`,
                     '& td:first-of-type': { pl: '12px' },
                   }}
                 >
@@ -448,50 +464,63 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: '0.75rem' }}>{record.claim.har}</Typography>
                   </TableCell>
 
+                  {/* Audit Type */}
+                  <TableCell sx={{ py: 1.25 }}>
+                    <Chip
+                      label={record.auditType}
+                      size="small"
+                      sx={{
+                        height: 20, fontSize: '0.6875rem', fontWeight: 700,
+                        bgcolor: typeColors.bg, color: typeColors.color,
+                        '& .MuiChip-label': { px: 1 },
+                      }}
+                    />
+                  </TableCell>
+
                   {/* Payer */}
                   <TableCell sx={{ py: 1.25 }}>
                     <Typography variant="body2" noWrap>{record.payer}</Typography>
                   </TableCell>
 
-                  {/* Category */}
+                  {/* Auditor */}
                   <TableCell sx={{ py: 1.25 }}>
-                    <Typography variant="body2" noWrap sx={{ fontWeight: 600, lineHeight: 1.3, color: catConfig.color }}>
-                      {record.category}
+                    <Typography variant="body2" noWrap sx={{ color: record.auditBody ? 'text.primary' : 'text.disabled', fontStyle: record.auditBody ? 'normal' : 'italic' }}>
+                      {record.auditBody ?? '—'}
                     </Typography>
                   </TableCell>
 
-                  {/* Subtype */}
+                  {/* DOS */}
                   <TableCell sx={{ py: 1.25 }}>
-                    <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>{record.subtype}</Typography>
-                  </TableCell>
-
-                  {/* Billed */}
-                  <TableCell align="right" sx={{ py: 1.25 }}>
-                    <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', color: 'text.secondary' }}>
-                      {formatCurrency(record.billedAmount)}
+                    <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem' }}>
+                      {formatDate(record.dos)}
                     </Typography>
                   </TableCell>
 
-                  {/* Paid */}
-                  <TableCell align="right" sx={{ py: 1.25 }}>
-                    <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', color: 'text.secondary' }}>
-                      {formatCurrency(record.paidAmount)}
-                    </Typography>
-                  </TableCell>
-
-                  {/* Variance */}
+                  {/* At Risk */}
                   <TableCell align="right" sx={{ py: 1.25 }}>
                     <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'error.dark' }}>
-                      {formatCurrency(record.varianceAmount)}
+                      {formatCurrency(record.amountAtRisk)}
                     </Typography>
                   </TableCell>
 
-                  {/* Recovered — terminal tabs only */}
-                  {isTerminal(activeTab) && (
+                  {/* Proposed Recoupment / Recovered */}
+                  {showProposedRecoupment && (
                     <TableCell align="right" sx={{ py: 1.25 }}>
-                      {record.recoveredAmount !== undefined ? (
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'success.dark' }}>
-                          {formatCurrency(record.recoveredAmount)}
+                      {isClosed ? (
+                        record.recoveredAmount != null ? (
+                          <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'success.dark' }}>
+                            {formatCurrency(record.recoveredAmount)}
+                          </Typography>
+                        ) : record.settledAmount != null ? (
+                          <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'warning.dark' }}>
+                            {formatCurrency(record.settledAmount)} settled
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                        )
+                      ) : record.proposedRecoupment != null ? (
+                        <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', color: 'error.main' }}>
+                          {formatCurrency(record.proposedRecoupment)}
                         </Typography>
                       ) : (
                         <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
@@ -499,14 +528,44 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
                     </TableCell>
                   )}
 
+                  {/* Status */}
+                  <TableCell sx={{ py: 1.25 }}>
+                    <Chip
+                      label={record.status}
+                      size="small"
+                      sx={{
+                        height: 20, fontSize: '0.6875rem', fontWeight: 500,
+                        bgcolor: stateColors.bg, color: stateColors.color,
+                        '& .MuiChip-label': { px: 1 },
+                        maxWidth: '100%',
+                      }}
+                    />
+                  </TableCell>
+
+                  {/* Deadline */}
+                  <TableCell sx={{ py: 1.25 }}>
+                    {record.state === 'Closed' ? (
+                      <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                    ) : (
+                      <Box>
+                        <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem', color: deadlineColor(days), fontWeight: days <= 7 ? 600 : 400 }}>
+                          {formatDate(record.deadline)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: deadlineColor(days) }}>
+                          {days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : `${days}d left`}
+                        </Typography>
+                      </Box>
+                    )}
+                  </TableCell>
+
                   {/* Assigned To */}
                   <TableCell sx={{ py: 1.25 }}>
                     {record.assignedTo ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                        <Avatar sx={{ width: 24, height: 24, fontSize: '0.6875rem', bgcolor: 'primary.light' }}>
+                        <Avatar sx={{ width: 24, height: 24, fontSize: '0.6875rem', bgcolor: '#C2410C20', color: '#C2410C' }}>
                           {record.assignedTo.initials}
                         </Avatar>
-                        <Typography variant="body2">{record.assignedTo.name}</Typography>
+                        <Typography variant="body2" noWrap>{record.assignedTo.name}</Typography>
                       </Box>
                     ) : (
                       <Typography variant="body2" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>Unassigned</Typography>
@@ -519,16 +578,6 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
                       <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>{record.lineOfBusiness ?? '—'}</Typography>
                     </TableCell>
                   )}
-                  {optionalCols.includes('dos') && (
-                    <TableCell sx={{ py: 1.25 }}>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{formatDateShort(record.dos)}</Typography>
-                    </TableCell>
-                  )}
-                  {optionalCols.includes('notes') && (
-                    <TableCell sx={{ py: 1.25 }}>
-                      <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>{record.notes || '—'}</Typography>
-                    </TableCell>
-                  )}
                   <TableCell sx={{ py: 1.25 }} />
                 </TableRow>
               )
@@ -539,54 +588,34 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
 
       {/* Bottom bar */}
       <Box sx={{ px: 3, py: 1.25, borderTop: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, bgcolor: 'background.paper', flexShrink: 0 }}>
-        {activeFilters.category && (
-          <Chip size="small" label={`Category: ${filters.category.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, category: [] }))} />
+        {activeFilters.auditType && (
+          <Chip size="small" label={`Audit Type: ${filters.auditType.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, auditType: [] }))} />
         )}
-        {activeFilters.subtype && (
-          <Chip size="small" label={`Subtype: ${filters.subtype.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, subtype: [] }))} />
+        {activeFilters.payer && (
+          <Chip size="small" label={`Payer: ${filters.payer.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, payer: [] }))} />
         )}
         {activeFilters.assignedTo && (
           <Chip size="small" label={`Assigned: ${filters.assignedTo.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, assignedTo: [] }))} />
         )}
-
         <Box sx={{ flex: 1 }} />
-
-        {displayed.length > 0 && (
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Total variance: <strong style={{ color: '#991B1B' }}>
-              {formatCurrency(displayed.reduce((s, r) => s + r.varianceAmount, 0))}
-            </strong>
-          </Typography>
-        )}
-        {activeTab === 'Recovered' && displayed.length > 0 && (
-          <>
-            <Typography variant="caption" color="text.secondary">·</Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Recovered: <strong style={{ color: '#14532D' }}>
-                {formatCurrency(displayed.reduce((s, r) => s + (r.recoveredAmount ?? 0), 0))}
-              </strong>
-            </Typography>
-          </>
-        )}
-
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          {displayed.length} of {inState.length}
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {displayed.length} of {inState.length} case{inState.length !== 1 ? 's' : ''}
         </Typography>
       </Box>
 
-      {/* ── Column Popover ──────────────────────────────────────────────────────── */}
+      {/* Column filter popover */}
       <Popover
         open={Boolean(colPopover)}
         anchorEl={colPopover?.anchor}
         onClose={closeColPopover}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
         transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        slotProps={{ paper: { sx: { minWidth: 200, mt: 0.5, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', borderRadius: 1.5 } } }}
+        slotProps={{ paper: { sx: { borderRadius: 2, mt: 0.5, minWidth: 200, boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } } }}
       >
         {renderPopoverContent()}
       </Popover>
 
-      {/* ── Add Column Popover ───────────────────────────────────────────────── */}
+      {/* Add Column popover */}
       <Popover
         open={Boolean(addColAnchor)}
         anchorEl={addColAnchor}
@@ -604,7 +633,7 @@ export default function UnderpaymentWorklistPage({ onSelectUnderpayment }: Props
           </Box>
           <Divider sx={{ mb: 0.5 }} />
           <FormGroup sx={{ px: 1.5 }}>
-            {UP_OPTIONAL_COLS.map(col => (
+            {AUDIT_OPTIONAL_COLS.map(col => (
               <FormControlLabel
                 key={col.id}
                 control={

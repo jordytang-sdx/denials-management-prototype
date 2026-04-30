@@ -10,7 +10,7 @@ import {
 } from '@mui/material'
 import {
   ArrowBackOutlined, AutoAwesomeOutlined, DescriptionOutlined,
-  NavigateNextOutlined, ExpandMoreOutlined, ContentCopyOutlined,
+  NavigateNextOutlined, ExpandMoreOutlined, ContentCopyOutlined, MoreVertOutlined,
   CheckCircleOutlined, TrendingDownOutlined, GavelOutlined,
   LightbulbOutlined, EditOutlined, CalendarMonthOutlined,
   FindInPageOutlined, SendOutlined, TaskAltOutlined, PaymentsOutlined,
@@ -28,11 +28,18 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Anthropic from '@anthropic-ai/sdk'
 import { SEED_UNDERPAYMENTS, type UnderpaymentRecord } from '../data/underpayments'
+import { SEED_DENIALS } from '../data/denials'
+import { SEED_AUDITS } from '../data/audits'
+import { ClaimContextStrip, type ClaimContext } from '../components/ClaimContextStrip'
+import { OnThisClaimWidget, type CaseOnClaim } from '../components/OnThisClaimWidget'
+import { ActivityTimeline } from '../components/ActivityTimeline'
+import type { TimelineEvent as CaseTimelineEvent } from '../data/caseTimeline'
 import {
   UNDERPAYMENT_DETAILS, UP_REMIT_DATA, UP_CLAIM_DATA,
   UP_SUBMISSION_EPISODES,
   type AIFinding, type UPRemitData, type UPClaimData,
   type UPSubmissionEpisode, type UPEpisodeAttachment, type UPDeliveryMethod,
+  type UnderpaymentDetail,
 } from '../data/underpaymentDetail'
 import { getCategoryConfig } from '../data/underpaymentCategoryConfig'
 import { TEAM_MEMBERS, type TeamMember } from '../data/denials'
@@ -55,18 +62,18 @@ function daysUntil(dateStr: string): number {
 }
 
 const STATE_COLORS: Record<string, { bg: string; color: string }> = {
-  Active:    { bg: '#EBF4FF', color: '#2C5282' },
-  Submitted: { bg: '#E6FFFA', color: '#276749' },
-  Won:       { bg: '#F0FFF4', color: '#22543D' },
-  Recovered: { bg: '#DCFCE7', color: '#14532D' },
-  Closed:    { bg: '#F7FAFC', color: '#718096' },
-  Archived:  { bg: '#F3F0FF', color: '#6B46C1' },
+  Active:    { bg: '#fef3ea', color: '#b86823' },
+  Submitted: { bg: '#ebf5fb', color: '#2776a1' },
+  Won:       { bg: '#eaf6f4', color: '#227a6c' },
+  Recovered: { bg: '#eaf6f4', color: '#227a6c' },
+  Closed:    { bg: '#f1f4f6', color: '#636a6f' },
+  Archived:  { bg: '#f1f4f6', color: '#939a9f' },
 }
 
 const SEVERITY_COLORS: Record<AIFinding['severity'], { color: string; bg: string; label: string }> = {
-  high:   { color: '#991B1B', bg: '#FEF2F2', label: 'High' },
-  medium: { color: '#92400E', bg: '#FFFBEB', label: 'Medium' },
-  low:    { color: '#1E40AF', bg: '#EFF6FF', label: 'Low' },
+  high:   { color: '#9f383e', bg: '#fbedee', label: 'High' },
+  medium: { color: '#b86823', bg: '#fef3ea', label: 'Medium' },
+  low:    { color: '#2776a1', bg: '#ebf5fb', label: 'Low' },
 }
 
 const FINDING_ICONS: Record<AIFinding['type'], React.ReactNode> = {
@@ -529,11 +536,11 @@ function ClinicalContent({ mr }: { mr: MedicalRecord }) {
       {mr.keyFacts.length > 0 && (
         <Box>
           <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 1 }}>Key Dispute Facts</Typography>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5, bgcolor: '#FFFBEB', borderColor: '#FCD34D' }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5, bgcolor: '#fef3ea', borderColor: '#f58a2e' }}>
             {mr.keyFacts.map((fact, i) => (
               <Box key={i} sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start', mb: i < mr.keyFacts.length - 1 ? 1 : 0 }}>
-                <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: '#92400E', flexShrink: 0, mt: 0.75 }} />
-                <Typography variant="body2" sx={{ color: '#78350F', lineHeight: 1.5 }}>{fact}</Typography>
+                <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: '#b86823', flexShrink: 0, mt: 0.75 }} />
+                <Typography variant="body2" sx={{ color: '#b86823', lineHeight: 1.5 }}>{fact}</Typography>
               </Box>
             ))}
           </Paper>
@@ -723,7 +730,7 @@ function ToolbarBtn({ onClick, active, children, title }: { onClick: () => void;
   return (
     <Tooltip title={title}>
       <Box component="button" onClick={onClick}
-        sx={{ border: 'none', background: active ? 'rgba(27,58,92,0.12)' : 'transparent', borderRadius: '4px', p: '4px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: active ? 'primary.main' : 'text.secondary', '&:hover': { bgcolor: 'rgba(27,58,92,0.08)' } }}>
+        sx={{ border: 'none', background: active ? 'rgba(21,125,157,0.12)' : 'transparent', borderRadius: '4px', p: '4px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: active ? 'primary.main' : 'text.secondary', '&:hover': { bgcolor: 'rgba(21,125,157,0.08)' } }}>
         {children}
       </Box>
     </Tooltip>
@@ -950,7 +957,7 @@ Use only <p>, <strong>, <em>, <ul>, <ol>, <li>, <h2>, <h3> tags. Return the comp
                   sx={{ '& .MuiInputBase-input': { fontSize: '0.875rem', py: 0.5 } }} />
                 <Tooltip title={chatOpen ? 'Hide conversation' : 'Show conversation'}>
                   <IconButton size="small" onClick={() => setChatOpen(v => !v)}
-                    sx={{ color: chatOpen ? 'primary.main' : 'text.disabled', bgcolor: chatOpen ? 'rgba(27,58,92,0.08)' : 'transparent', borderRadius: 1 }}>
+                    sx={{ color: chatOpen ? 'primary.main' : 'text.disabled', bgcolor: chatOpen ? 'rgba(21,125,157,0.08)' : 'transparent', borderRadius: 1 }}>
                     <ChatBubbleOutlineOutlined sx={{ fontSize: 16 }} />
                   </IconButton>
                 </Tooltip>
@@ -1271,14 +1278,160 @@ function UPActivityTab({ episodes }: { episodes: UPSubmissionEpisode[] }) {
   )
 }
 
+// ── UP Right Column ───────────────────────────────────────────────────────────
+
+function buildSharedTimeline(record: UnderpaymentRecord): CaseTimelineEvent[] {
+  const events: CaseTimelineEvent[] = [
+    { id: 'created', type: 'system_instance_created', timestamp: record.createdAt, summary: `Underpayment case ${record.id} created`, actor: 'System', actorType: 'system' },
+    { id: 'identified', type: 'financial_variance_confirmed', timestamp: record.createdAt, summary: `Variance identified — ${record.category}`, amount: record.varianceAmount, actor: 'System', actorType: 'system' },
+  ]
+  if (['Submitted', 'Won', 'Recovered', 'Closed'].includes(record.state)) {
+    events.push({ id: 'demand', type: 'action_demand_sent', timestamp: record.createdAt, summary: `Demand letter submitted to ${record.payer}`, actor: 'Jordan Tang', actorType: 'provider' })
+  }
+  if (['Won', 'Recovered', 'Closed'].includes(record.state)) {
+    events.push({ id: 'response', type: record.state === 'Won' ? 'payer_overturned' : 'payer_upheld', timestamp: record.createdAt, summary: record.status, actor: record.payer, actorType: 'payer' })
+  }
+  if (record.state === 'Recovered' && record.recoveredAmount) {
+    events.push({ id: 'payment', type: 'financial_recovery_confirmed', timestamp: record.createdAt, summary: '835 remittance confirmed recovery', amount: record.recoveredAmount, actor: 'System', actorType: 'system' })
+  }
+  return events
+}
+
+function UPRightColumn({ record, casesOnClaim, onNavigateToCase, detail }: {
+  record: UnderpaymentRecord
+  casesOnClaim: CaseOnClaim[]
+  onNavigateToCase: (id: string, type: 'denial' | 'underpayment' | 'audit') => void
+  detail: UnderpaymentDetail | undefined
+}) {
+  const catConfig = getCategoryConfig(record.category)
+  const stateColor = STATE_COLORS[record.state]
+  const sharedTimeline = buildSharedTimeline(record)
+  const deadlineDays = daysUntil(record.deadline)
+
+  return (
+    <Box>
+      {/* Activity Timeline */}
+      <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
+        Activity Timeline
+      </Typography>
+      <Box sx={{ mt: 1 }}>
+        <ActivityTimeline events={sharedTimeline} onNavigateToCase={onNavigateToCase} />
+      </Box>
+
+      {/* UP Context */}
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
+          UP Context
+        </Typography>
+        <Paper variant="outlined" sx={{ mt: 1.5, borderRadius: 1.5, overflow: 'hidden' }}>
+          {/* Work queue */}
+          <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 1 }}>Category</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 1, bgcolor: catConfig.bg, flexShrink: 0 }}>
+                <catConfig.Icon sx={{ fontSize: 13, color: catConfig.color }} />
+              </Box>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: catConfig.color }}>{record.category}</Typography>
+            </Box>
+            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8rem', pl: 0.25 }}>{record.subtype}</Typography>
+          </Box>
+          {/* Status */}
+          <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 0.75 }}>Status</Typography>
+            <Chip label={record.status} size="small" sx={{ bgcolor: stateColor?.bg, color: stateColor?.color, fontWeight: 600, fontSize: '0.7rem', height: 20, border: 'none', '& .MuiChip-label': { px: 0.75 } }} />
+          </Box>
+          {/* Payer + LOB */}
+          <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 0.75 }}>Payer</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>{record.payer}</Typography>
+            {record.lineOfBusiness && <Typography variant="caption" color="text.secondary">{record.lineOfBusiness}</Typography>}
+          </Box>
+          {/* Key dates */}
+          <Box sx={{ p: 2 }}>
+            <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 1 }}>Dates</Typography>
+            {[
+              { label: 'Date of Service', value: formatDate(record.dos) },
+              { label: 'Identified',       value: formatDate(record.createdAt) },
+              { label: 'Dispute Deadline', value: formatDate(record.deadline), urgent: deadlineDays <= 7 },
+            ].map(({ label, value, urgent }) => (
+              <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">{label}</Typography>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: urgent ? 'error.main' : 'text.primary' }}>{value}</Typography>
+              </Box>
+            ))}
+          </Box>
+        </Paper>
+      </Box>
+
+      {/* Recommended Next Steps */}
+      {detail?.recommendedNextSteps?.length ? (
+        <Box sx={{ mt: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25 }}>
+            <NavigateNextOutlined sx={{ fontSize: 15, color: '#059669' }} />
+            <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: '#059669', letterSpacing: '0.08em' }}>
+              Recommended Next Steps
+            </Typography>
+          </Box>
+          <Paper variant="outlined" sx={{ p: 1.75, borderRadius: 1.5, borderColor: '#6EE7B7', bgcolor: '#F0FDF4' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {detail.recommendedNextSteps.map((step, i) => (
+                <Box key={i} sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
+                  <Box sx={{ width: 20, height: 20, borderRadius: '50%', bgcolor: '#059669', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, mt: 0.125 }}>
+                    <Typography sx={{ fontSize: '0.625rem', fontWeight: 800 }}>{i + 1}</Typography>
+                  </Box>
+                  <Typography variant="body2" sx={{ color: '#064E3B', lineHeight: 1.5, fontSize: '0.8rem' }}>{step}</Typography>
+                </Box>
+              ))}
+            </Box>
+          </Paper>
+        </Box>
+      ) : null}
+
+      {/* Originating Denial */}
+      {record.originatingDenialId && (
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>Originating Denial</Typography>
+          <Paper variant="outlined" sx={{ mt: 1.5, borderRadius: 1.5 }}>
+            <Box sx={{ px: 2, py: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                <LinkOutlined sx={{ fontSize: 12, color: 'text.disabled' }} />
+                <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem', fontStyle: 'italic' }}>
+                  {record.handoffReason === 'partial_denial' ? 'Partial denial handoff' :
+                   record.handoffReason === 'post_overturn' ? 'Post-overturn underpayment' :
+                   record.handoffReason === 'silent_downcode' ? 'Silent downcode' : 'Related denial'}
+                </Typography>
+              </Box>
+              <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem' }}>
+                {record.originatingDenialId}
+              </Typography>
+            </Box>
+          </Paper>
+        </Box>
+      )}
+
+      {/* On This Claim */}
+      {casesOnClaim.filter(c => !c.isCurrent).length > 0 && (
+        <Box sx={{ mt: 2 }}>
+          <OnThisClaimWidget
+            claimId={record.claim.claimId}
+            cases={casesOnClaim}
+            onNavigateToCase={onNavigateToCase}
+          />
+        </Box>
+      )}
+    </Box>
+  )
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 interface Props {
   underpaymentId: string
   onBack: () => void
+  onNavigateToCase?: (caseId: string, caseType: 'denial' | 'underpayment' | 'audit') => void
 }
 
-export default function UnderpaymentDetailPage({ underpaymentId, onBack }: Props) {
+export default function UnderpaymentDetailPage({ underpaymentId, onBack, onNavigateToCase }: Props) {
   const [activeTab, setActiveTab] = useState(0)
   const [assigneeAnchor, setAssigneeAnchor] = useState<HTMLElement | null>(null)
   const [showRemit, setShowRemit] = useState(false)
@@ -1306,6 +1459,26 @@ export default function UnderpaymentDetailPage({ underpaymentId, onBack }: Props
     ? Math.round((record.recoveredAmount / record.varianceAmount) * 100)
     : null
 
+  // Shared component data
+  const claimCtx: ClaimContext = {
+    claimId: record.claim.claimId,
+    har: record.claim.har,
+    mrn: record.patient.mrn,
+    dos: record.dos,
+    billedAmount: record.billedAmount,
+    paidAmount: record.paidAmount,
+  }
+
+  const casesOnClaim: CaseOnClaim[] = [
+    { caseId: record.id, caseType: 'underpayment', state: record.state, status: record.status, amount: record.varianceAmount, assignee: record.assignedTo?.name ?? undefined, isCurrent: true },
+    ...SEED_DENIALS.filter(d => d.claim.claimId === record.claim.claimId).map(d => ({ caseId: d.id, caseType: 'denial' as const, state: d.state, status: d.status, amount: d.deniedAmount, assignee: d.assignedTo?.name ?? undefined, isCurrent: false })),
+    ...SEED_AUDITS.filter(a => a.claim.claimId === record.claim.claimId).map(a => ({ caseId: a.id, caseType: 'audit' as const, state: a.state, status: a.status, amount: a.amountAtRisk, assignee: a.assignedTo?.name ?? undefined, isCurrent: false })),
+  ]
+
+  function handleNavigateToCase(caseId: string, caseType: 'denial' | 'underpayment' | 'audit') {
+    onNavigateToCase?.(caseId, caseType)
+  }
+
   const financials = [
     { label: 'Billed',              value: formatCurrency(record.billedAmount),    color: 'text.primary' as const },
     { label: 'Paid by Payer',       value: formatCurrency(record.paidAmount),      color: 'text.primary' as const },
@@ -1317,50 +1490,156 @@ export default function UnderpaymentDetailPage({ underpaymentId, onBack }: Props
     }] : []),
   ]
 
+  const primaryCTA: { label: string } | null =
+    record.state === 'Active'    ? { label: 'Submit Demand Letter' } :
+    record.state === 'Submitted' ? { label: 'Record Payer Response' } :
+    record.state === 'Won'       ? { label: 'Confirm Recovery' } :
+    ['Recovered', 'Closed', 'Archived'].includes(record.state) ? { label: 'Restore' } :
+    null
+
+  const [moreMenuAnchor, setMoreMenuAnchor] = useState<HTMLElement | null>(null)
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-      {/* Header */}
-      <Box sx={{
-        px: 2.5, py: 1.5, bgcolor: 'background.paper',
-        borderBottom: '1px solid', borderColor: 'divider',
-        display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0,
-      }}>
-        <IconButton size="small" onClick={onBack} sx={{ color: 'text.secondary' }}>
-          <ArrowBackOutlined fontSize="small" />
-        </IconButton>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25, flexWrap: 'wrap' }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{record.patient.name}</Typography>
-            <Chip label={record.state} size="small" sx={{ bgcolor: stateColor?.bg, color: stateColor?.color, fontWeight: 600, fontSize: '0.65rem', height: 18, border: 'none', '& .MuiChip-label': { px: 0.75 } }} />
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: catConfig.bg, borderRadius: 1, px: 0.75, py: 0.25 }}>
-              <catConfig.Icon sx={{ fontSize: 11, color: catConfig.color }} />
-              <Typography sx={{ fontSize: '0.65rem', fontWeight: 600, color: catConfig.color, lineHeight: 1 }}>{record.category}</Typography>
-            </Box>
-          </Box>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            {record.claim.har} · {record.payer}{record.lineOfBusiness ? ` — ${record.lineOfBusiness}` : ''} · DOS {formatDate(record.dos)}
-          </Typography>
-        </Box>
-        <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', lineHeight: 1 }}>Variance</Typography>
-          <Typography sx={{ fontWeight: 700, fontSize: '1.05rem', color: '#991B1B', fontVariantNumeric: 'tabular-nums', lineHeight: 1.3 }}>
-            {formatCurrency(record.varianceAmount)}
-          </Typography>
-        </Box>
-        <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', lineHeight: 1 }}>Dispute Deadline</Typography>
-          <Typography sx={{ fontWeight: 600, fontSize: '0.875rem', color: deadlineDays <= 7 ? 'error.main' : 'text.primary', lineHeight: 1.3 }}>
-            {formatDate(record.deadline)}
-          </Typography>
-          <Typography variant="caption" sx={{ color: deadlineDays <= 7 ? 'error.main' : 'text.secondary' }}>
-            {deadlineDays < 0 ? `${Math.abs(deadlineDays)}d overdue` : `${deadlineDays}d remaining`}
-          </Typography>
-        </Box>
-      </Box>
-
-      {/* Tabs */}
+      {/* ── Sticky header ─────────────────────────────────────────────────────── */}
       <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+
+        {/* Row 1: back + [U] badge + case ID + state chip + spacer + Variance amount + deadline chip */}
+        <Box sx={{ px: 2.5, pt: 1.5, pb: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Button
+            startIcon={<ArrowBackOutlined sx={{ fontSize: 15 }} />}
+            onClick={onBack}
+            size="small"
+            variant="text"
+            sx={{ color: 'text.secondary', fontWeight: 500, fontSize: '0.8125rem', mr: 0.5 }}
+          >
+            Worklist
+          </Button>
+          <Divider orientation="vertical" flexItem />
+          {/* [U] badge */}
+          <Chip label="U" size="small" sx={{ height: 20, width: 20, fontSize: '0.625rem', fontWeight: 800, bgcolor: '#DBEAFE', color: '#1D4ED8', borderRadius: '4px', '& .MuiChip-label': { px: 0 } }} />
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '0.875rem' }}>
+            {record.id}
+          </Typography>
+          <Chip label={record.state} size="small" sx={{ height: 20, fontWeight: 600, fontSize: '0.7rem', bgcolor: stateColor?.bg, color: stateColor?.color }} />
+          <Box sx={{ flex: 1 }} />
+          {/* Variance amount */}
+          <Box sx={{ textAlign: 'right' }}>
+            <Typography variant="caption" color="error.main">Variance</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+              {formatCurrency(record.varianceAmount)}
+            </Typography>
+          </Box>
+          {/* Deadline chip */}
+          <Chip
+            label={`${formatDate(record.deadline)} · ${deadlineDays < 0 ? `${Math.abs(deadlineDays)}d overdue` : `${deadlineDays}d remaining`}`}
+            size="small"
+            sx={{
+              height: 20, fontSize: '0.6875rem', fontWeight: 600,
+              bgcolor: deadlineDays <= 0 ? '#FEE2E2' : deadlineDays <= 3 ? '#FED7AA' : deadlineDays <= 7 ? '#FEF9C3' : 'action.selected',
+              color: deadlineDays <= 0 ? '#B91C1C' : deadlineDays <= 3 ? '#C2410C' : deadlineDays <= 7 ? '#854D0E' : 'text.secondary',
+              '& .MuiChip-label': { px: 1 },
+            }}
+          />
+        </Box>
+
+        {/* Row 2: patient · mrn · payer · category icon+label · DOS */}
+        <Box sx={{ px: 2.5, pb: 1.25, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{record.patient.name}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{record.patient.mrn}</Typography>
+          <Typography variant="caption" color="text.disabled">·</Typography>
+          <Typography variant="body2" color="text.secondary">{record.payer}</Typography>
+          <Typography variant="caption" color="text.disabled">·</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 0.75, bgcolor: catConfig.bg }}>
+              <catConfig.Icon sx={{ fontSize: 13, color: catConfig.color }} />
+            </Box>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: catConfig.color }}>{record.category}</Typography>
+          </Box>
+          <Typography variant="caption" color="text.disabled">·</Typography>
+          <Typography variant="caption" color="text.secondary">DOS: {formatDate(record.dos)}</Typography>
+        </Box>
+
+        {/* Action bar (Zone 2): assignee chip + spacer + primary CTA + More */}
+        <Box sx={{ px: 2.5, pb: 1, display: 'flex', alignItems: 'center', gap: 1.5, borderTop: '1px solid', borderColor: 'divider', pt: 0.75 }}>
+          {/* Assignee chip */}
+          <Box
+            onClick={e => setAssigneeAnchor(e.currentTarget)}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 0.75, cursor: 'pointer', borderRadius: 1,
+              px: 0.75, py: 0.375, border: '1px solid', borderColor: 'divider',
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
+          >
+            <Avatar sx={{ width: 22, height: 22, fontSize: '0.5625rem', bgcolor: '#DBEAFE', color: '#1D4ED8' }}>
+              {localAssignee ? localAssignee.initials : '?'}
+            </Avatar>
+            {localAssignee ? (
+              <Typography variant="caption" sx={{ fontWeight: 500, color: 'text.secondary' }}>{localAssignee.name}</Typography>
+            ) : (
+              <Typography variant="caption" sx={{ fontStyle: 'italic', color: 'text.disabled' }}>Unassigned</Typography>
+            )}
+          </Box>
+          <Popover
+            open={Boolean(assigneeAnchor)}
+            anchorEl={assigneeAnchor}
+            onClose={() => setAssigneeAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            slotProps={{ paper: { sx: { width: 200, borderRadius: 1.5, mt: 0.5 } } }}
+          >
+            <List dense disablePadding sx={{ py: 0.5 }}>
+              {TEAM_MEMBERS.map(m => (
+                <ListItemButton key={m.id} selected={localAssignee?.id === m.id}
+                  onClick={() => { setLocalAssignee(m); setAssigneeAnchor(null) }}
+                  sx={{ px: 1.5, py: 0.75, '&.Mui-selected': { bgcolor: 'primary.main', color: '#fff' } }}>
+                  <ListItemAvatar sx={{ minWidth: 34 }}>
+                    <Avatar sx={{ width: 22, height: 22, fontSize: '0.6rem', bgcolor: localAssignee?.id === m.id ? 'rgba(255,255,255,0.25)' : 'primary.light' }}>{m.initials}</Avatar>
+                  </ListItemAvatar>
+                  <ListItemText primary={<Typography sx={{ fontSize: '0.8125rem' }}>{m.name}</Typography>} />
+                </ListItemButton>
+              ))}
+              {localAssignee && (
+                <ListItemButton onClick={() => { setLocalAssignee(null); setAssigneeAnchor(null) }}
+                  sx={{ px: 1.5, py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
+                  <ListItemText primary={<Typography sx={{ fontSize: '0.8125rem', color: 'text.secondary' }}>Unassign</Typography>} />
+                </ListItemButton>
+              )}
+            </List>
+          </Popover>
+          <Box sx={{ flex: 1 }} />
+          {/* Primary CTA + More */}
+          {primaryCTA && (
+            <Button variant="contained" size="small" disableElevation sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+              {primaryCTA.label}
+            </Button>
+          )}
+          <Button
+            size="small" variant="outlined"
+            onClick={e => setMoreMenuAnchor(e.currentTarget)}
+            endIcon={<ExpandMoreOutlined sx={{ fontSize: 14 }} />}
+            sx={{ fontSize: '0.75rem', color: 'text.secondary', borderColor: 'divider' }}
+          >
+            More
+          </Button>
+          <Popover
+            open={Boolean(moreMenuAnchor)}
+            anchorEl={moreMenuAnchor}
+            onClose={() => setMoreMenuAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            slotProps={{ paper: { sx: { mt: 0.5, borderRadius: 1.5, minWidth: 160 } } }}
+          >
+            {['Close', 'Archive'].map(label => (
+              <ListItemButton key={label} dense onClick={() => setMoreMenuAnchor(null)} sx={{ px: 2, py: 1 }}>
+                <ListItemText primary={label} primaryTypographyProps={{ fontSize: '0.8125rem' }} />
+              </ListItemButton>
+            ))}
+          </Popover>
+        </Box>
+
+        {/* Tabs row */}
         <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)}
           sx={{ minHeight: 38, px: 2, '& .MuiTabs-indicator': { height: 2 }, '& .MuiTab-root': { minHeight: 38, py: 0, fontSize: '0.8125rem', fontWeight: 500, textTransform: 'none', letterSpacing: 0 } }}>
           <Tab label="Overview" />
@@ -1371,45 +1650,19 @@ export default function UnderpaymentDetailPage({ underpaymentId, onBack }: Props
         </Tabs>
       </Box>
 
-      {/* Tab content */}
-      <Box sx={{ flex: 1, overflow: 'auto' }}>
+      {/* ── Two-column body ───────────────────────────────────────────────────── */}
+      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+        {/* Left column */}
+        <Box sx={{ flex: '0 0 60%', display: 'flex', flexDirection: 'column', borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+          <ClaimContextStrip claim={claimCtx} />
+          <Box sx={{ flex: 1, overflowY: 'auto', bgcolor: 'background.default' }}>
 
-        {/* ── Overview tab ── */}
-        {activeTab === 0 && (
-          <Box sx={{ display: 'flex', gap: 3, p: 3 }}>
-
-            {/* Left panel */}
-            <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-
-              {/* Claim Context */}
-              <Box>
-                <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
-                  Claim Context
-                </Typography>
-                <Paper variant="outlined" sx={{ mt: 1.5, borderRadius: 1.5, overflow: 'hidden' }}>
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          {['Claim ID', 'HAR', 'MRN', 'Date of Service'].map(h => (
-                            <TableCell key={h} sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'text.secondary', py: 0.75, whiteSpace: 'nowrap' }}>{h}</TableCell>
-                          ))}
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell sx={{ py: 1, fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 500 }}>{record.claim.claimId}</TableCell>
-                          <TableCell sx={{ py: 1, fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 500 }}>{record.claim.har}</TableCell>
-                          <TableCell sx={{ py: 1, fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 500 }}>{record.patient.mrn}</TableCell>
-                          <TableCell sx={{ py: 1, fontSize: '0.8rem' }}>{formatDate(record.dos)}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Paper>
+            {/* ── Overview tab ── */}
+            {activeTab === 0 && (
+              <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
 
                 {/* Financial Summary */}
-                <Paper variant="outlined" sx={{ mt: 2, p: 2, borderRadius: 1.5 }}>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5 }}>
                   <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em' }}>Financial Summary</Typography>
                   <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${financials.length}, 1fr)`, gap: 2, mt: 1 }}>
                     {financials.map(({ label, value, color, highlight, sub }) => (
@@ -1420,7 +1673,6 @@ export default function UnderpaymentDetailPage({ underpaymentId, onBack }: Props
                       </Box>
                     ))}
                   </Box>
-                  {/* View Claim / View Remit */}
                   {(claim837 || remit) && (
                     <Box sx={{ display: 'flex', gap: 1.5, mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
                       {claim837 && (
@@ -1440,264 +1692,88 @@ export default function UnderpaymentDetailPage({ underpaymentId, onBack }: Props
                     </Box>
                   )}
                 </Paper>
-              </Box>
 
-              {/* AI Analysis + Contract Terms */}
-              <Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-                  <AutoAwesomeOutlined sx={{ fontSize: 15, color: '#7C3AED' }} />
-                  <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: '#7C3AED', letterSpacing: '0.08em' }}>AI Analysis</Typography>
-                </Box>
-                {detail?.aiFindings?.length ? (
-                  <AIFindingsPanel findings={detail.aiFindings} />
-                ) : (
-                  <Paper variant="outlined" sx={{ p: 3, borderRadius: 1.5, textAlign: 'center' }}>
-                    <AutoAwesomeOutlined sx={{ fontSize: 28, color: 'text.disabled', mb: 1 }} />
-                    <Typography variant="body2" color="text.secondary">Analysis in progress.</Typography>
-                  </Paper>
-                )}
-
-                {/* Contract Terms — directly below AI findings */}
-                {detail?.contractClauses?.length ? (
-                  <Box sx={{ mt: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25 }}>
-                      <GavelOutlined sx={{ fontSize: 14, color: '#1D4ED8' }} />
-                      <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: '#1D4ED8', letterSpacing: '0.08em' }}>Relevant Contract Terms</Typography>
-                    </Box>
-                    <ContractTermsPanel clauses={detail.contractClauses} />
-                  </Box>
-                ) : null}
-              </Box>
-
-              {/* Timeline */}
-              <Box>
-                <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>Timeline</Typography>
-                <Box sx={{ mt: 1.5 }}>
-                  {timeline.map((event, idx) => {
-                    const isLast = idx === timeline.length - 1
-                    return (
-                      <Box key={idx} sx={{ display: 'flex', gap: 2, position: 'relative' }}>
-                        {!isLast && <Box sx={{ position: 'absolute', left: 15, top: 30, bottom: 0, width: 2, bgcolor: 'divider', zIndex: 0 }} />}
-                        <Box sx={{ flexShrink: 0, zIndex: 1 }}>
-                          <Box sx={{ width: 32, height: 32, borderRadius: '50%', bgcolor: event.color + '18', border: '2px solid', borderColor: event.color + '44', display: 'flex', alignItems: 'center', justifyContent: 'center', color: event.color }}>
-                            {event.icon}
-                          </Box>
-                        </Box>
-                        <Box sx={{ flex: 1, pb: isLast ? 0 : 3 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
-                            <Chip label={event.label} size="small" sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 600, bgcolor: event.color + '14', color: event.color, border: 'none', '& .MuiChip-label': { px: 0.75 } }} />
-                            <Typography variant="caption" color="text.secondary">{formatDate(event.timestamp)}</Typography>
-                          </Box>
-                          <Typography variant="body2" sx={{ fontWeight: 500, mt: 0.5, lineHeight: 1.4 }}>{event.summary}</Typography>
-                          {event.detail && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25, lineHeight: 1.5 }}>{event.detail}</Typography>}
-                          {event.amount !== undefined && (
-                            <Typography variant="caption" sx={{ fontWeight: 600, color: event.color, fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(event.amount)}</Typography>
-                          )}
-                        </Box>
-                      </Box>
-                    )
-                  })}
-                </Box>
-              </Box>
-
-              {/* Notes */}
-              {record.notes && (
+                {/* AI Analysis */}
                 <Box>
-                  <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 1 }}>Case Notes</Typography>
-                  <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.5 }}>
-                    <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.6 }}>{record.notes}</Typography>
-                  </Paper>
-                </Box>
-              )}
-            </Box>
-
-            {/* Right sidebar */}
-            <Box sx={{ width: 280, flexShrink: 0 }}>
-
-              {/* Next Steps — front and center */}
-              {detail?.recommendedNextSteps?.length ? (
-                <Box sx={{ mb: 3 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25 }}>
-                    <NavigateNextOutlined sx={{ fontSize: 15, color: '#059669' }} />
-                    <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: '#059669', letterSpacing: '0.08em' }}>
-                      Recommended Next Steps
-                    </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <AutoAwesomeOutlined sx={{ fontSize: 15, color: '#7C3AED' }} />
+                    <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: '#7C3AED', letterSpacing: '0.08em' }}>AI Analysis</Typography>
                   </Box>
-                  <Paper variant="outlined" sx={{ p: 1.75, borderRadius: 1.5, borderColor: '#6EE7B7', bgcolor: '#F0FDF4' }}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {detail.recommendedNextSteps.map((step, i) => (
-                        <Box key={i} sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
-                          <Box sx={{ width: 20, height: 20, borderRadius: '50%', bgcolor: '#059669', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, mt: 0.125 }}>
-                            <Typography sx={{ fontSize: '0.625rem', fontWeight: 800 }}>{i + 1}</Typography>
-                          </Box>
-                          <Typography variant="body2" sx={{ color: '#064E3B', lineHeight: 1.5, fontSize: '0.8rem' }}>{step}</Typography>
-                        </Box>
-                      ))}
+                  {detail?.aiFindings?.length ? (
+                    <AIFindingsPanel findings={detail.aiFindings} />
+                  ) : (
+                    <Paper variant="outlined" sx={{ p: 3, borderRadius: 1.5, textAlign: 'center' }}>
+                      <AutoAwesomeOutlined sx={{ fontSize: 28, color: 'text.disabled', mb: 1 }} />
+                      <Typography variant="body2" color="text.secondary">Analysis in progress.</Typography>
+                    </Paper>
+                  )}
+                  {detail?.contractClauses?.length ? (
+                    <Box sx={{ mt: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25 }}>
+                        <GavelOutlined sx={{ fontSize: 14, color: '#1D4ED8' }} />
+                        <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: '#1D4ED8', letterSpacing: '0.08em' }}>Relevant Contract Terms</Typography>
+                      </Box>
+                      <ContractTermsPanel clauses={detail.contractClauses} />
                     </Box>
-                  </Paper>
-                </Box>
-              ) : null}
-
-              {/* Underpayment Detail */}
-              <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>
-                Underpayment Detail
-              </Typography>
-
-              <Paper variant="outlined" sx={{ mt: 1.5, borderRadius: 1.5, overflow: 'hidden' }}>
-
-                {/* Work queue */}
-                <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 1 }}>Work Queue</Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 1, bgcolor: catConfig.bg, flexShrink: 0 }}>
-                      <catConfig.Icon sx={{ fontSize: 13, color: catConfig.color }} />
-                    </Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, color: catConfig.color }}>{record.category}</Typography>
-                  </Box>
-                  <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8rem', pl: 0.25 }}>{record.subtype}</Typography>
+                  ) : null}
                 </Box>
 
-                {/* Status */}
-                <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 0.75 }}>Status</Typography>
-                  <Chip label={record.status} size="small" sx={{ bgcolor: stateColor?.bg, color: stateColor?.color, fontWeight: 600, fontSize: '0.7rem', height: 20, border: 'none', '& .MuiChip-label': { px: 0.75 } }} />
-                </Box>
-
-                {/* Remit codes */}
-                {(record.carc || record.rarc) && (
-                  <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1 }}>
-                      <ReceiptLongOutlined sx={{ fontSize: 13, color: 'text.secondary' }} />
-                      <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em' }}>Remit Codes</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                      {record.carc && <Chip label={`CARC ${record.carc}`} size="small" sx={{ fontWeight: 700, fontSize: '0.7rem', bgcolor: '#FEE2E2', color: '#991B1B', height: 22 }} />}
-                      {record.rarc && <Chip label={`RARC ${record.rarc}`} size="small" sx={{ fontWeight: 600, fontSize: '0.7rem', height: 22 }} />}
-                    </Box>
+                {/* Notes */}
+                {record.notes && (
+                  <Box>
+                    <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 1 }}>Case Notes</Typography>
+                    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.5 }}>
+                      <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.6 }}>{record.notes}</Typography>
+                    </Paper>
                   </Box>
                 )}
+              </Box>
+            )}
 
-                {/* Key dates */}
-                <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 1 }}>Dates</Typography>
-                  {[
-                    { label: 'Date of Service', value: formatDate(record.dos) },
-                    { label: 'Identified',       value: formatDate(record.createdAt) },
-                    { label: 'Dispute Deadline', value: formatDate(record.deadline), urgent: deadlineDays <= 7 },
-                  ].map(({ label, value, urgent }) => (
-                    <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">{label}</Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: urgent ? 'error.main' : 'text.primary' }}>{value}</Typography>
-                    </Box>
-                  ))}
-                </Box>
+            {/* ── Activity tab ── */}
+            {activeTab === 1 && <UPActivityTab episodes={episodes} />}
 
-                {/* Payer */}
-                <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 0.75 }}>Payer</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 500 }}>{record.payer}</Typography>
-                  {record.lineOfBusiness && <Typography variant="caption" color="text.secondary">{record.lineOfBusiness}</Typography>}
-                </Box>
+            {/* ── Demand Letter tab ── */}
+            {activeTab === 2 && <DemandLetterTab record={record} />}
 
-                {/* Assigned To */}
-                <Box sx={{ p: 2 }}>
-                  <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em', display: 'block', mb: 0.75 }}>Assigned To</Typography>
-                  <Box onClick={e => setAssigneeAnchor(e.currentTarget)}
-                    sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', borderRadius: 1, p: 0.5, mx: -0.5, '&:hover': { bgcolor: 'action.hover' }, '&:hover .edit-icon': { opacity: 1 } }}>
-                    {localAssignee ? (
-                      <>
-                        <Avatar sx={{ width: 24, height: 24, fontSize: '0.6875rem', bgcolor: 'primary.light' }}>{localAssignee.initials}</Avatar>
-                        <Typography variant="body2" sx={{ fontWeight: 500, flex: 1 }}>{localAssignee.name}</Typography>
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic', flex: 1 }}>Unassigned</Typography>
-                    )}
-                    <EditOutlined className="edit-icon" sx={{ fontSize: 14, color: 'text.disabled', opacity: 0, transition: 'opacity 0.15s' }} />
-                  </Box>
-                  <Popover open={Boolean(assigneeAnchor)} anchorEl={assigneeAnchor} onClose={() => setAssigneeAnchor(null)}
-                    anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }} transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-                    slotProps={{ paper: { sx: { width: 200, borderRadius: 1.5, mt: 0.5 } } }}>
-                    <List dense disablePadding sx={{ py: 0.5 }}>
-                      {TEAM_MEMBERS.map(m => (
-                        <ListItemButton key={m.id} selected={localAssignee?.id === m.id}
-                          onClick={() => { setLocalAssignee(m); setAssigneeAnchor(null) }}
-                          sx={{ px: 1.5, py: 0.75, '&.Mui-selected': { bgcolor: 'primary.main', color: '#fff' } }}>
-                          <ListItemAvatar sx={{ minWidth: 34 }}>
-                            <Avatar sx={{ width: 22, height: 22, fontSize: '0.6rem', bgcolor: localAssignee?.id === m.id ? 'rgba(255,255,255,0.25)' : 'primary.light' }}>{m.initials}</Avatar>
-                          </ListItemAvatar>
-                          <ListItemText primary={<Typography sx={{ fontSize: '0.8125rem' }}>{m.name}</Typography>} />
-                        </ListItemButton>
-                      ))}
-                      {localAssignee && (
-                        <ListItemButton onClick={() => { setLocalAssignee(null); setAssigneeAnchor(null) }}
-                          sx={{ px: 1.5, py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
-                          <ListItemText primary={<Typography sx={{ fontSize: '0.8125rem', color: 'text.secondary' }}>Unassign</Typography>} />
-                        </ListItemButton>
-                      )}
-                    </List>
-                  </Popover>
-                </Box>
-              </Paper>
-
-              {/* Originating Denial */}
-              {record.originatingDenialId && (
-                <Box sx={{ mt: 3 }}>
-                  <Typography variant="overline" sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em' }}>Originating Denial</Typography>
-                  <Paper variant="outlined" sx={{ mt: 1.5, borderRadius: 1.5 }}>
-                    <Box sx={{ px: 2, py: 1.5 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
-                        <LinkOutlined sx={{ fontSize: 12, color: 'text.disabled' }} />
-                        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem', fontStyle: 'italic' }}>
-                          {record.handoffReason === 'partial_denial' ? 'Partial denial handoff' :
-                           record.handoffReason === 'post_overturn' ? 'Post-overturn underpayment' :
-                           record.handoffReason === 'silent_downcode' ? 'Silent downcode' : 'Related denial'}
-                        </Typography>
-                      </Box>
-                      <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem' }}>
-                        {record.originatingDenialId}
-                      </Typography>
-                    </Box>
+            {/* ── Clinical tab ── */}
+            {activeTab === 3 && (
+              <Box sx={{ p: 3 }}>
+                {medRecord ? (
+                  <ClinicalContent mr={medRecord} />
+                ) : (
+                  <Paper variant="outlined" sx={{ p: 4, borderRadius: 1.5, textAlign: 'center', maxWidth: 500, mx: 'auto', mt: 4 }}>
+                    <DescriptionOutlined sx={{ fontSize: 36, color: 'text.disabled', mb: 1.5 }} />
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>No medical record on file</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Clinical documentation for this patient has not been retrieved yet. Request records through HealthSource or attach manually.
+                    </Typography>
                   </Paper>
-                </Box>
-              )}
+                )}
+              </Box>
+            )}
 
-            </Box>
-          </Box>
-        )}
-
-        {/* ── Activity tab ── */}
-        {activeTab === 1 && <UPActivityTab episodes={episodes} />}
-
-        {/* ── Demand Letter tab ── */}
-        {activeTab === 2 && <DemandLetterTab record={record} />}
-
-        {/* ── Clinical tab ── */}
-        {activeTab === 3 && (
-          <Box sx={{ p: 3 }}>
-            {medRecord ? (
-              <ClinicalContent mr={medRecord} />
-            ) : (
-              <Paper variant="outlined" sx={{ p: 4, borderRadius: 1.5, textAlign: 'center', maxWidth: 500, mx: 'auto', mt: 4 }}>
-                <DescriptionOutlined sx={{ fontSize: 36, color: 'text.disabled', mb: 1.5 }} />
-                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>No medical record on file</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Clinical documentation for this patient has not been retrieved yet. Request records through HealthSource or attach manually.
-                </Typography>
-              </Paper>
+            {/* ── Attachments tab ── */}
+            {activeTab === 4 && (
+              <AttachmentsTab
+                record={record}
+                hasRemit={!!remit}
+                hasClaim={!!claim837}
+                hasMedicalRecord={!!medRecord}
+              />
             )}
           </Box>
-        )}
+        </Box>
 
-        {/* ── Attachments tab ── */}
-        {activeTab === 4 && (
-          <AttachmentsTab
+        {/* Right column */}
+        <Box sx={{ flex: '0 0 40%', overflowY: 'auto', p: 2 }}>
+          <UPRightColumn
             record={record}
-            hasRemit={!!remit}
-            hasClaim={!!claim837}
-            hasMedicalRecord={!!medRecord}
+            casesOnClaim={casesOnClaim}
+            onNavigateToCase={handleNavigateToCase}
+            detail={detail}
           />
-        )}
-
+        </Box>
       </Box>
 
       {/* Modals */}

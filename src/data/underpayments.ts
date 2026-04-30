@@ -1,3 +1,5 @@
+import type { CaseReference } from './audits'
+
 // ── State / Status types ──────────────────────────────────────────────────────
 
 export type UnderpaymentState = 'Active' | 'Submitted' | 'Won' | 'Recovered' | 'Closed' | 'Archived'
@@ -83,6 +85,7 @@ export type UnderpaymentSubtype =
 // ── Core record type ──────────────────────────────────────────────────────────
 
 export interface UnderpaymentRecord {
+  caseType?: 'underpayment'
   id: string
   patient: { name: string; mrn: string }
   claim: { claimId: string; har: string }
@@ -110,6 +113,7 @@ export interface UnderpaymentRecord {
   // Relationships
   originatingDenialId?: string  // for post-overturn or partial denial handoffs
   handoffReason?: 'direct_underpayment' | 'silent_downcode' | 'partial_denial' | 'post_overturn' | 'ambiguous_payment'
+  relatedCases?: CaseReference[]
 }
 
 // ── Team members (reuse from denials context) ────────────────────────────────
@@ -156,6 +160,31 @@ export const SEED_UNDERPAYMENTS: UnderpaymentRecord[] = [
     assignedTo: TEAM[0]!,
     notes: 'BCBS applied 2024 fee schedule instead of 2025 contracted rates. DRG 470 base rate should be $14,800 per 2025 agreement.',
     nextAction: 'Draft demand letter citing contract §3.1 fee schedule effective date',
+  },
+  {
+    id: 'UP-2026-0039',
+    patient: { name: 'Margaret Holloway', mrn: 'MRN-104823' },
+    claim: { claimId: 'CLM-8847291', har: 'HAR-774112' },
+    payer: 'Blue Cross Blue Shield',
+    lineOfBusiness: 'Commercial',
+    dos: '2026-02-14',
+    createdAt: d(-18),
+    deadline: d(12),
+    state: 'Active',
+    status: 'Contract Analysis in Progress',
+    category: 'Contract Variance',
+    subtype: 'Incorrect Contract Payment Rate',
+    billedAmount: 18450.00,
+    paidAmount: 14240.00,
+    expectedAmount: 15680.00,
+    varianceAmount: 1440.00,
+    carc: 'CARC-45',
+    assignedTo: TEAM[0]!,
+    notes: 'BCBS paid $14,240 on this claim; contracted DRG 291 rate is $15,680 per 2025 agreement. Separate from the $4,210 DRG downgrade denial on this claim.',
+    nextAction: 'Confirm expected rate against current fee schedule; draft demand',
+    originatingDenialId: 'DN-2026-0412',
+    handoffReason: 'partial_denial',
+    relatedCases: [{ caseId: 'DN-2026-0412', caseType: 'denial', relationship: 'related_claim' }],
   },
   {
     id: 'UP-2026-0044',

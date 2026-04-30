@@ -18,25 +18,34 @@ import {
   StickyNote2Outlined,
   SearchOutlined,
   CloseOutlined,
+  ErrorOutlineOutlined,
+  AddOutlined,
+  ViewColumnOutlined,
 } from '@mui/icons-material'
-import { TEAM_MEMBERS, type DenialRecord, type TeamMember, type DenialState } from '../data/denials'
+import {
+  TEAM_MEMBERS, type DenialRecord, type TeamMember, type DenialState,
+  type PaymentStatus, type PacketStatus,
+} from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type SortDir = 'asc' | 'desc'
-export type SortCol = 'patient' | 'deniedAmount' | 'paidAmount' | 'deadline'
+export type SortCol = 'patient' | 'deniedAmount' | 'paidAmount' | 'deadline' | 'priorityScore' | 'responseDueDate'
 export type WorklistSort = { colId: SortCol; dir: SortDir } | null
 export type WorklistActiveTab = DenialState
 
 export interface WorklistFilters {
   payer: string[]
+  lineOfBusiness: string[]
   denialType: string[]
   assignedTo: string[]
+  paymentStatus: string[]
+  appealLevel: string[]
 }
 
 export const DEFAULT_WORKLIST_FILTERS: WorklistFilters = {
-  payer: [], denialType: [], assignedTo: [],
+  payer: [], lineOfBusiness: [], denialType: [], assignedTo: [], paymentStatus: [], appealLevel: [],
 }
 
 interface ColPopoverState {
@@ -51,15 +60,64 @@ interface InlinePopoverState {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS: WorklistActiveTab[] = ['Active', 'Submitted', 'Won', 'Recovered', 'Closed', 'Archived']
+const TABS: WorklistActiveTab[] = ['Queue', 'InProgress', 'Submitted', 'Overturned', 'Closed']
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const TAB_LABELS: Record<WorklistActiveTab, string> = {
+  Queue:      'Queue',
+  InProgress: 'In Progress',
+  Submitted:  'Submitted',
+  Overturned: 'Overturned',
+  Closed:     'Closed',
+  Archive:    'Archive',
+}
 
 const TODAY = new Date('2026-04-02')
+
+const TAB_OPTIONAL_COLS: Partial<Record<WorklistActiveTab, Array<{ id: string; label: string }>>> = {
+  Queue: [
+    { id: 'lineOfBusiness', label: 'Line of Business' },
+    { id: 'priorityScore',  label: 'Priority Score' },
+    { id: 'assignedTo',     label: 'Assigned To' },
+    { id: 'dos',            label: 'Date of Service' },
+  ],
+  InProgress: [
+    { id: 'lineOfBusiness', label: 'Line of Business' },
+    { id: 'priorityScore',  label: 'Priority Score' },
+    { id: 'dos',            label: 'Date of Service' },
+  ],
+  Submitted: [
+    { id: 'lineOfBusiness', label: 'Line of Business' },
+    { id: 'assignedTo',     label: 'Assigned To' },
+    { id: 'priorityScore',  label: 'Priority Score' },
+    { id: 'dos',            label: 'Date of Service' },
+  ],
+  Overturned: [
+    { id: 'lineOfBusiness', label: 'Line of Business' },
+    { id: 'paymentStatus',  label: 'Payment Status' },
+    { id: 'dos',            label: 'Date of Service' },
+    { id: 'assignedTo',     label: 'Assigned To' },
+  ],
+  Closed: [
+    { id: 'lineOfBusiness', label: 'Line of Business' },
+    { id: 'dos',            label: 'Date of Service' },
+    { id: 'assignedTo',     label: 'Assigned To' },
+  ],
+  Archive: [
+    { id: 'lineOfBusiness', label: 'Line of Business' },
+    { id: 'dos',            label: 'Date of Service' },
+  ],
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function daysUntil(dateStr: string): number {
   const diffMs = new Date(dateStr).getTime() - TODAY.getTime()
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+}
+
+function daysSince(dateStr: string): number {
+  const diffMs = TODAY.getTime() - new Date(dateStr).getTime()
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
 }
 
 function formatDate(dateStr: string): string {
@@ -68,34 +126,82 @@ function formatDate(dateStr: string): string {
   })
 }
 
+function formatDateShort(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric',
+  })
+}
+
 function formatCurrency(n: number): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })
 }
 
+function formatPatientName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/)
+  if (parts.length < 2) return fullName
+  const lastName = parts[parts.length - 1]!
+  const firstName = parts.slice(0, -1).join(' ')
+  return `${lastName}, ${firstName}`
+}
+
 // ─── State colors ─────────────────────────────────────────────────────────────
 
-const STATE_COLORS: Partial<Record<DenialState, { bg: string; color: string }>> = {
-  Active:    { bg: '#EBF4FF', color: '#2C5282' },
-  Submitted: { bg: '#E6FFFA', color: '#276749' },
-  Won:       { bg: '#F0FFF4', color: '#22543D' },
-  Recovered: { bg: '#DCFCE7', color: '#14532D' },
-  Closed:    { bg: '#F7FAFC', color: '#718096' },
-  Archived:  { bg: '#F3F0FF', color: '#6B46C1' },
+const STATE_COLORS: Partial<Record<DenialState, { bg: string; color: string; border: string }>> = {
+  Queue:      { bg: '#e8f2f5', color: '#157d9d', border: '#157d9d' },
+  InProgress: { bg: '#fef3ea', color: '#b86823', border: '#b86823' },
+  Submitted:  { bg: '#ebf5fb', color: '#2776a1', border: '#2776a1' },
+  Overturned: { bg: '#eaf6f4', color: '#227a6c', border: '#227a6c' },
+  Closed:     { bg: '#f1f4f6', color: '#636a6f', border: '#e2e6e9' },
+  Archive:    { bg: '#f1f4f6', color: '#939a9f', border: '#e2e6e9' },
+}
+
+const APPEAL_LEVEL_COLORS: Record<string, { bg: string; color: string }> = {
+  L1: { bg: '#e8f2f5', color: '#157d9d' },
+  L2: { bg: '#fef3ea', color: '#b86823' },
+  L3: { bg: '#fbedee', color: '#9f383e' },
+}
+
+const PAYMENT_STATUS_COLORS: Record<PaymentStatus, { bg: string; color: string }> = {
+  Pending:  { bg: '#fef3ea', color: '#b86823' },
+  Received: { bg: '#eaf6f4', color: '#227a6c' },
+}
+
+const PACKET_STATUS_COLORS: Record<PacketStatus, { bg: string; color: string }> = {
+  'Assembling':        { bg: '#fef3ea', color: '#b86823' },
+  'Ready for Review':  { bg: '#eaf6f4', color: '#227a6c' },
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function DeadlineCells({ days, dateStr }: { days: number; dateStr: string }) {
-  const urgency = days < 0 ? 'error' : days <= 7 ? 'warning' : 'text.secondary'
-  const label = days < 0 ? `${Math.abs(days)}d overdue` : `${days}d remaining`
+  const isOverdue = days < 0
+  const isUrgent  = days >= 0 && days <= 7
+  const color = isOverdue ? 'error.main' : isUrgent ? 'warning.main' : 'text.secondary'
+  const label = isOverdue ? `${Math.abs(days)}d overdue` : `${days}d left`
   return (
     <>
-      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+      <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
         {formatDate(dateStr)}
       </Typography>
-      <Typography variant="caption" sx={{ color: urgency === 'text.secondary' ? 'text.secondary' : urgency + '.main' }}>
+      <Typography variant="caption" sx={{ color }}>
         {label}
       </Typography>
+    </>
+  )
+}
+
+function ResponseDueCells({ dateStr }: { dateStr: string }) {
+  const days = daysUntil(dateStr)
+  const isOverdue = days < 0
+  const isUrgent  = days >= 0 && days <= 7
+  const color = isOverdue ? 'error.main' : isUrgent ? 'warning.main' : 'text.secondary'
+  const label = isOverdue ? `${Math.abs(days)}d overdue` : `${days}d left`
+  return (
+    <>
+      <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
+        {formatDate(dateStr)}
+      </Typography>
+      <Typography variant="caption" sx={{ color }}>{label}</Typography>
     </>
   )
 }
@@ -115,6 +221,17 @@ function AssigneeDisplay({ member }: { member: TeamMember | null }) {
       </Avatar>
       <Typography variant="body2">{member.name}</Typography>
     </Box>
+  )
+}
+
+function AppealLevelChip({ level }: { level: string }) {
+  const colors = APPEAL_LEVEL_COLORS[level] ?? { bg: '#F3F4F6', color: '#6B7280' }
+  return (
+    <Chip
+      label={level}
+      size="small"
+      sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 700, bgcolor: colors.bg, color: colors.color, '& .MuiChip-label': { px: 0.75 } }}
+    />
   )
 }
 
@@ -144,10 +261,10 @@ function ColHeader({ label, colId, sortable, filterable, activeSort, hasFilter, 
         cursor: isInteractive ? 'pointer' : 'default',
         userSelect: 'none',
         py: 1.25,
-        bgcolor: hasFilter ? 'rgba(27,58,92,0.05)' : undefined,
+        bgcolor: hasFilter ? 'rgba(21,125,157,0.05)' : undefined,
         borderBottom: hasFilter ? '2px solid' : undefined,
         borderBottomColor: hasFilter ? 'primary.main' : undefined,
-        '&:hover': isInteractive ? { bgcolor: hasFilter ? 'rgba(27,58,92,0.08)' : 'rgba(27,58,92,0.04)' } : undefined,
+        '&:hover': isInteractive ? { bgcolor: hasFilter ? 'rgba(21,125,157,0.08)' : 'rgba(21,125,157,0.04)' } : undefined,
       }}
       onClick={isInteractive ? (e) => onOpen(e, colId) : undefined}
     >
@@ -182,6 +299,116 @@ function ColHeader({ label, colId, sortable, filterable, activeSort, hasFilter, 
   )
 }
 
+// ─── Patient Cell (shared across tabs) ───────────────────────────────────────
+
+function PatientCell({ denial, activeState }: { denial: DenialRecord; activeState?: WorklistActiveTab }) {
+  const displayName = formatPatientName(denial.patient.name)
+  const showReturned = activeState === 'Queue' && denial.status === 'Returned — Upheld'
+  return (
+    <TableCell sx={{ py: 1.25 }}>
+      <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
+        {displayName}
+      </Typography>
+      <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+        {denial.claim.har}
+      </Typography>
+      {showReturned && (
+        <Chip
+          label="↩ L1 Upheld"
+          size="small"
+          sx={{ mt: 0.5, height: 16, fontSize: '0.6rem', fontWeight: 700, bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-label': { px: 0.75 } }}
+        />
+      )}
+    </TableCell>
+  )
+}
+
+function DenialTypeCell({ denial }: { denial: DenialRecord }) {
+  const typeConfig = getDenialTypeConfig(denial.denialType)
+  return (
+    <TableCell sx={{ py: 1.25 }}>
+      <Typography variant="body2" noWrap sx={{ fontWeight: 600, lineHeight: 1.3, color: typeConfig.color }}>
+        {denial.denialType}
+      </Typography>
+      <Typography variant="caption" noWrap sx={{ color: 'text.secondary' }}>
+        {denial.denialSubtype}
+      </Typography>
+    </TableCell>
+  )
+}
+
+// ─── Optional column helpers ──────────────────────────────────────────────────
+
+const OPTIONAL_COL_HEADER_CONFIG: Record<string, { label: string; sortable?: boolean; filterable?: boolean; align?: 'left' | 'right'; width: number }> = {
+  lineOfBusiness: { label: 'Line of Business', filterable: true, width: 145 },
+  priorityScore:  { label: 'Priority',         sortable: true, align: 'right', width: 90 },
+  dos:            { label: 'DOS',              width: 110 },
+  assignedTo:     { label: 'Assigned To',      filterable: true, width: 140 },
+  paymentStatus:  { label: 'Payment Status',   filterable: true, width: 130 },
+}
+
+function OptionalColHeader({ colId, activeSort, hasFilter, onOpen }: {
+  colId: string
+  activeSort: WorklistSort
+  hasFilter: boolean
+  onOpen: (e: React.MouseEvent<HTMLElement>, colId: string) => void
+}) {
+  const cfg = OPTIONAL_COL_HEADER_CONFIG[colId]
+  if (!cfg) return null
+  return (
+    <ColHeader
+      label={cfg.label} colId={colId}
+      sortable={cfg.sortable} filterable={cfg.filterable}
+      activeSort={activeSort} hasFilter={hasFilter}
+      onOpen={onOpen} align={cfg.align} width={cfg.width}
+    />
+  )
+}
+
+function OptionalColCell({ colId, denial }: { colId: string; denial: DenialRecord }) {
+  if (colId === 'lineOfBusiness') return (
+    <TableCell sx={{ py: 1.25 }}>
+      <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>{denial.lineOfBusiness}</Typography>
+    </TableCell>
+  )
+  if (colId === 'priorityScore') return (
+    <TableCell align="right" sx={{ py: 1.25 }}>
+      {denial.priorityScore !== undefined ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+          <Box sx={{ width: 36, height: 5, borderRadius: 1, bgcolor: '#e2e6e9', overflow: 'hidden' }}>
+            <Box sx={{ height: '100%', borderRadius: 1, width: `${denial.priorityScore}%`, bgcolor: denial.priorityScore >= 80 ? 'error.main' : denial.priorityScore >= 60 ? 'warning.main' : 'primary.light' }} />
+          </Box>
+          <Typography variant="caption" sx={{ fontWeight: 700, color: denial.priorityScore >= 80 ? 'error.main' : denial.priorityScore >= 60 ? 'warning.main' : 'text.secondary', fontVariantNumeric: 'tabular-nums', minWidth: 20 }}>
+            {denial.priorityScore}
+          </Typography>
+        </Box>
+      ) : (
+        <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+      )}
+    </TableCell>
+  )
+  if (colId === 'dos') return (
+    <TableCell sx={{ py: 1.25 }}>
+      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{formatDateShort(denial.dos)}</Typography>
+    </TableCell>
+  )
+  if (colId === 'assignedTo') return (
+    <TableCell sx={{ py: 1.25 }}>
+      <AssigneeDisplay member={denial.assignedTo} />
+    </TableCell>
+  )
+  if (colId === 'paymentStatus') return (
+    <TableCell sx={{ py: 1.25 }}>
+      {denial.paymentStatus ? (
+        <Chip label={denial.paymentStatus} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: PAYMENT_STATUS_COLORS[denial.paymentStatus].bg, color: PAYMENT_STATUS_COLORS[denial.paymentStatus].color, '& .MuiChip-label': { px: 0.75 } }} />
+      ) : (
+        <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+      )}
+    </TableCell>
+  )
+  return <TableCell sx={{ py: 1.25 }} />
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface WorklistPageProps {
@@ -196,10 +423,17 @@ interface WorklistPageProps {
   onFiltersChange: (filters: WorklistFilters) => void
 }
 
-export default function WorklistPage({ denials, onDenialsChange: setDenials, onSelectDenial, activeTab: activeState, onActiveTabChange: setActiveState, sort, onSortChange: setSort, filters, onFiltersChange: setFilters }: WorklistPageProps) {
+export default function WorklistPage({
+  denials, onDenialsChange: setDenials, onSelectDenial, activeTab: activeState,
+  onActiveTabChange: setActiveState, sort, onSortChange: setSort, filters, onFiltersChange: setFilters,
+}: WorklistPageProps) {
 
   // Column popover
   const [colPopover, setColPopover] = useState<ColPopoverState | null>(null)
+
+  // Per-tab optional columns
+  const [tabOptionalCols, setTabOptionalCols] = useState<Partial<Record<WorklistActiveTab, string[]>>>({})
+  const [addColAnchor, setAddColAnchor] = useState<HTMLElement | null>(null)
 
   // Inline edit popovers
   const [assigneePopover, setAssigneePopover] = useState<InlinePopoverState | null>(null)
@@ -212,11 +446,12 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
   // Search
   const [searchQuery, setSearchQuery] = useState('')
 
-  // ── State tab handler ───────────────────────────────────────────────────────
+  // ── Tab handler ─────────────────────────────────────────────────────────────
 
   function handleStateChange(_: React.SyntheticEvent, newState: WorklistActiveTab) {
     setActiveState(newState)
-    setFilters(prev => ({ ...prev }))
+    setFilters({ ...DEFAULT_WORKLIST_FILTERS })
+    setSort(null)
   }
 
   // ── Derived filter options ──────────────────────────────────────────────────
@@ -226,11 +461,14 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
   [denials, activeState])
 
   const allPayers      = useMemo(() => [...new Set(inState.map(d => d.payer))].sort(), [inState])
+  const allLoBs        = useMemo(() => [...new Set(inState.map(d => d.lineOfBusiness))].sort(), [inState])
   const allDenialTypes = useMemo(() => [...new Set(inState.map(d => d.denialType))].sort(), [inState])
   const allAssignees   = useMemo(() => {
     const names = inState.map(d => d.assignedTo?.name ?? 'Unassigned')
     return [...new Set(names)].sort()
   }, [inState])
+  const allPaymentStatuses = useMemo(() => [...new Set(inState.map(d => d.paymentStatus).filter(Boolean))].sort(), [inState]) as PaymentStatus[]
+  const allAppealLevels    = useMemo(() => [...new Set(inState.map(d => d.appealLevel))].sort(), [inState])
 
   // ── Filtered + sorted rows ─────────────────────────────────────────────────
 
@@ -241,36 +479,35 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
       const q = searchQuery.trim().toLowerCase()
       rows = rows.filter(r =>
         r.patient.name.toLowerCase().includes(q) ||
+        r.claim.har.toLowerCase().includes(q) ||
         r.claim.claimId.toLowerCase().includes(q) ||
         r.payer.toLowerCase().includes(q) ||
         r.denialType.toLowerCase().includes(q)
       )
     }
 
-    if (filters.payer.length > 0) {
-      rows = rows.filter(r => filters.payer.includes(r.payer))
-    }
-    if (filters.denialType.length > 0) {
-      rows = rows.filter(r => filters.denialType.includes(r.denialType))
-    }
-    if (filters.assignedTo.length > 0) {
-      rows = rows.filter(r => filters.assignedTo.includes(r.assignedTo?.name ?? 'Unassigned'))
-    }
+    if (filters.payer.length > 0)         rows = rows.filter(r => filters.payer.includes(r.payer))
+    if (filters.lineOfBusiness.length > 0) rows = rows.filter(r => filters.lineOfBusiness.includes(r.lineOfBusiness))
+    if (filters.denialType.length > 0)    rows = rows.filter(r => filters.denialType.includes(r.denialType))
+    if (filters.assignedTo.length > 0)    rows = rows.filter(r => filters.assignedTo.includes(r.assignedTo?.name ?? 'Unassigned'))
+    if (filters.paymentStatus.length > 0) rows = rows.filter(r => r.paymentStatus && filters.paymentStatus.includes(r.paymentStatus))
+    if (filters.appealLevel.length > 0)   rows = rows.filter(r => filters.appealLevel.includes(r.appealLevel))
 
     if (sort) {
       rows.sort((a, b) => {
         let cmp = 0
-        if (sort.colId === 'patient')      cmp = a.patient.name.localeCompare(b.patient.name)
-        else if (sort.colId === 'deniedAmount') cmp = a.deniedAmount - b.deniedAmount
-        else if (sort.colId === 'paidAmount')   cmp = (a.paidAmount ?? 0) - (b.paidAmount ?? 0)
-        else if (sort.colId === 'deadline')    cmp = new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+        if      (sort.colId === 'patient')         cmp = formatPatientName(a.patient.name).localeCompare(formatPatientName(b.patient.name))
+        else if (sort.colId === 'deniedAmount')     cmp = a.deniedAmount - b.deniedAmount
+        else if (sort.colId === 'paidAmount')       cmp = (a.paidAmount ?? 0) - (b.paidAmount ?? 0)
+        else if (sort.colId === 'deadline')         cmp = new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+        else if (sort.colId === 'priorityScore')    cmp = (a.priorityScore ?? 0) - (b.priorityScore ?? 0)
+        else if (sort.colId === 'responseDueDate')  cmp = new Date(a.responseDueDate ?? '').getTime() - new Date(b.responseDueDate ?? '').getTime()
         return sort.dir === 'asc' ? cmp : -cmp
       })
     }
 
     return rows
   }, [inState, filters, sort, searchQuery])
-
 
   // ── Column popover handlers ─────────────────────────────────────────────────
 
@@ -282,15 +519,32 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
   function handleSort(colId: SortCol, dir: SortDir) { setSort({ colId, dir }); closeColPopover() }
   function clearSort() { setSort(null); closeColPopover() }
 
-  function toggleFilterValue(key: keyof Pick<Filters, 'payer' | 'denialType' | 'assignedTo'>, value: string) {
+  function toggleFilterValue(key: keyof WorklistFilters, value: string) {
     setFilters(prev => {
       const current = prev[key]
       return { ...prev, [key]: current.includes(value) ? current.filter(v => v !== value) : [...current, value] }
     })
   }
 
-  function clearColumnFilter(key: keyof Pick<Filters, 'payer' | 'denialType' | 'assignedTo'>) {
+  function clearColumnFilter(key: keyof WorklistFilters) {
     setFilters(prev => ({ ...prev, [key]: [] }))
+    closeColPopover()
+  }
+
+  function getOptionalCols(tab: WorklistActiveTab): string[] {
+    return tabOptionalCols[tab] ?? []
+  }
+
+  function toggleOptionalCol(tab: WorklistActiveTab, colId: string) {
+    setTabOptionalCols(prev => {
+      const current = prev[tab] ?? []
+      const next = current.includes(colId) ? current.filter(id => id !== colId) : [...current, colId]
+      return { ...prev, [tab]: next }
+    })
+  }
+
+  function removeOptionalCol(tab: WorklistActiveTab, colId: string) {
+    setTabOptionalCols(prev => ({ ...prev, [tab]: (prev[tab] ?? []).filter(id => id !== colId) }))
     closeColPopover()
   }
 
@@ -314,9 +568,12 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
   // ── Active filter flags ─────────────────────────────────────────────────────
 
   const activeFilters = {
-    payer:      filters.payer.length > 0,
-    denialType: filters.denialType.length > 0,
-    assignedTo: filters.assignedTo.length > 0,
+    payer:         filters.payer.length > 0,
+    lineOfBusiness: filters.lineOfBusiness.length > 0,
+    denialType:    filters.denialType.length > 0,
+    assignedTo:    filters.assignedTo.length > 0,
+    paymentStatus: filters.paymentStatus.length > 0,
+    appealLevel:   filters.appealLevel.length > 0,
   }
 
   const tabCount = (t: WorklistActiveTab) => denials.filter(d => d.state === t).length
@@ -328,8 +585,6 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
 
       {/* State tabs */}
       <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
-
-        {/* Primary state tabs */}
         <Tabs
           value={activeState}
           onChange={handleStateChange}
@@ -349,7 +604,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
               value={tab}
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                  <span>{tab}</span>
+                  <span>{TAB_LABELS[tab]}</span>
                   <Chip
                     label={tabCount(tab)}
                     size="small"
@@ -360,14 +615,13 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
             />
           ))}
         </Tabs>
-
       </Box>
 
       {/* Search toolbar */}
       <Box sx={{ px: 2, py: 1, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
         <TextField
           size="small"
-          placeholder="Search by patient, claim ID, payer, or denial type…"
+          placeholder="Search by patient, HAR, payer, or denial type…"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           InputProps={{
@@ -391,24 +645,167 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
       {/* Table */}
       <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
         <Table stickyHeader size="small" sx={{ width: '100%', minWidth: 960, tableLayout: 'fixed' }}>
-          <TableHead>
-            <TableRow>
-              <ColHeader label="Patient"       colId="patient"      sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={160} />
-              <ColHeader label="Claim ID"      colId="claimId"                 activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={110} />
-              <ColHeader label="Payer"         colId="payer"        filterable activeSort={sort} hasFilter={activeFilters.payer}      onOpen={openColPopover} width={140} />
-              <ColHeader label="Denial Type"   colId="denialType"   filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={185} />
-              <ColHeader label="Denied Amount" colId="deniedAmount" sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} align="right" width={105} />
-              <ColHeader label="Deadline"      colId="deadline"     sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={120} />
-              {(activeState === 'Recovered' || activeState === 'Closed' || activeState === 'Archived') && (
-                <ColHeader label="Paid Amount" colId="paidAmount" sortable activeSort={sort} hasFilter={false} onOpen={openColPopover} align="right" width={105} />
-              )}
-              {(activeState === 'Recovered' || activeState === 'Closed' || activeState === 'Archived') && (
-                <ColHeader label="Outcome" colId="outcome" activeSort={sort} hasFilter={false} onOpen={openColPopover} width={140} />
-              )}
-              <ColHeader label="Assigned To"   colId="assignedTo"   filterable activeSort={sort} hasFilter={activeFilters.assignedTo} onOpen={openColPopover} width={140} />
-              <ColHeader label="Notes"         colId="notes"                   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} align="right" width={52} />
-            </TableRow>
-          </TableHead>
+
+          {/* ── Queue ── */}
+          {activeState === 'Queue' && (
+            <TableHead>
+              <TableRow>
+                <ColHeader label="Patient / HAR" colId="patient"      sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={175} />
+                <ColHeader label="Payer"         colId="payer"        filterable activeSort={sort} hasFilter={activeFilters.payer}      onOpen={openColPopover} width={140} />
+                <ColHeader label="Denial Type"   colId="denialType"   filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={200} />
+                <ColHeader label="Denied"        colId="deniedAmount" sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={100} />
+                <ColHeader label="Appeal Level"  colId="appealLevel"  filterable activeSort={sort} hasFilter={activeFilters.appealLevel} onOpen={openColPopover} width={100} />
+                <ColHeader label="Deadline"      colId="deadline"     sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={130} />
+                <ColHeader label="Days in Queue" colId="daysInQueue"             activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={95} />
+                {getOptionalCols('Queue').map(colId => (
+                  <OptionalColHeader key={colId} colId={colId} activeSort={sort} hasFilter={colId === 'lineOfBusiness' ? activeFilters.lineOfBusiness : colId === 'assignedTo' ? activeFilters.assignedTo : false} onOpen={openColPopover} />
+                ))}
+                <ColHeader label="Notes" colId="notes" activeSort={sort} hasFilter={false} onOpen={openColPopover} align="right" width={55} />
+                <TableCell sx={{ width: 48, py: 1.25, px: 1 }}>
+                  <Tooltip title="Add column" placement="top">
+                    <IconButton
+                      size="small"
+                      onClick={e => setAddColAnchor(e.currentTarget)}
+                      sx={{ p: 0.5, color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}
+                    >
+                      <AddOutlined sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            </TableHead>
+          )}
+
+          {/* ── In Progress ── */}
+          {activeState === 'InProgress' && (
+            <TableHead>
+              <TableRow>
+                <ColHeader label="Patient / HAR"    colId="patient"       sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={160} />
+                <ColHeader label="Payer"            colId="payer"         filterable activeSort={sort} hasFilter={activeFilters.payer}       onOpen={openColPopover} width={130} />
+                <ColHeader label="Denial Type"      colId="denialType"    filterable activeSort={sort} hasFilter={activeFilters.denialType}  onOpen={openColPopover} width={185} />
+                <ColHeader label="Denied"           colId="deniedAmount"  sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} align="right" width={90} />
+                <ColHeader label="Assigned To"      colId="assignedTo"    filterable activeSort={sort} hasFilter={activeFilters.assignedTo}  onOpen={openColPopover} width={130} />
+                <ColHeader label="Appeal Level"     colId="appealLevel"   filterable activeSort={sort} hasFilter={activeFilters.appealLevel} onOpen={openColPopover} width={90} />
+                <ColHeader label="Packet"           colId="packetStatus"             activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={130} />
+                <ColHeader label="Deadline"         colId="deadline"      sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={115} />
+                {getOptionalCols('InProgress').map(colId => (
+                  <OptionalColHeader key={colId} colId={colId} activeSort={sort} hasFilter={colId === 'lineOfBusiness' ? activeFilters.lineOfBusiness : false} onOpen={openColPopover} />
+                ))}
+                <ColHeader label="Notes"            colId="notes"                    activeSort={sort} hasFilter={false}                    onOpen={openColPopover} align="right" width={50} />
+                <TableCell sx={{ width: 48, py: 1.25, px: 1 }}>
+                  <Tooltip title="Add column" placement="top">
+                    <IconButton size="small" onClick={e => setAddColAnchor(e.currentTarget)} sx={{ p: 0.5, color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}>
+                      <AddOutlined sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            </TableHead>
+          )}
+
+          {/* ── Submitted ── */}
+          {activeState === 'Submitted' && (
+            <TableHead>
+              <TableRow>
+                <ColHeader label="Patient / HAR"    colId="patient"        sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={160} />
+                <ColHeader label="Payer"            colId="payer"          filterable activeSort={sort} hasFilter={activeFilters.payer}      onOpen={openColPopover} width={140} />
+                <ColHeader label="Denial Type"      colId="denialType"     filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={185} />
+                <ColHeader label="Denied"           colId="deniedAmount"   sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={90} />
+                <ColHeader label="Appeal Level"     colId="appealLevel"    filterable activeSort={sort} hasFilter={activeFilters.appealLevel} onOpen={openColPopover} width={90} />
+                <ColHeader label="Submitted"        colId="submissionDate"            activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={100} />
+                <ColHeader label="Response Due"     colId="responseDueDate" sortable  activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={120} />
+                <ColHeader label="Days Waiting"     colId="daysWaiting"               activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={90} />
+                {getOptionalCols('Submitted').map(colId => (
+                  <OptionalColHeader key={colId} colId={colId} activeSort={sort} hasFilter={colId === 'lineOfBusiness' ? activeFilters.lineOfBusiness : colId === 'assignedTo' ? activeFilters.assignedTo : false} onOpen={openColPopover} />
+                ))}
+                <ColHeader label="Notes"            colId="notes"                     activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={50} />
+                <TableCell sx={{ width: 48, py: 1.25, px: 1 }}>
+                  <Tooltip title="Add column" placement="top">
+                    <IconButton size="small" onClick={e => setAddColAnchor(e.currentTarget)} sx={{ p: 0.5, color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}>
+                      <AddOutlined sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            </TableHead>
+          )}
+
+          {/* ── Overturned ── */}
+          {activeState === 'Overturned' && (
+            <TableHead>
+              <TableRow>
+                <ColHeader label="Patient / HAR"    colId="patient"        sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={160} />
+                <ColHeader label="Payer"            colId="payer"          filterable activeSort={sort} hasFilter={activeFilters.payer}       onOpen={openColPopover} width={140} />
+                <ColHeader label="Denial Type"      colId="denialType"     filterable activeSort={sort} hasFilter={activeFilters.denialType}  onOpen={openColPopover} width={185} />
+                <ColHeader label="Denied"           colId="deniedAmount"   sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} align="right" width={90} />
+                <ColHeader label="Recovered"        colId="paidAmount"     sortable   activeSort={sort} hasFilter={false}                    onOpen={openColPopover} align="right" width={95} />
+                <ColHeader label="Appeal Level"     colId="appealLevel"    filterable activeSort={sort} hasFilter={activeFilters.appealLevel} onOpen={openColPopover} width={90} />
+                <ColHeader label="Overturn Date"    colId="overturnDate"              activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={110} />
+                <ColHeader label="Payment Received" colId="paymentReceivedDate"       activeSort={sort} hasFilter={false}                    onOpen={openColPopover} width={130} />
+                {getOptionalCols('Overturned').map(colId => (
+                  <OptionalColHeader key={colId} colId={colId} activeSort={sort} hasFilter={colId === 'lineOfBusiness' ? activeFilters.lineOfBusiness : colId === 'paymentStatus' ? activeFilters.paymentStatus : false} onOpen={openColPopover} />
+                ))}
+                <TableCell sx={{ width: 48, py: 1.25, px: 1 }}>
+                  <Tooltip title="Add column" placement="top">
+                    <IconButton size="small" onClick={e => setAddColAnchor(e.currentTarget)} sx={{ p: 0.5, color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}>
+                      <AddOutlined sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            </TableHead>
+          )}
+
+          {/* ── Closed ── */}
+          {activeState === 'Closed' && (
+            <TableHead>
+              <TableRow>
+                <ColHeader label="Patient / HAR"    colId="patient"        sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={160} />
+                <ColHeader label="Payer"            colId="payer"          filterable activeSort={sort} hasFilter={activeFilters.payer}      onOpen={openColPopover} width={140} />
+                <ColHeader label="Denial Type"      colId="denialType"     filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={185} />
+                <ColHeader label="Denied"           colId="deniedAmount"   sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={90} />
+                <ColHeader label="Appeal Level"     colId="appealLevel"    filterable activeSort={sort} hasFilter={activeFilters.appealLevel} onOpen={openColPopover} width={90} />
+                <ColHeader label="Close Reason"     colId="closeReason"               activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={160} />
+                <ColHeader label="Closed Date"      colId="closedDate"                activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={110} />
+                {getOptionalCols('Closed').map(colId => (
+                  <OptionalColHeader key={colId} colId={colId} activeSort={sort} hasFilter={colId === 'lineOfBusiness' ? activeFilters.lineOfBusiness : colId === 'assignedTo' ? activeFilters.assignedTo : false} onOpen={openColPopover} />
+                ))}
+                <ColHeader label="Notes"            colId="notes"                     activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={50} />
+                <TableCell sx={{ width: 48, py: 1.25, px: 1 }}>
+                  <Tooltip title="Add column" placement="top">
+                    <IconButton size="small" onClick={e => setAddColAnchor(e.currentTarget)} sx={{ p: 0.5, color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}>
+                      <AddOutlined sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            </TableHead>
+          )}
+
+          {/* ── Archive ── */}
+          {activeState === 'Archive' && (
+            <TableHead>
+              <TableRow>
+                <ColHeader label="Patient / HAR"  colId="patient"       sortable  activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={170} />
+                <ColHeader label="Payer"          colId="payer"         filterable activeSort={sort} hasFilter={activeFilters.payer}     onOpen={openColPopover} width={140} />
+                <ColHeader label="Denial Type"    colId="denialType"    filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={195} />
+                <ColHeader label="Denied"         colId="deniedAmount"  sortable  activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={100} />
+                <ColHeader label="Archive Reason" colId="archiveReason"           activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={160} />
+                <ColHeader label="Archived By"    colId="archivedBy"              activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={130} />
+                <ColHeader label="Archived Date"  colId="archivedDate"            activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={120} />
+                {getOptionalCols('Archive').map(colId => (
+                  <OptionalColHeader key={colId} colId={colId} activeSort={sort} hasFilter={colId === 'lineOfBusiness' ? activeFilters.lineOfBusiness : false} onOpen={openColPopover} />
+                ))}
+                <TableCell sx={{ width: 48, py: 1.25, px: 1 }}>
+                  <Tooltip title="Add column" placement="top">
+                    <IconButton size="small" onClick={e => setAddColAnchor(e.currentTarget)} sx={{ p: 0.5, color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}>
+                      <AddOutlined sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            </TableHead>
+          )}
 
           <TableBody>
             {displayed.length === 0 ? (
@@ -418,10 +815,8 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                 </TableCell>
               </TableRow>
             ) : displayed.map(denial => {
-              const days = daysUntil(denial.deadline)
-              const stateStyle = STATE_COLORS[denial.state]
-
               const typeConfig = getDenialTypeConfig(denial.denialType)
+
               return (
                 <TableRow
                   key={denial.id}
@@ -433,164 +828,305 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                     '& td:first-of-type': { pl: '12px' },
                   }}
                 >
-                  {/* Patient */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
-                      {denial.patient.name}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      {denial.patient.mrn}
-                    </Typography>
-                  </TableCell>
+                  {/* ── Queue row ── */}
+                  {activeState === 'Queue' && <>
+                    <PatientCell denial={denial} activeState={activeState} />
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Typography variant="body2" noWrap>{denial.payer}</Typography>
+                    </TableCell>
+                    <DenialTypeCell denial={denial} />
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(denial.deniedAmount)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      <AppealLevelChip level={denial.appealLevel} />
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      <DeadlineCells days={daysUntil(denial.deadline)} dateStr={denial.deadline} />
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', color: 'text.secondary' }}>
+                        {daysSince(denial.createdAt)}d
+                      </Typography>
+                    </TableCell>
+                    {getOptionalCols('Queue').map(colId => (
+                      <OptionalColCell key={colId} colId={colId} denial={denial} />
+                    ))}
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Tooltip title={denial.notes || 'Add a note'} placement="left" arrow>
+                        <IconButton
+                          size="small"
+                          onClick={e => { e.stopPropagation(); setNotesModal({ denialId: denial.id, draft: denial.notes }) }}
+                          sx={{ color: denial.notes ? 'secondary.main' : 'text.disabled' }}
+                        >
+                          {denial.notes ? <StickyNote2Outlined sx={{ fontSize: 18 }} /> : <NoteAltOutlined sx={{ fontSize: 18 }} />}
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }} />
+                  </>}
 
-                  {/* Claim ID */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                      {denial.claim.claimId}
-                    </Typography>
-                  </TableCell>
-
-                  {/* Payer */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    <Typography variant="body2" noWrap>{denial.payer}</Typography>
-                  </TableCell>
-
-                  {/* Denial Type / Subtype */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, overflow: 'hidden' }}>
-                      <Box sx={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        width: 24, height: 24, borderRadius: 1, bgcolor: typeConfig.bg, flexShrink: 0,
-                      }}>
-                        <typeConfig.Icon sx={{ fontSize: 14, color: typeConfig.color }} />
-                      </Box>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="body2" noWrap sx={{ fontWeight: 600, lineHeight: 1.3, color: typeConfig.color }}>
-                          {denial.denialType}
-                        </Typography>
-                        <Typography variant="caption" noWrap sx={{ color: 'text.secondary' }}>
-                          {denial.denialSubtype}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </TableCell>
-
-                  {/* Denied Amount */}
-                  <TableCell align="right" sx={{ py: 1.25 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                      {formatCurrency(denial.deniedAmount)}
-                    </Typography>
-                  </TableCell>
-
-                  {/* Deadline */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    <Box
-                      sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-                      onClick={e => {
-                        e.stopPropagation()
-                        deadlineDraftRef.current = denial.deadline
-                        setDeadlinePopover({ anchor: e.currentTarget, denialId: denial.id })
-                      }}
-                    >
-                      <Box sx={{ flex: 1 }}>
-                        <DeadlineCells days={days} dateStr={denial.deadline} />
-                      </Box>
-                      <IconButton
-                        size="small"
-                        sx={{ opacity: 0, '.MuiTableRow-root:hover &': { opacity: 1 }, p: 0.25, color: 'text.secondary' }}
-                        onClick={e => {
-                          e.stopPropagation()
-                          deadlineDraftRef.current = denial.deadline
-                          setDeadlinePopover({ anchor: e.currentTarget, denialId: denial.id })
-                        }}
+                  {/* ── In Progress row ── */}
+                  {activeState === 'InProgress' && <>
+                    <PatientCell denial={denial} activeState={activeState} />
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Typography variant="body2" noWrap>{denial.payer}</Typography>
+                    </TableCell>
+                    <DenialTypeCell denial={denial} />
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(denial.deniedAmount)}
+                      </Typography>
+                    </TableCell>
+                    {/* Assignee */}
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Box
+                        sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+                        onClick={e => { e.stopPropagation(); setAssigneePopover({ anchor: e.currentTarget, denialId: denial.id }) }}
                       >
-                        <CalendarMonthOutlined sx={{ fontSize: 13 }} />
-                      </IconButton>
-                    </Box>
-                  </TableCell>
+                        <Box sx={{ flex: 1 }}>
+                          <AssigneeDisplay member={denial.assignedTo} />
+                        </Box>
+                        <IconButton
+                          size="small"
+                          sx={{ opacity: 0, '.MuiTableRow-root:hover &': { opacity: 1 }, p: 0.25, color: 'text.secondary' }}
+                          onClick={e => { e.stopPropagation(); setAssigneePopover({ anchor: e.currentTarget, denialId: denial.id }) }}
+                        >
+                          <EditOutlined sx={{ fontSize: 13 }} />
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      <AppealLevelChip level={denial.appealLevel} />
+                    </TableCell>
+                    {/* Packet Status */}
+                    <TableCell sx={{ py: 1.25 }}>
+                      {denial.packetStatus ? (
+                        <Chip
+                          label={denial.packetStatus}
+                          size="small"
+                          sx={{
+                            height: 20, fontSize: '0.7rem', fontWeight: 600,
+                            bgcolor: PACKET_STATUS_COLORS[denial.packetStatus].bg,
+                            color: PACKET_STATUS_COLORS[denial.packetStatus].color,
+                            '& .MuiChip-label': { px: 0.75 },
+                          }}
+                        />
+                      ) : (
+                        <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                      )}
+                    </TableCell>
+                    {/* Deadline */}
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Box
+                        sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+                        onClick={e => { e.stopPropagation(); deadlineDraftRef.current = denial.deadline; setDeadlinePopover({ anchor: e.currentTarget, denialId: denial.id }) }}
+                      >
+                        <Box sx={{ flex: 1 }}>
+                          <DeadlineCells days={daysUntil(denial.deadline)} dateStr={denial.deadline} />
+                        </Box>
+                        <IconButton
+                          size="small"
+                          sx={{ opacity: 0, '.MuiTableRow-root:hover &': { opacity: 1 }, p: 0.25, color: 'text.secondary' }}
+                          onClick={e => { e.stopPropagation(); deadlineDraftRef.current = denial.deadline; setDeadlinePopover({ anchor: e.currentTarget, denialId: denial.id }) }}
+                        >
+                          <CalendarMonthOutlined sx={{ fontSize: 13 }} />
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                    {getOptionalCols('InProgress').map(colId => (
+                      <OptionalColCell key={colId} colId={colId} denial={denial} />
+                    ))}
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Tooltip title={denial.notes || 'Add a note'} placement="left" arrow>
+                        <IconButton
+                          size="small"
+                          onClick={e => { e.stopPropagation(); setNotesModal({ denialId: denial.id, draft: denial.notes }) }}
+                          sx={{ color: denial.notes ? 'secondary.main' : 'text.disabled' }}
+                        >
+                          {denial.notes ? <StickyNote2Outlined sx={{ fontSize: 18 }} /> : <NoteAltOutlined sx={{ fontSize: 18 }} />}
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }} />
+                  </>}
 
-                  {/* Paid Amount — only shown on terminal state tabs */}
-                  {(activeState === 'Recovered' || activeState === 'Closed' || activeState === 'Archived') && (
+                  {/* ── Submitted row ── */}
+                  {activeState === 'Submitted' && <>
+                    <PatientCell denial={denial} activeState={activeState} />
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Typography variant="body2" noWrap>{denial.payer}</Typography>
+                    </TableCell>
+                    <DenialTypeCell denial={denial} />
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(denial.deniedAmount)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      <AppealLevelChip level={denial.appealLevel} />
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      {denial.submissionDate ? (
+                        <Typography variant="body2">{formatDateShort(denial.submissionDate)}</Typography>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                      )}
+                    </TableCell>
+                    {/* Response Due */}
+                    <TableCell sx={{ py: 1.25 }}>
+                      {denial.responseDueDate ? (
+                        <ResponseDueCells dateStr={denial.responseDueDate} />
+                      ) : (
+                        <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', color: 'text.secondary' }}>
+                        {denial.submissionDate ? `${daysSince(denial.submissionDate)}d` : '—'}
+                      </Typography>
+                    </TableCell>
+                    {getOptionalCols('Submitted').map(colId => (
+                      <OptionalColCell key={colId} colId={colId} denial={denial} />
+                    ))}
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Tooltip title={denial.notes || 'Add a note'} placement="left" arrow>
+                        <IconButton
+                          size="small"
+                          onClick={e => { e.stopPropagation(); setNotesModal({ denialId: denial.id, draft: denial.notes }) }}
+                          sx={{ color: denial.notes ? 'secondary.main' : 'text.disabled' }}
+                        >
+                          {denial.notes ? <StickyNote2Outlined sx={{ fontSize: 18 }} /> : <NoteAltOutlined sx={{ fontSize: 18 }} />}
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }} />
+                  </>}
+
+                  {/* ── Overturned row ── */}
+                  {activeState === 'Overturned' && <>
+                    <PatientCell denial={denial} activeState={activeState} />
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Typography variant="body2" noWrap>{denial.payer}</Typography>
+                    </TableCell>
+                    <DenialTypeCell denial={denial} />
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'error.main' }}>
+                        {formatCurrency(denial.deniedAmount)}
+                      </Typography>
+                    </TableCell>
                     <TableCell align="right" sx={{ py: 1.25 }}>
                       {denial.paidAmount !== undefined ? (
                         <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'success.dark' }}>
                           {formatCurrency(denial.paidAmount)}
                         </Typography>
                       ) : (
+                        <Typography variant="body2" sx={{ color: 'text.disabled' }}>Pending</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      <AppealLevelChip level={denial.appealLevel} />
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      {denial.overturnDate ? (
+                        <Typography variant="body2">{formatDateShort(denial.overturnDate)}</Typography>
+                      ) : (
                         <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
                       )}
                     </TableCell>
-                  )}
+                    <TableCell sx={{ py: 1.25 }}>
+                      {denial.paymentReceivedDate ? (
+                        <Typography variant="body2">{formatDateShort(denial.paymentReceivedDate)}</Typography>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: 'text.disabled', fontStyle: 'italic', fontSize: '0.75rem' }}>Awaiting</Typography>
+                      )}
+                    </TableCell>
+                    {getOptionalCols('Overturned').map(colId => (
+                      <OptionalColCell key={colId} colId={colId} denial={denial} />
+                    ))}
+                    <TableCell sx={{ py: 1.25 }} />
+                  </>}
 
-                  {/* Outcome — only shown on terminal state tabs */}
-                  {(activeState === 'Recovered' || activeState === 'Closed' || activeState === 'Archived') && <TableCell sx={{ py: 1.25 }}>
-                    {(() => {
-                      const OUTCOME_STYLES: Record<string, { color: string; bg: string }> = {
-                        'Overturned — Full Payment':    { color: '#166534', bg: '#DCFCE7' },
-                        'Overturned — Partial Payment': { color: '#166534', bg: '#DCFCE7' },
-                        'Corrected Claim Paid':         { color: '#166534', bg: '#DCFCE7' },
-                        'Secondary Payer Paid':         { color: '#166534', bg: '#DCFCE7' },
-                        'Partial Settlement':           { color: '#92400E', bg: '#FEF3C7' },
-                        'Upheld by Payer':              { color: '#991B1B', bg: '#FEE2E2' },
-                        'Will Not Appeal':              { color: '#6B7280', bg: '#F3F4F6' },
-                        'Dismissed':                    { color: '#6B7280', bg: '#F3F4F6' },
-                        'Escalated to DRG Dispute':     { color: '#1E40AF', bg: '#DBEAFE' },
-                        'Closed':                       { color: '#6B7280', bg: '#F3F4F6' },
-                      }
-                      const s = OUTCOME_STYLES[denial.status] ?? { color: '#6B7280', bg: '#F3F4F6' }
-                      return (
-                        <Chip
-                          label={denial.status}
-                          size="small"
-                          sx={{ bgcolor: s.bg, color: s.color, fontWeight: 600, fontSize: '0.7rem', height: 20, border: 'none', '& .MuiChip-label': { px: 0.75 } }}
-                        />
-                      )
-                    })()}
-                  </TableCell>}
+                  {/* ── Closed row ── */}
+                  {activeState === 'Closed' && <>
+                    <PatientCell denial={denial} activeState={activeState} />
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Typography variant="body2" noWrap>{denial.payer}</Typography>
+                    </TableCell>
+                    <DenialTypeCell denial={denial} />
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(denial.deniedAmount)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      <AppealLevelChip level={denial.appealLevel} />
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      {denial.closeReason ? (
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>{denial.closeReason}</Typography>
+                      ) : denial.status ? (
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>{denial.status}</Typography>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      {denial.closedDate ? (
+                        <Typography variant="body2">{formatDateShort(denial.closedDate)}</Typography>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                      )}
+                    </TableCell>
+                    {getOptionalCols('Closed').map(colId => (
+                      <OptionalColCell key={colId} colId={colId} denial={denial} />
+                    ))}
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Tooltip title={denial.notes || ''} placement="left" arrow>
+                        <IconButton size="small" sx={{ color: denial.notes ? 'secondary.main' : 'text.disabled' }}>
+                          {denial.notes ? <StickyNote2Outlined sx={{ fontSize: 18 }} /> : <NoteAltOutlined sx={{ fontSize: 18 }} />}
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }} />
+                  </>}
 
-                  {/* Assigned To */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    <Box
-                      sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-                      onClick={e => {
-                        e.stopPropagation()
-                        setAssigneePopover({ anchor: e.currentTarget, denialId: denial.id })
-                      }}
-                    >
-                      <Box sx={{ flex: 1 }}>
-                        <AssigneeDisplay member={denial.assignedTo} />
-                      </Box>
-                      <IconButton
-                        size="small"
-                        sx={{ opacity: 0, '.MuiTableRow-root:hover &': { opacity: 1 }, p: 0.25, color: 'text.secondary' }}
-                        onClick={e => {
-                          e.stopPropagation()
-                          setAssigneePopover({ anchor: e.currentTarget, denialId: denial.id })
-                        }}
-                      >
-                        <EditOutlined sx={{ fontSize: 13 }} />
-                      </IconButton>
-                    </Box>
-                  </TableCell>
-
-                  {/* Notes */}
-                  <TableCell align="right" sx={{ py: 1.25 }}>
-                    <Tooltip title={denial.notes || 'Add a note'} placement="left" arrow>
-                      <IconButton
-                        size="small"
-                        onClick={e => {
-                          e.stopPropagation()
-                          setNotesModal({ denialId: denial.id, draft: denial.notes })
-                        }}
-                        sx={{ color: denial.notes ? 'secondary.main' : 'text.disabled' }}
-                      >
-                        {denial.notes
-                          ? <StickyNote2Outlined sx={{ fontSize: 18 }} />
-                          : <NoteAltOutlined sx={{ fontSize: 18 }} />
-                        }
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
+                  {/* ── Archive row ── */}
+                  {activeState === 'Archive' && <>
+                    <PatientCell denial={denial} activeState={activeState} />
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Typography variant="body2" noWrap>{denial.payer}</Typography>
+                    </TableCell>
+                    <DenialTypeCell denial={denial} />
+                    <TableCell align="right" sx={{ py: 1.25 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCurrency(denial.deniedAmount)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      {denial.archiveReason ? (
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>{denial.archiveReason}</Typography>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      {denial.archivedBy ? (
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>{denial.archivedBy}</Typography>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
+                    </TableCell>
+                    {getOptionalCols('Archive').map(colId => (
+                      <OptionalColCell key={colId} colId={colId} denial={denial} />
+                    ))}
+                    <TableCell sx={{ py: 1.25 }} />
+                  </>}
 
                 </TableRow>
               )
@@ -604,11 +1140,20 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
         {activeFilters.payer && (
           <Chip size="small" label={`Payer: ${filters.payer.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, payer: [] }))} />
         )}
+        {activeFilters.lineOfBusiness && (
+          <Chip size="small" label={`LoB: ${filters.lineOfBusiness.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, lineOfBusiness: [] }))} />
+        )}
         {activeFilters.denialType && (
           <Chip size="small" label={`Type: ${filters.denialType.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, denialType: [] }))} />
         )}
         {activeFilters.assignedTo && (
           <Chip size="small" label={`Assigned: ${filters.assignedTo.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, assignedTo: [] }))} />
+        )}
+        {activeFilters.paymentStatus && (
+          <Chip size="small" label={`Payment: ${filters.paymentStatus.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, paymentStatus: [] }))} />
+        )}
+        {activeFilters.appealLevel && (
+          <Chip size="small" label={`Level: ${filters.appealLevel.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, appealLevel: [] }))} />
         )}
 
         <Box sx={{ flex: 1 }} />
@@ -617,6 +1162,44 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
           {displayed.length} of {inState.length}
         </Typography>
       </Box>
+
+      {/* ── Add Column Popover ───────────────────────────────────────────────── */}
+      <Popover
+        open={Boolean(addColAnchor)}
+        anchorEl={addColAnchor}
+        onClose={() => setAddColAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { sx: { minWidth: 220, mt: 0.5, boxShadow: '0 4px 20px rgba(0,0,0,0.12)', borderRadius: 1.5 } } }}
+      >
+        <Box sx={{ py: 1 }}>
+          <Box sx={{ px: 1.5, pb: 0.5, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <ViewColumnOutlined sx={{ fontSize: 15, color: 'text.secondary' }} />
+            <Typography variant="overline" sx={{ fontSize: '0.6rem', color: 'text.secondary', letterSpacing: '0.08em' }}>
+              Add Column
+            </Typography>
+          </Box>
+          <Divider sx={{ mb: 0.5 }} />
+          <FormGroup sx={{ px: 1.5 }}>
+            {(TAB_OPTIONAL_COLS[activeState] ?? []).map(col => (
+              <FormControlLabel
+                key={col.id}
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={getOptionalCols(activeState).includes(col.id)}
+                    onChange={() => toggleOptionalCol(activeState, col.id)}
+                    sx={{ p: 0.5 }}
+                  />
+                }
+                label={<Typography variant="body2">{col.label}</Typography>}
+                sx={{ mb: 0.25, gap: 0.5 }}
+              />
+            ))}
+          </FormGroup>
+          <Box sx={{ height: 6 }} />
+        </Box>
+      </Popover>
 
       {/* ── Column Popover ─────────────────────────────────────────────────────── */}
       <Popover
@@ -629,9 +1212,25 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
       >
         {colPopover && (() => {
           const { colId } = colPopover
-          const isSortable = ['patient', 'deniedAmount', 'deadline'].includes(colId)
-          const filterKey = colId === 'payer' ? 'payer' : colId === 'denialType' ? 'denialType' : colId === 'assignedTo' ? 'assignedTo' : null
-          const filterOptions = colId === 'payer' ? allPayers : colId === 'denialType' ? allDenialTypes : colId === 'assignedTo' ? allAssignees : []
+          const isSortable = ['patient', 'deniedAmount', 'paidAmount', 'deadline', 'priorityScore', 'responseDueDate'].includes(colId)
+          const isRemovableCol = getOptionalCols(activeState).includes(colId)
+          const filterKey: keyof WorklistFilters | null =
+            colId === 'payer'          ? 'payer' :
+            colId === 'lineOfBusiness' ? 'lineOfBusiness' :
+            colId === 'denialType'     ? 'denialType' :
+            colId === 'assignedTo'     ? 'assignedTo' :
+            colId === 'paymentStatus'  ? 'paymentStatus' :
+            colId === 'appealLevel'    ? 'appealLevel' :
+            null
+
+          const filterOptions: string[] =
+            filterKey === 'payer'          ? allPayers :
+            filterKey === 'lineOfBusiness' ? allLoBs :
+            filterKey === 'denialType'     ? allDenialTypes :
+            filterKey === 'assignedTo'     ? allAssignees :
+            filterKey === 'paymentStatus'  ? allPaymentStatuses :
+            filterKey === 'appealLevel'    ? allAppealLevels :
+            []
           const currentFilterValues = filterKey ? filters[filterKey] : []
 
           return (
@@ -644,8 +1243,8 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                     </Typography>
                   </Box>
                   <RadioGroup value={sort?.colId === colId ? sort.dir : ''}>
-                    {[{ val: 'asc', label: colId === 'deniedAmount' ? 'Low → High' : colId === 'deadline' ? 'Earliest first' : 'A → Z' },
-                      { val: 'desc', label: colId === 'deniedAmount' ? 'High → Low' : colId === 'deadline' ? 'Latest first' : 'Z → A' }
+                    {[{ val: 'asc',  label: colId === 'deniedAmount' || colId === 'paidAmount' || colId === 'priorityScore' ? 'Low → High'    : colId === 'deadline' || colId === 'responseDueDate' ? 'Earliest first' : 'A → Z' },
+                      { val: 'desc', label: colId === 'deniedAmount' || colId === 'paidAmount' || colId === 'priorityScore' ? 'High → Low'    : colId === 'deadline' || colId === 'responseDueDate' ? 'Latest first'   : 'Z → A' },
                     ].map(opt => (
                       <ListItemButton key={opt.val} dense onClick={() => handleSort(colId as SortCol, opt.val as SortDir)} sx={{ px: 1.5, py: 0.5 }}>
                         <FormControlLabel
@@ -698,6 +1297,20 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
                     ))}
                   </FormGroup>
                   <Box sx={{ height: 8 }} />
+                </>
+              )}
+              {isRemovableCol && (
+                <>
+                  {(isSortable || filterKey) && <Divider sx={{ my: 0.5 }} />}
+                  <ListItemButton
+                    dense
+                    onClick={() => removeOptionalCol(activeState, colId)}
+                    sx={{ px: 1.5, py: 0.75 }}
+                  >
+                    <Typography variant="body2" sx={{ color: 'error.main', fontSize: '0.8125rem' }}>
+                      Remove column
+                    </Typography>
+                  </ListItemButton>
                 </>
               )}
             </Box>
@@ -758,7 +1371,7 @@ export default function WorklistPage({ denials, onDenialsChange: setDenials, onS
             <DialogTitle sx={{ pb: 0.5 }}>
               <Typography variant="h6" sx={{ lineHeight: 1.2 }}>Notes</Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.25 }}>
-                {denial.patient.name} · {denial.id} · {denial.payer}
+                {formatPatientName(denial.patient.name)} · {denial.claim.har} · {denial.payer}
               </Typography>
             </DialogTitle>
             <DialogContent sx={{ pt: 2 }}>

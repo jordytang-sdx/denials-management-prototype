@@ -27,7 +27,7 @@ export const DENIAL_TYPE_CONFIG: Record<string, DenialTypeConfig> = {
   'Administrative':    { color: '#64748B', bg: '#F8FAFC', Icon: DescriptionOutlined },
   'Timely Filing':     { color: '#DC2626', bg: '#FEF2F2', Icon: AccessTimeOutlined },
   'Recoupment':        { color: '#B45309', bg: '#FFFBEB', Icon: AccountBalanceOutlined },
-  'Eligibility':       { color: '#4F46E5', bg: '#EEF2FF', Icon: PersonSearchOutlined },
+  'Eligibility':       { color: '#4F46E5', bg: '#f0eeff', Icon: PersonSearchOutlined },
   'Underpayment':      { color: '#059669', bg: '#ECFDF5', Icon: TrendingDownOutlined },
   'ADR':               { color: '#0369A1', bg: '#F0F9FF', Icon: FindInPageOutlined },
 }

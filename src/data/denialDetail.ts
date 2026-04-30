@@ -125,7 +125,7 @@ export const DENIAL_OUTCOMES: Record<string, DenialOutcome> = {
 
 // ─── Underpayment ─────────────────────────────────────────────────────────────
 
-export interface UnderpaymentRecord {
+export interface UnderpaymentLineDetail {
   procedureCode: string
   procedureDesc: string
   billedAmount: number
@@ -136,7 +136,7 @@ export interface UnderpaymentRecord {
   rationale: string
 }
 
-export const UNDERPAYMENT_DATA: Record<string, UnderpaymentRecord> = {
+export const UNDERPAYMENT_DATA: Record<string, UnderpaymentLineDetail> = {
   'DN-2026-0521': {
     procedureCode: '33533',
     procedureDesc: 'Coronary Artery Bypass, Arterial',
