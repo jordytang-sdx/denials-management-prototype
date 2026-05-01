@@ -371,8 +371,8 @@ export default function App() {
 
   const [userRole, setUserRole] = useState<UserRole>('FrontlineWorker')
   const [features, setFeatures] = useState<FeatureFlags>(DEFAULT_FLAGS)
-  const [systemMode, setSystemMode] = useState<'new' | 'existing'>('new')
-  const [existingNav, setExistingNav] = useState<'worklist' | 'ingest'>('worklist')
+  const [systemMode, setSystemMode] = useState<'new' | 'existing'>('existing')
+  const [existingNav, setExistingNav] = useState<'worklist' | 'ingest'>('ingest')
   const [widgetExpanded, setWidgetExpanded] = useState(false)
   const [pageKey, setPageKey] = useState(0)
 
