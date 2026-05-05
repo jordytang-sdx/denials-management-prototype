@@ -1,13 +1,35 @@
 ---
 title: Design System Tokens & UI Color Conventions
 type: decision
-last_reviewed: 2026-04-27
-when_to_revisit: If the SmarterDX Component Lab is updated with new token values, or if a new module/status type is added
+last_reviewed: 2026-05-05
+when_to_revisit: When new module/status types are added, or when smarterdx-react package becomes installable via private registry
 ---
 
 # Design System Tokens & UI Color Conventions
 
-The prototype's visual language is derived from the SmarterDX production design system (Component Lab at `https://frontend.dev.smarterdx.net/component-lab/#/`). Tokens were extracted from the CSS bundle and converted from oklch to hex. All UI work should use these tokens — do not introduce arbitrary colors.
+The prototype's visual language is live-synced from the SmarterDX Storybook at `https://frontend.dev.smarterdx.net/storybook/`. Run `npm run sync-ds` to pull the latest token CSS from Storybook into `src/design-system-tokens.css`. This file is auto-generated — edit the source via Storybook, not by hand.
+
+All UI work should use CSS variables (e.g. `var(--colors-ocean-4)`) rather than hardcoded hex strings. The MUI theme palette keeps hex equivalents for MUI's internal color math; `styleOverrides` use CSS variables.
+
+## Token System
+
+The design system uses Panda CSS with CSS custom properties. Full token reference in `src/design-system-tokens.css`.
+
+Key namespaces:
+- `--colors-{scale}-{step}` — primitive colors (grey, ocean, green, red, orange, blue, amber)
+- `--colors-text-{role}` — semantic text (primary, secondary, disabled, error, etc.)
+- `--colors-interactive-{state}-{variant}-{part}` — button/input states
+- `--colors-badge-variant-{type}-{part}` — badge component tokens
+- `--colors-card-*` — card component tokens
+- `--spacing-{n}` — spacing scale (1=4px, 2=8px, 3=12px, 4=16px…)
+- `--radii-{size}` — sm=4px, md=8px, lg=12px, full=9999px, pill=24px
+- `--shadows-{level}` — low, medium, high
+- `--font-sizes-{n}` — 10/12/14/16/18/20/24/32/40px
+- `--font-weights-{name}` — regular=400, medium=500, semibold=600, bold=700
+
+## Component Library
+
+The Storybook (`smarterdx-react`) exposes: AppLayout, AppBar, AppNav, AppHeader, AppContent, AppFooter, AppBanner, Button, ButtonLink, IconButton, Badge, Card, NavTabList, Field, Input, Checkbox, CheckboxGroup, Radio, RadioGroup, SearchField, FilterBar, Menu, Dialog. The package is private — ask the frontend platform team for registry access. When available, these can replace the MUI equivalents.
 
 ---
 
@@ -107,4 +129,4 @@ Each module has a distinct accent color used for worklist row highlights, dashbo
 
 ## MUI Theme File
 
-All tokens are applied in `src/theme.ts`. When adding new MUI component overrides, use the palette values already defined there rather than hardcoding hex strings.
+All tokens are applied in `src/theme.ts`. When adding new MUI component overrides, use `var(--colors-*)` CSS variables in `styleOverrides` and the existing palette values for anything requiring a JavaScript color value. Never hardcode hex strings.

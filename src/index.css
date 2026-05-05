@@ -1,1 +1,13 @@
 @import "tailwindcss";
+@import "./design-system-tokens.css";
+
+:root {
+  /* Surface these on :root so MUI's CSS-var mode can find them if needed */
+  color-scheme: light;
+}
+
+body {
+  font-family: Inter, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--colors-text-primary);
+  background-color: var(--colors-grey-3);
+}
