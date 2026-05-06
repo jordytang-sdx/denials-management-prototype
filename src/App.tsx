@@ -40,7 +40,7 @@ import IngestPage from './pages/IngestPage'
 import RoutingRulesPage from './pages/RoutingRulesPage'
 import UnderpaymentWorklistPage from './pages/UnderpaymentWorklistPage'
 import UnderpaymentDetailPage from './pages/UnderpaymentDetailPage'
-import { SEED_DENIALS, type DenialRecord } from './data/denials'
+import { SEED_DENIALS, type DenialRecord, type DenialState, type TeamMember } from './data/denials'
 import { SEED_UNDERPAYMENTS } from './data/underpayments'
 import { SEED_AUDITS, type AuditRecord } from './data/audits'
 import { SEED_STAGING } from './data/staging'
@@ -48,6 +48,10 @@ import { DEFAULT_FLAGS, type FeatureFlags } from './data/featureFlags'
 import AuditWorklistPage from './pages/AuditWorklistPage'
 import AuditDetailPage from './pages/AuditDetailPage'
 import DenialListStyleEPage from './pages/DenialListStyleEPage'
+import DenialsWorklistV2Page from './pages/DenialsWorklistV2Page'
+import DenialsWorklistV3Page from './pages/DenialsWorklistV3Page'
+import NewDenialFlow from './pages/NewDenialFlow'
+import CasePageAiEditing from './case-page/CasePageAiEditing'
 
 const SIDEBAR_WIDTH = 224
 const SIDEBAR_COLLAPSED_WIDTH = 56
@@ -262,7 +266,7 @@ function ExistingSystemSidebar({
   needsReviewCount: number
 }) {
   const navItems: { id: 'worklist' | 'ingest'; label: string }[] = [
-    { id: 'worklist', label: 'Denials Worklist' },
+    { id: 'worklist', label: 'Worklist' },
     { id: 'ingest',   label: 'Ingest' },
   ]
 
@@ -360,6 +364,10 @@ export default function App() {
   const [navCollapsed, setNavCollapsed] = useState(false)
   const sidebarWidth = navCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
   const [selectedDenialId, setSelectedDenialId] = useState<string | null>(null)
+  const [selectedV2CaseId, setSelectedV2CaseId] = useState<string | null>(null)
+  const [v2ReturnTab, setV2ReturnTab] = useState<DenialState>('InProgress')
+  const [v2ReviewCompleteIds, setV2ReviewCompleteIds] = useState<Set<string>>(new Set())
+  const [v2AssignedToMe, setV2AssignedToMe] = useState(false)
   const [selectedUnderpaymentId, setSelectedUnderpaymentId] = useState<string | null>(null)
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null)
   const [denials, setDenials] = useState<DenialRecord[]>(SEED_DENIALS)
@@ -372,7 +380,11 @@ export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('FrontlineWorker')
   const [features, setFeatures] = useState<FeatureFlags>(DEFAULT_FLAGS)
   const [systemMode, setSystemMode] = useState<'new' | 'existing'>('existing')
-  const [existingNav, setExistingNav] = useState<'worklist' | 'ingest'>('ingest')
+  const [denialsView, setDenialsView] = useState<'v1' | 'v2' | 'v3'>('v2')
+  const [existingNav, setExistingNav] = useState<'worklist' | 'ingest' | 'new-denial' | 'new-denial-details'>('worklist')
+  const [transitionDir, setTransitionDir] = useState<'forward' | 'back'>('forward')
+  const [transitionKey, setTransitionKey] = useState(0)
+  const [returnContext, setReturnContext] = useState<{ tab: 'exceptions' | 'in-progress'; recordId: string } | null>(null)
   const [widgetExpanded, setWidgetExpanded] = useState(false)
   const [pageKey, setPageKey] = useState(0)
 
@@ -380,6 +392,55 @@ export default function App() {
   const visibleDenials = denials.filter(d => d.denialType !== 'ADR' && d.denialType !== 'Underpayment')
   const [bellAnchor, setBellAnchor] = useState<HTMLElement | null>(null)
   const [toast, setToast] = useState<{ message: string } | null>(null)
+
+  function handleV2SelectDenial(id: string, fromTab: DenialState) {
+    setV2ReturnTab(fromTab)
+    setSelectedV2CaseId(id)
+  }
+
+  function todayISO() {
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  function handleV2StatusAction(action: string) {
+    if (!selectedV2CaseId) return
+    const id = selectedV2CaseId
+    if (action === 'submit') {
+      setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Submitted' as DenialState, status: 'Awaiting Payer Decision' as const, submissionDate: todayISO() } : d))
+      setV2ReturnTab('Submitted')
+      setSelectedV2CaseId(null)
+    } else if (action === 'will-not-submit') {
+      setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Closed' as DenialState, status: 'Will Not Appeal' as const } : d))
+      setV2ReturnTab('Closed')
+      setSelectedV2CaseId(null)
+    } else if (action === 'archive') {
+      setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Archive' as DenialState, status: 'Archived' as const } : d))
+      setV2ReturnTab('Archive')
+      setSelectedV2CaseId(null)
+    } else if (action === 'complete-review') {
+      setV2ReviewCompleteIds(prev => new Set([...prev, id]))
+    } else if (action === 'overturned') {
+      setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Overturned' as DenialState, status: 'Overturned — Full Payment' as const, overturnDate: todayISO() } : d))
+      setV2ReturnTab('Overturned')
+      setSelectedV2CaseId(null)
+    } else if (action === 'upheld-will-appeal') {
+      setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'InProgress' as DenialState, status: 'In Progress' as const } : d))
+      setV2ReturnTab('InProgress')
+      setSelectedV2CaseId(null)
+    } else if (action === 'upheld-will-not-appeal') {
+      setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Closed' as DenialState, status: 'Upheld by Payer' as const } : d))
+      setV2ReturnTab('Closed')
+      setSelectedV2CaseId(null)
+    } else if (action === 'return-to-review') {
+      setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'InProgress' as DenialState, status: 'In Progress' as const } : d))
+      setV2ReturnTab('InProgress')
+      setSelectedV2CaseId(null)
+    } else if (action === 'remove-outcome') {
+      setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Submitted' as DenialState, status: 'Awaiting Payer Decision' as const, overturnDate: undefined } : d))
+      setV2ReturnTab('Submitted')
+      setSelectedV2CaseId(null)
+    }
+  }
 
   function handleSelectDenial(id: string) {
     setSelectedDenialId(id)
@@ -439,8 +500,13 @@ export default function App() {
           sx={{ zIndex: (t) => t.zIndex.drawer + 1, bgcolor: '#FFFFFF', height: 52, borderBottom: '1px solid', borderColor: 'divider' }}
         >
           <Toolbar variant="dense" sx={{ minHeight: 52, px: 2, gap: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 5, mr: 2 }}>
               <Box component="img" src="/smarterdx_logo.webp" alt="SmarterDX" sx={{ height: 20, display: 'block', objectFit: 'contain' }} />
+              {systemMode === 'existing' && (
+                <Typography sx={{ fontSize: '0.875rem', fontWeight: 400, color: '#9CA3AF', letterSpacing: '0.01em' }}>
+                  Denials
+                </Typography>
+              )}
             </Box>
 
             {systemMode === 'new' && (
@@ -478,7 +544,7 @@ export default function App() {
 
         {/* ── Existing System Sidebar ─────────────────────────────────────────── */}
         {systemMode === 'existing' && (
-          <ExistingSystemSidebar activeNav={existingNav} onNavChange={setExistingNav} needsReviewCount={needsReviewCount} />
+          <ExistingSystemSidebar activeNav={existingNav} onNavChange={nav => { setReturnContext(null); setSelectedV2CaseId(null); setExistingNav(nav) }} needsReviewCount={needsReviewCount} />
         )}
 
         {/* ── New System Sidebar ───────────────────────────────────────────────── */}
@@ -656,20 +722,21 @@ export default function App() {
             </Box>
           )}
 
-          {/* Existing system page sub-header — only shown for ingest; worklist owns its own header */}
-          {systemMode === 'existing' && existingNav === 'ingest' && (
+          {/* Existing system page sub-header */}
+          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && (
             <Box sx={{ px: 3, py: 2, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="h6" sx={{ lineHeight: 1.2 }}>
-                  {existingNav === 'worklist' ? 'Cases' : 'Ingest'}
+                  {existingNav === 'worklist' ? 'Denials' : 'Ingest'}
                 </Typography>
               </Box>
               {existingNav === 'ingest' && (
                 <Button
                   variant="contained"
+                  onClick={() => { setReturnContext(null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }}
                   sx={{ bgcolor: '#157d9d', borderRadius: '4px', fontSize: '0.8125rem', fontWeight: 500, px: 2, '&:hover': { bgcolor: '#11647e' } }}
                 >
-                  Add Manually
+                  New Denial
                 </Button>
               )}
             </Box>
@@ -677,7 +744,46 @@ export default function App() {
 
           {/* Page body */}
           <Box key={pageKey} sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            {systemMode === 'existing' && existingNav === 'worklist' && <DenialListStyleEPage />}
+            <Box
+              key={transitionKey}
+              sx={{
+                flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                ...(transitionKey > 0 && {
+                  '@keyframes sdxSlideInRight': { from: { transform: 'translateX(28px)', opacity: 0 }, to: { transform: 'translateX(0)', opacity: 1 } },
+                  '@keyframes sdxSlideInLeft':  { from: { transform: 'translateX(-28px)', opacity: 0 }, to: { transform: 'translateX(0)', opacity: 1 } },
+                  animation: `${transitionDir === 'forward' ? 'sdxSlideInRight' : 'sdxSlideInLeft'} 220ms cubic-bezier(0.2, 0, 0, 1)`,
+                }),
+              }}
+            >
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v1' && <DenialListStyleEPage />}
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v2' && !selectedV2CaseId && (
+              <DenialsWorklistV2Page
+                denials={visibleDenials}
+                onSelectDenial={handleV2SelectDenial}
+                reviewCompleteIds={v2ReviewCompleteIds}
+                initialTab={v2ReturnTab}
+                assignedToMe={v2AssignedToMe}
+                onAssignedToMeChange={setV2AssignedToMe}
+                onAssign={(denialId: string, member: TeamMember | null) => setDenials(prev => prev.map(d => d.id === denialId ? { ...d, assignedTo: member } : d))}
+              />
+            )}
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v2' && selectedV2CaseId && (
+              <CasePageAiEditing
+                hideNav
+                onBack={() => setSelectedV2CaseId(null)}
+                caseRecord={visibleDenials.find(d => d.id === selectedV2CaseId) ?? undefined}
+                onStatusAction={handleV2StatusAction}
+              />
+            )}
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v3' && (
+              <DenialsWorklistV3Page denials={visibleDenials} />
+            )}
+            {systemMode === 'existing' && existingNav === 'new-denial' && (
+              <NewDenialFlow encounterOnly={returnContext !== null} fromDrawer={returnContext !== null} onDone={() => { setTransitionDir('back'); setTransitionKey(k => k + 1); setExistingNav('ingest') }} />
+            )}
+            {systemMode === 'existing' && existingNav === 'new-denial-details' && (
+              <NewDenialFlow initialStep="details" fromDrawer={returnContext !== null} recordId={returnContext?.recordId} onDone={() => { setTransitionDir('back'); setTransitionKey(k => k + 1); setExistingNav('ingest') }} />
+            )}
             {systemMode === 'existing' && existingNav === 'ingest' && (
               <>
                 <Box
@@ -702,7 +808,11 @@ export default function App() {
                   </Typography>
                 </Box>
                 <Box sx={{ mx: 3, mb: 2, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e6e9', borderRadius: 2, bgcolor: '#fff' }}>
-                  <IngestPage features={features} onNavigate={nav => { if (nav === 'Denials') setExistingNav('worklist') }} mode="existing" />
+                  <IngestPage features={features} onNavigate={(nav, returnCtx) => {
+                    if (nav === 'Denials') { setReturnContext(null); setExistingNav('worklist') }
+                    else if (nav === 'new-denial') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }
+                    else if (nav === 'new-denial-details') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial-details') }
+                  }} mode="existing" initialOpenDrawer={returnContext} />
                 </Box>
               </>
             )}
@@ -803,6 +913,7 @@ export default function App() {
                 setNotifications(SEED_NOTIFICATIONS)
               }} />
             )}
+            </Box>
           </Box>
         </Box>
 
@@ -868,133 +979,165 @@ export default function App() {
         sx={{
           position: 'fixed', bottom: 16, left: 16, zIndex: 9999,
           bgcolor: '#1A1A1A', color: '#fff', borderRadius: 1.5,
-          px: 2, py: 1.25, display: 'flex', flexDirection: 'column', gap: 1,
+          px: 2, py: 1.25, display: 'flex', flexDirection: 'column', gap: 0.875,
+          minWidth: 140,
         }}
       >
-        {/* Header row with SYSTEM label + refresh */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.5)' }}>
-            SYSTEM
+        {/* Header */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.125 }}>
+          <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)' }}>
+            PROTOTYPE
           </Typography>
           <Tooltip title="Reset page" placement="top">
             <IconButton
               size="small"
               onClick={() => setPageKey(k => k + 1)}
-              sx={{ p: 0.25, color: 'rgba(255,255,255,0.4)', '&:hover': { color: 'rgba(255,255,255,0.8)', bgcolor: 'transparent' } }}
+              sx={{ p: 0.25, color: 'rgba(255,255,255,0.35)', '&:hover': { color: 'rgba(255,255,255,0.8)', bgcolor: 'transparent' } }}
             >
               <RestartAltOutlined sx={{ fontSize: 14 }} />
             </IconButton>
           </Tooltip>
         </Box>
+
+        {/* ── Current branch ── */}
         <Box>
-          <Box sx={{ display: 'flex', gap: 0.75 }}>
-            {([
-              { mode: 'existing' as const, label: 'Existing' },
-              { mode: 'new' as const,      label: 'New' },
-            ]).map(({ mode, label }) => (
-              <Box
-                key={mode}
-                onClick={() => setSystemMode(mode)}
-                sx={{
-                  px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
-                  bgcolor: systemMode === mode ? '#fff' : 'rgba(255,255,255,0.12)',
-                  color: systemMode === mode ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
-                  '&:hover': { bgcolor: systemMode === mode ? '#fff' : 'rgba(255,255,255,0.2)' },
-                }}
-              >
-                {label}
-              </Box>
-            ))}
+          <Box
+            onClick={() => setSystemMode('existing')}
+            sx={{
+              px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer',
+              fontSize: '0.7rem', fontWeight: 600, display: 'inline-flex',
+              bgcolor: systemMode === 'existing' ? '#fff' : 'rgba(255,255,255,0.12)',
+              color: systemMode === 'existing' ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
+              '&:hover': { bgcolor: systemMode === 'existing' ? '#fff' : 'rgba(255,255,255,0.2)' },
+            }}
+          >
+            Current
+          </Box>
+
+          {/* Version sub-toggles — indented, subordinate styling */}
+          <Box sx={{ display: 'flex', gap: 0.375, mt: 0.625, ml: 0.375, pl: 0.5 }}>
+            {(['v1', 'v2', 'v3'] as const).map(v => {
+              const active = systemMode === 'existing' && denialsView === v
+              return (
+                <Box
+                  key={v}
+                  onClick={() => { setSystemMode('existing'); setDenialsView(v); setExistingNav('worklist') }}
+                  sx={{
+                    px: 0.875, py: 0.3125, borderRadius: 0.75, cursor: 'pointer',
+                    fontSize: '0.65rem', fontWeight: 600,
+                    bgcolor: active ? 'rgba(255,255,255,0.16)' : 'transparent',
+                    color: active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.38)',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.75)' },
+                  }}
+                >
+                  {v.toUpperCase()}
+                </Box>
+              )
+            })}
           </Box>
         </Box>
 
-        {systemMode === 'new' && (
-          <>
-            {/* Expand/collapse toggle */}
-            <Box
-              onClick={() => setWidgetExpanded(e => !e)}
-              sx={{
-                display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer',
-                color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem', fontWeight: 600,
-                letterSpacing: '0.08em', userSelect: 'none',
-                '&:hover': { color: 'rgba(255,255,255,0.65)' },
-              }}
-            >
-              {widgetExpanded
-                ? <ExpandLessOutlined sx={{ fontSize: 14 }} />
-                : <ExpandMoreOutlined sx={{ fontSize: 14 }} />}
-              {widgetExpanded ? 'FEWER OPTIONS' : 'MORE OPTIONS'}
+        {/* Divider */}
+        <Box sx={{ height: '1px', bgcolor: 'rgba(255,255,255,0.1)', mx: -0.5 }} />
+
+        {/* ── Old branch ── */}
+        <Box>
+          <Box
+            onClick={() => setSystemMode('new')}
+            sx={{
+              px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer',
+              fontSize: '0.7rem', fontWeight: 600, display: 'inline-flex',
+              bgcolor: systemMode === 'new' ? '#fff' : 'rgba(255,255,255,0.12)',
+              color: systemMode === 'new' ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
+              '&:hover': { bgcolor: systemMode === 'new' ? '#fff' : 'rgba(255,255,255,0.2)' },
+            }}
+          >
+            Old
+          </Box>
+
+          {systemMode === 'new' && (
+            <Box sx={{ mt: 0.625 }}>
+              <Box
+                onClick={() => setWidgetExpanded(e => !e)}
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer',
+                  color: 'rgba(255,255,255,0.38)', fontSize: '0.6rem', fontWeight: 700,
+                  letterSpacing: '0.08em', userSelect: 'none',
+                  '&:hover': { color: 'rgba(255,255,255,0.65)' },
+                }}
+              >
+                {widgetExpanded
+                  ? <ExpandLessOutlined sx={{ fontSize: 12 }} />
+                  : <ExpandMoreOutlined sx={{ fontSize: 12 }} />}
+                {widgetExpanded ? 'FEWER OPTIONS' : 'MORE OPTIONS'}
+              </Box>
+
+              {widgetExpanded && (
+                <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.875 }}>
+                  {/* VIEW AS */}
+                  <Box>
+                    <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.38)', mb: 0.625 }}>
+                      VIEW AS
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      {([
+                        { role: 'Manager' as UserRole, label: 'Manager' },
+                        { role: 'FrontlineWorker' as UserRole, label: 'Frontline' },
+                      ]).map(({ role, label }) => (
+                        <Box
+                          key={role}
+                          onClick={() => {
+                            setUserRole(role)
+                            if (role === 'FrontlineWorker' && activeNav === 'Archive') setActiveNav('Denials')
+                          }}
+                          sx={{
+                            px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
+                            bgcolor: userRole === role ? '#fff' : 'rgba(255,255,255,0.12)',
+                            color: userRole === role ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
+                            '&:hover': { bgcolor: userRole === role ? '#fff' : 'rgba(255,255,255,0.2)' },
+                          }}
+                        >
+                          {label}
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+
+                  {/* PACKAGE */}
+                  <Box>
+                    <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.38)', mb: 0.625 }}>
+                      PACKAGE
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', maxWidth: 200 }}>
+                      {([
+                        { key: 'denials' as const, label: 'Denials' },
+                        { key: 'underpayments' as const, label: 'Underpay.' },
+                        { key: 'audits' as const, label: 'Audits' },
+                      ]).map(({ key, label }) => (
+                        <Box
+                          key={key}
+                          onClick={() => {
+                            const next = { ...features, [key]: !features[key] }
+                            setFeatures(next)
+                            if (!next[key] && activeNav.toLowerCase() === key) setActiveNav('Dashboard')
+                          }}
+                          sx={{
+                            px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
+                            bgcolor: features[key] ? '#fff' : 'rgba(255,255,255,0.12)',
+                            color: features[key] ? '#1A1A1A' : 'rgba(255,255,255,0.5)',
+                            '&:hover': { bgcolor: features[key] ? '#f0f0f0' : 'rgba(255,255,255,0.2)' },
+                          }}
+                        >
+                          {label}
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                </Box>
+              )}
             </Box>
-
-            {widgetExpanded && (
-              <>
-                {/* VIEW AS */}
-                <Box>
-                  <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.5)', mb: 0.75 }}>
-                    VIEW AS
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 0.75 }}>
-                    {([
-                      { role: 'Manager' as UserRole, label: 'Manager' },
-                      { role: 'FrontlineWorker' as UserRole, label: 'Frontline' },
-                    ]).map(({ role, label }) => (
-                      <Box
-                        key={role}
-                        onClick={() => {
-                          setUserRole(role)
-                          if (role === 'FrontlineWorker' && activeNav === 'Archive') {
-                            setActiveNav('Denials')
-                          }
-                        }}
-                        sx={{
-                          px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
-                          bgcolor: userRole === role ? '#fff' : 'rgba(255,255,255,0.12)',
-                          color: userRole === role ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
-                          '&:hover': { bgcolor: userRole === role ? '#fff' : 'rgba(255,255,255,0.2)' },
-                        }}
-                      >
-                        {label}
-                      </Box>
-                    ))}
-                  </Box>
-                </Box>
-
-                {/* PACKAGE */}
-                <Box>
-                  <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.5)', mb: 0.75 }}>
-                    PACKAGE
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', maxWidth: 200 }}>
-                    {([
-                      { key: 'denials' as const, label: 'Denials' },
-                      { key: 'underpayments' as const, label: 'Underpay.' },
-                      { key: 'audits' as const, label: 'Audits' },
-                    ]).map(({ key, label }) => (
-                      <Box
-                        key={key}
-                        onClick={() => {
-                          const next = { ...features, [key]: !features[key] }
-                          setFeatures(next)
-                          if (!next[key] && activeNav.toLowerCase() === key) {
-                            setActiveNav('Dashboard')
-                          }
-                        }}
-                        sx={{
-                          px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
-                          bgcolor: features[key] ? '#fff' : 'rgba(255,255,255,0.12)',
-                          color: features[key] ? '#1A1A1A' : 'rgba(255,255,255,0.5)',
-                          '&:hover': { bgcolor: features[key] ? '#f0f0f0' : 'rgba(255,255,255,0.2)' },
-                        }}
-                      >
-                        {label}
-                      </Box>
-                    ))}
-                  </Box>
-                </Box>
-              </>
-            )}
-          </>
-        )}
+          )}
+        </Box>
       </Box>
 
       {/* ── Toast ────────────────────────────────────────────────────────────── */}
