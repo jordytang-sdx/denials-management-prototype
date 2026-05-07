@@ -83,9 +83,11 @@ export const TEAM_MEMBERS: TeamMember[] = [
   { id: 'pn', name: 'Priya Nair', initials: 'PN' },
   { id: 'dr', name: 'Devon Ross', initials: 'DR' },
   { id: 'jt', name: 'Jordy Tang', initials: 'JT' },
+  { id: 'ks', name: 'Krista Soriano', initials: 'KS' },
 ]
 
 export const JORDY = { id: 'jt', name: 'Jordy Tang', initials: 'JT' } as const
+export const KRISTA = { id: 'ks', name: 'Krista Soriano', initials: 'KS' } as const
 
 export type LineOfBusiness = 'Commercial' | 'Medicare' | 'Medicaid' | 'Medicare Advantage'
 export type AppealLevel = 'L1' | 'L2' | 'L3'
@@ -171,7 +173,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     deadline: d(4), createdAt: d(-18), dos: '2026-02-14',
     state: 'InProgress', status: 'Appeal Drafting',
     appealLevel: 'L1', priorityScore: 78, packetStatus: 'Assembling',
-    assignedTo: TEAM_MEMBERS[0]!,
+    assignedTo: KRISTA,
     notes: 'Physician attestation obtained. Drafting level 1 appeal — deadline in 4 days.',
     relatedInstances: [{ denialId: 'DN-2026-0394', relationship: 'adr_preceded' }],
     relatedCases: [{ caseId: 'AU-2026-0394', caseType: 'audit', relationship: 'spawned_from' }],
@@ -245,7 +247,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     deadline: d(35), createdAt: d(-5), dos: '2026-03-10',
     state: 'InProgress', status: 'Appeal Drafting',
     appealLevel: 'L1', priorityScore: 55, packetStatus: 'Assembling',
-    assignedTo: TEAM_MEMBERS[0]!,
+    assignedTo: KRISTA,
     notes: '',
   },
   {
@@ -501,7 +503,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     appealLevel: 'L1',
     paymentStatus: 'Pending',
     overturnDate: d(-3),
-    assignedTo: TEAM_MEMBERS[0]!,
+    assignedTo: KRISTA,
     notes: 'L1 appeal submitted with clinical documentation. Cigna issued overturn letter 4/05 — full $11,240 approved. Awaiting 835 remit to confirm payment posted.',
     appealRounds: [
       { id: 'r-0388-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: d(-14), submissionMethod: 'portal', decision: 'overturned', decisionDate: d(-3) },
@@ -748,7 +750,7 @@ export const SEED_DENIALS: DenialRecord[] = [
     appealLevel: 'L1',
     closeReason: 'L1 Upheld — Escalated to L2',
     closedDate: d(-2),
-    assignedTo: TEAM_MEMBERS[0]!,
+    assignedTo: KRISTA,
     notes: 'L1 appeal submitted 3/15. Humana upheld denial on 3/31 — medical necessity criteria not met per payer clinical policy. Escalated to Level 2 external review as DN-2026-0480.',
     appealRounds: [
       { id: 'r-0431-1', roundNumber: 1, roundType: 'L1_internal', submittedAt: '2026-03-15', submissionMethod: 'portal', decision: 'upheld', decisionDate: d(-2) },
@@ -1141,7 +1143,7 @@ export const SCENARIO_B_DENIALS: DenialRecord[] = [
     appealLevel: 'L1',
     submissionDate: '2026-03-12',
     responseDueDate: '2026-04-02',
-    assignedTo: JORDY,
+    assignedTo: KRISTA,
     notes: 'Appeal submitted 3/12. Payer response window closed 4/2 — follow up call placed, no response.',
   },
   {
@@ -1159,7 +1161,7 @@ export const SCENARIO_B_DENIALS: DenialRecord[] = [
     appealLevel: 'L1',
     submissionDate: '2026-03-15',
     responseDueDate: d(22),
-    assignedTo: JORDY,
+    assignedTo: KRISTA,
     notes: 'Appeal submitted 3/15. Expected BCBS turnaround is 30 days — response due 4/14.',
   },
   {
