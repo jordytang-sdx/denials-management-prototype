@@ -10,7 +10,7 @@ import {
   UploadFileOutlined, CloseOutlined, WarningAmberOutlined,
   CheckCircleOutlined, ExpandMoreOutlined, ExpandLessOutlined,
   ContentCopyOutlined, DoneOutlined,
-  ArrowBackOutlined, ArrowForwardOutlined, OpenInNewOutlined,
+  ArrowBackOutlined, ArrowForwardOutlined, OpenInNewOutlined, AddOutlined,
 } from '@mui/icons-material'
 import {
   SEED_STAGING, type StagingRecord, type StagingStatus,
@@ -783,7 +783,7 @@ function CompletionPanel({
 function ReviewPanel({
   record, reviewIndex, reviewTotal,
   onClose, onPrev, onNext,
-  onAccept, onAcceptAndNext, onDismiss, onSkip, mode, onNavigate,
+  onAccept, onAcceptAndNext, onDismiss, onSkip, mode, onNavigate, onEditDenialDetails,
 }: {
   record: StagingRecord
   reviewIndex: number
@@ -797,6 +797,7 @@ function ReviewPanel({
   onSkip: () => void
   mode?: 'existing'
   onNavigate?: (nav: string, returnContext?: ReturnContext) => void
+  onEditDenialDetails?: () => void
 }) {
   const [resolvedReasons, setResolvedReasons] = useState<Set<NeedsReviewReason>>(new Set())
   const [showDismiss, setShowDismiss] = useState(false)
@@ -939,11 +940,11 @@ function ReviewPanel({
             <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: 'text.secondary', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               Classification
             </Typography>
-            {mode === 'existing' && onNavigate && (
+            {mode === 'existing' && (onEditDenialDetails ?? onNavigate) && (
               <Button
                 size="small"
                 endIcon={<OpenInNewOutlined sx={{ fontSize: 12 }} />}
-                onClick={() => onNavigate('new-denial-details', { tab: 'exceptions', recordId: record.id })}
+                onClick={() => onEditDenialDetails ? onEditDenialDetails() : onNavigate?.('new-denial-details', { tab: 'exceptions', recordId: record.id })}
                 sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', lineHeight: 1.2 }}
               >
                 Edit denial details
@@ -1544,6 +1545,304 @@ function InProgressTab({ records, mode, onNavigate, initialDrawerRecordId, inlin
   )
 }
 
+// ── InlineEditDenialDetailsPanel ──────────────────────────────────────────────
+
+const EDIT_LEVEL_OPTIONS = ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5']
+const EDIT_DRG_REVIEW_TYPE_OPTIONS = ['Clinical Validation Review', 'Coding Audit']
+const EDIT_PAYER_OPTIONS = ['Aetna', 'BCBS', 'CMS / Medicare', 'Cigna', 'Humana', 'UnitedHealthcare']
+const EDIT_REVIEW_ENTITY_OPTIONS = ['Cotiviti', 'Optum', 'Performant']
+
+function parseDenialTypeFromClassification(classifiedAs: string | null): 'drg_downgrade' | 'medical_necessity' | 'other' {
+  if (!classifiedAs) return 'other'
+  const l = classifiedAs.toLowerCase()
+  if (l.includes('drg')) return 'drg_downgrade'
+  if (l.includes('medical necessity')) return 'medical_necessity'
+  return 'other'
+}
+
+function InlineEditDenialDetailsPanel({
+  record,
+  onBack,
+}: {
+  record: StagingRecord
+  onBack: () => void
+}) {
+  const ext = record.extraction
+  const [denialType, setDenialType] = useState<'drg_downgrade' | 'medical_necessity' | 'other'>(
+    parseDenialTypeFromClassification(record.classifiedAs)
+  )
+  const [drgReviewType, setDrgReviewType] = useState('Clinical Validation Review')
+  const [level, setLevel] = useState('Level 2')
+  const [payer, setPayer] = useState(record.payer ?? '')
+  const [deadlineISO, setDeadlineISO] = useState((ext.deadline as string) ?? '')
+  const [reviewEntity, setReviewEntity] = useState('')
+  const [payerRationale, setPayerRationale] = useState('')
+
+  const SECTION_LABEL_SX = {
+    fontSize: '0.6875rem' as const,
+    fontWeight: 600,
+    color: 'text.secondary' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.08em',
+  }
+
+  const FIELD_LABEL_SX = {
+    fontSize: '0.75rem' as const,
+    color: 'text.secondary' as const,
+    mb: 0.5,
+  }
+
+  const encFields: { label: string; value: string | null; mono?: boolean }[] = [
+    { label: 'Name',          value: record.patientName },
+    { label: 'HAR',           value: (ext.har as string) ?? null,  mono: true },
+    { label: 'MRN',           value: record.patientMrn,             mono: true },
+    { label: 'DOS',           value: (ext.dos as string) ?? null },
+    { label: 'Date of Birth', value: null },
+    { label: 'Visit ID',      value: null },
+  ]
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.paper' }}>
+
+      {/* Nav strip — matches ReviewPanel's nav strip exactly */}
+      <Box sx={{
+        px: 2.5, py: 0.875,
+        borderBottom: '1px solid', borderColor: 'divider',
+        display: 'flex', alignItems: 'center',
+        bgcolor: '#F8FAFC', flexShrink: 0,
+      }}>
+        <Button
+          size="small"
+          startIcon={<ArrowBackOutlined sx={{ fontSize: '14px !important' }} />}
+          onClick={onBack}
+          sx={{ fontSize: '0.75rem', p: 0, minWidth: 0, color: 'text.secondary', fontWeight: 400 }}
+        >
+          Back to review
+        </Button>
+      </Box>
+
+      {/* Header — matches ReviewPanel's patient header */}
+      <Box sx={{
+        px: 2.5, py: 2,
+        borderBottom: '1px solid', borderColor: 'divider',
+        flexShrink: 0,
+      }}>
+        <Typography sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
+          Edit Denial Details
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {record.patientName ? formatPatientName(record.patientName) : '—'}
+          {record.payer ? ` · ${record.payer}` : ''}
+        </Typography>
+      </Box>
+
+      {/* Body — same flex/overflow/padding as ReviewPanel body */}
+      <Box sx={{ flex: 1, overflow: 'auto', p: 2.5 }}>
+
+        {/* Encounter */}
+        <Box sx={{ mb: 2 }}>
+          <Typography sx={{ ...SECTION_LABEL_SX, mb: 1 }}>Encounter</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 20px' }}>
+            {encFields.map(({ label, value, mono }) => (
+              <Box key={label}>
+                <Typography sx={{ fontSize: '0.625rem', color: 'text.disabled', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.25 }}>
+                  {label}
+                </Typography>
+                {value ? (
+                  mono
+                    ? <Typography sx={{ fontSize: '0.8125rem', fontFamily: 'monospace', color: 'text.primary' }}>{value}</Typography>
+                    : <Typography sx={{ fontSize: '0.8125rem', fontWeight: 500 }}>{value}</Typography>
+                ) : (
+                  <Typography sx={{ fontSize: '0.8125rem', color: 'text.disabled' }}>—</Typography>
+                )}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+
+        <Divider sx={{ my: 1.5 }} />
+
+        {/* Denial Classification */}
+        <Box sx={{ mb: 2 }}>
+          <Typography sx={{ ...SECTION_LABEL_SX, mb: 1.25 }}>Denial Classification</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box>
+              <Typography sx={FIELD_LABEL_SX}>Denial Type</Typography>
+              <RadioGroup
+                value={denialType}
+                onChange={e => setDenialType(e.target.value as typeof denialType)}
+              >
+                <FormControlLabel
+                  value="drg_downgrade"
+                  control={<Radio size="small" sx={{ py: 0.5, '&.Mui-checked': { color: 'var(--colors-ocean-4)' } }} />}
+                  label={<Typography sx={{ fontSize: '0.875rem' }}>DRG Downgrade</Typography>}
+                />
+                <FormControlLabel
+                  value="medical_necessity"
+                  control={<Radio size="small" sx={{ py: 0.5, '&.Mui-checked': { color: 'var(--colors-ocean-4)' } }} />}
+                  label={<Typography sx={{ fontSize: '0.875rem' }}>Medical Necessity</Typography>}
+                />
+                <FormControlLabel
+                  value="other"
+                  control={<Radio size="small" sx={{ py: 0.5, '&.Mui-checked': { color: 'var(--colors-ocean-4)' } }} />}
+                  label={<Typography sx={{ fontSize: '0.875rem' }}>Other</Typography>}
+                />
+              </RadioGroup>
+            </Box>
+            {denialType === 'drg_downgrade' && (
+              <Box>
+                <Typography sx={FIELD_LABEL_SX}>DRG Review Type</Typography>
+                <FormControl size="small" sx={{ width: 280 }}>
+                  <Select value={drgReviewType} onChange={e => setDrgReviewType(e.target.value)}>
+                    {EDIT_DRG_REVIEW_TYPE_OPTIONS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Box>
+            )}
+          </Box>
+        </Box>
+
+        <Divider sx={{ my: 1.5 }} />
+
+        {/* Denial Logistics */}
+        <Box sx={{ mb: 2 }}>
+          <Typography sx={{ ...SECTION_LABEL_SX, mb: 1.25 }}>Denial Logistics</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              <Box>
+                <Typography sx={FIELD_LABEL_SX}>Level</Typography>
+                <FormControl size="small" fullWidth>
+                  <Select value={level} onChange={e => setLevel(e.target.value)}>
+                    {EDIT_LEVEL_OPTIONS.map(l => <MenuItem key={l} value={l}>{l}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box>
+                <Typography sx={FIELD_LABEL_SX}>Appeal Deadline</Typography>
+                <TextField
+                  size="small"
+                  type="date"
+                  fullWidth
+                  value={deadlineISO}
+                  onChange={e => setDeadlineISO(e.target.value)}
+                />
+              </Box>
+            </Box>
+            <Box>
+              <Typography sx={FIELD_LABEL_SX}>Payer</Typography>
+              <FormControl size="small" fullWidth>
+                <Select
+                  value={payer}
+                  onChange={e => setPayer(e.target.value)}
+                  displayEmpty
+                  renderValue={payer ? undefined : () => <span style={{ color: 'rgba(0,0,0,0.38)' }}>Select payer</span>}
+                >
+                  {EDIT_PAYER_OPTIONS.map(p => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Box>
+            <Box>
+              <Typography sx={FIELD_LABEL_SX}>
+                Review Entity{' '}
+                <Typography component="span" sx={{ fontSize: '0.75rem', color: 'rgba(0,0,0,0.38)' }}>
+                  (optional)
+                </Typography>
+              </Typography>
+              <FormControl size="small" fullWidth>
+                <Select
+                  value={reviewEntity}
+                  onChange={e => setReviewEntity(e.target.value)}
+                  displayEmpty
+                  renderValue={reviewEntity ? undefined : () => <span style={{ color: 'rgba(0,0,0,0.38)' }}>Search review entity</span>}
+                >
+                  {EDIT_REVIEW_ENTITY_OPTIONS.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Payer Adjustments — DRG only */}
+        {denialType === 'drg_downgrade' && (
+          <>
+            <Divider sx={{ my: 1.5 }} />
+            <Box sx={{ mb: 2 }}>
+              <Typography sx={{ ...SECTION_LABEL_SX, mb: 1.25 }}>Payer Adjustments</Typography>
+              <Typography sx={{ fontSize: '0.8125rem', color: 'text.secondary', mb: 1.5, lineHeight: 1.5 }}>
+                Add the diagnoses and procedures the payer adjusted.
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Box>
+                  <Typography sx={{ fontSize: '0.8125rem', fontWeight: 500, mb: 0.75 }}>Adjusted Diagnoses</Typography>
+                  <Button
+                    size="small"
+                    startIcon={<AddOutlined sx={{ fontSize: '16px !important' }} />}
+                    sx={{ fontSize: '0.8125rem', p: 0, textTransform: 'none', color: 'var(--colors-ocean-4)' }}
+                  >
+                    Add Diagnosis Code
+                  </Button>
+                </Box>
+                <Box>
+                  <Typography sx={{ fontSize: '0.8125rem', fontWeight: 500, mb: 0.75 }}>Adjusted Procedures</Typography>
+                  <Button
+                    size="small"
+                    startIcon={<AddOutlined sx={{ fontSize: '16px !important' }} />}
+                    sx={{ fontSize: '0.8125rem', p: 0, textTransform: 'none', color: 'var(--colors-ocean-4)' }}
+                  >
+                    Add Procedure
+                  </Button>
+                </Box>
+              </Box>
+            </Box>
+          </>
+        )}
+
+        <Divider sx={{ my: 1.5 }} />
+
+        {/* Payer Rationale */}
+        <Box sx={{ mb: 1 }}>
+          <Typography sx={{ ...SECTION_LABEL_SX, mb: 1.25 }}>Payer Rationale</Typography>
+          <TextField
+            multiline
+            fullWidth
+            size="small"
+            value={payerRationale}
+            onChange={e => setPayerRationale(e.target.value)}
+            placeholder="Enter the payer's rationale for denial…"
+            minRows={4}
+          />
+        </Box>
+
+      </Box>
+
+      {/* Footer — matches ReviewPanel's action footer */}
+      <Box sx={{
+        borderTop: '1px solid', borderColor: 'divider',
+        px: 2.5, py: 1.5,
+        display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1.5,
+        bgcolor: 'background.paper', flexShrink: 0,
+      }}>
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={onBack}
+          sx={{ fontSize: '0.8125rem' }}
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          size="small"
+          onClick={onBack}
+          sx={{ fontSize: '0.8125rem' }}
+        >
+          Save
+        </Button>
+      </Box>
+    </Box>
+  )
+}
+
 // ── ExceptionsTab ─────────────────────────────────────────────────────────────
 
 function ExceptionsTab({
@@ -1571,6 +1870,7 @@ function ExceptionsTab({
   const [showCompletion, setShowCompletion] = useState(false)
   const [undoRecord, setUndoRecord] = useState<StagingRecord | null>(null)
   const [toast, setToast] = useState<ToastState>(null)
+  const [editDetailsOpen, setEditDetailsOpen] = useState(false)
 
   const exceptions = sortByUrgency(records.filter(r =>
     r.status === 'needs_review' &&
@@ -1589,11 +1889,13 @@ function ExceptionsTab({
   const openReview = (id: string) => {
     setDrawerRecordId(id)
     setShowCompletion(false)
+    setEditDetailsOpen(false)
   }
 
   const closeDrawer = () => {
     setDrawerRecordId(null)
     setShowCompletion(false)
+    setEditDetailsOpen(false)
   }
 
   const handlePrev = () => {
@@ -1895,7 +2197,7 @@ function ExceptionsTab({
               />
             </Box>
           )}
-          {drawerRecord && !newDenialPanelOpen && (
+          {drawerRecord && !newDenialPanelOpen && !editDetailsOpen && (
             <Box key={drawerRecord.id} sx={{
               flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
               '@keyframes panelFadeIn': { from: { opacity: 0, transform: 'translateX(10px)' }, to: { opacity: 1, transform: 'translateX(0)' } },
@@ -1914,6 +2216,19 @@ function ExceptionsTab({
                 onSkip={handleSkip}
                 mode={mode}
                 onNavigate={onNavigate}
+                onEditDenialDetails={() => setEditDetailsOpen(true)}
+              />
+            </Box>
+          )}
+          {editDetailsOpen && drawerRecord && !newDenialPanelOpen && (
+            <Box key={`edit-details-${drawerRecord.id}`} sx={{
+              flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              '@keyframes panelFadeIn': { from: { opacity: 0, transform: 'translateX(10px)' }, to: { opacity: 1, transform: 'translateX(0)' } },
+              animation: 'panelFadeIn 220ms both cubic-bezier(0.4, 0, 0.2, 1)',
+            }}>
+              <InlineEditDenialDetailsPanel
+                record={drawerRecord}
+                onBack={() => setEditDetailsOpen(false)}
               />
             </Box>
           )}
