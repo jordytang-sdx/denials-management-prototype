@@ -75,10 +75,21 @@ const theme = createTheme({
         },
         outlinedPrimary: {
           borderColor: 'var(--colors-interactive-default-border)',
-          color: 'var(--colors-text-secondary)',
+          color: 'var(--colors-interactive-default-text)',
           '&:hover': {
-            borderColor: 'var(--colors-grey-5)',
-            backgroundColor: 'var(--colors-grey-3)',
+            borderColor: 'var(--colors-interactive-hover-default-border)',
+            backgroundColor: 'var(--colors-interactive-hover-default-background)',
+          },
+        },
+        textPrimary: {
+          color: 'var(--colors-interactive-ghost-text)',
+          '&:hover': {
+            color: 'var(--colors-interactive-hover-ghost-text)',
+            backgroundColor: 'var(--colors-interactive-hover-ghost-background)',
+          },
+          '&:active': {
+            color: 'var(--colors-interactive-active-ghost-text)',
+            backgroundColor: 'var(--colors-interactive-active-ghost-background)',
           },
         },
       },
@@ -86,7 +97,7 @@ const theme = createTheme({
     MuiChip: {
       styleOverrides: {
         root: {
-          fontWeight: 'var(--font-weights-medium)' as unknown as number,
+          fontWeight: 'var(--font-weights-regular)' as unknown as number,
           fontSize: 'var(--font-sizes-12)',
           borderRadius: 'var(--radii-full)',
         },

@@ -385,7 +385,7 @@ export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('FrontlineWorker')
   const [features, setFeatures] = useState<FeatureFlags>(DEFAULT_FLAGS)
   const [systemMode, setSystemMode] = useState<'new' | 'existing'>('existing')
-  const [denialsView, setDenialsView] = useState<'v1' | 'v2' | 'v3' | 'ingest-mvp' | 'future-scope'>('v2')
+  const [denialsView, setDenialsView] = useState<'v1' | 'v2' | 'v3' | 'future-scope'>('v2')
   const [existingNav, setExistingNav] = useState<'worklist' | 'ingest' | 'new-denial' | 'new-denial-details'>('worklist')
   const [transitionDir, setTransitionDir] = useState<'forward' | 'back'>('forward')
   const [transitionKey, setTransitionKey] = useState(0)
@@ -731,14 +731,14 @@ export default function App() {
           )}
 
           {/* Existing system page sub-header */}
-          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && !((denialsView === 'ingest-mvp' || denialsView === 'v3' || denialsView === 'v2') && existingNav === 'ingest' && v3ShowUpload) && (
+          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && !((denialsView === 'v3' || denialsView === 'v2') && existingNav === 'ingest' && v3ShowUpload) && (
             <Box sx={{ px: 3, height: 56, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
               <Box sx={{ flex: 1 }}>
                 <Typography sx={{ fontSize: '1.125rem', fontWeight: 600, lineHeight: 1.2, color: 'text.primary' }}>
                   {existingNav === 'worklist' ? 'Denials Worklist' : 'Denials Intake'}
                 </Typography>
               </Box>
-              {existingNav === 'ingest' && denialsView !== 'ingest-mvp' && denialsView !== 'v3' && denialsView !== 'v2' && (
+              {existingNav === 'ingest' && denialsView !== 'v3' && denialsView !== 'v2' && (
                 <Button
                   variant="contained"
                   onClick={() => { setReturnContext(null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }}
@@ -747,7 +747,7 @@ export default function App() {
                   New Denial
                 </Button>
               )}
-              {existingNav === 'ingest' && (denialsView === 'v3' || denialsView === 'ingest-mvp' || denialsView === 'v2') && (
+              {existingNav === 'ingest' && (denialsView === 'v3' || denialsView === 'v2') && (
                 <>
                   <ButtonGroup
                     variant="contained"
@@ -779,7 +779,7 @@ export default function App() {
                       dense
                       onClick={() => {
                         setV3NewDenialAnchor(null)
-                        if (denialsView === 'ingest-mvp' || denialsView === 'v3') {
+                        if (denialsView === 'v3') {
                           setV3NewDenialPanelOpen(true)
                         } else {
                           setV3ShowUpload(false)
@@ -842,26 +842,7 @@ export default function App() {
             {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v3' && (
               <DenialsWorklistV3Page denials={visibleDenials} />
             )}
-            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'ingest-mvp' && !selectedV2CaseId && (
-              <DenialsWorklistV3Page
-                denials={visibleDenials}
-                onSelectDenial={handleV2SelectDenial}
-                reviewCompleteIds={v2ReviewCompleteIds}
-                initialTab={v2ReturnTab}
-                assignedToMe={v2AssignedToMe}
-                onAssignedToMeChange={setV2AssignedToMe}
-                onAssign={(denialId: string, member: TeamMember | null) => setDenials(prev => prev.map(d => d.id === denialId ? { ...d, assignedTo: member } : d))}
-              />
-            )}
-            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'ingest-mvp' && selectedV2CaseId && (
-              <CasePageAiEditing
-                hideNav
-                onBack={() => setSelectedV2CaseId(null)}
-                caseRecord={visibleDenials.find(d => d.id === selectedV2CaseId) ?? undefined}
-                onStatusAction={handleV2StatusAction}
-              />
-            )}
-            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'future-scope' && (
+{systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'future-scope' && (
               <DenialsWorklistFutureScopePage denials={visibleDenials} />
             )}
             {systemMode === 'existing' && existingNav === 'new-denial' && (
@@ -902,7 +883,7 @@ export default function App() {
                 </Box>
               </>
             )}
-            {systemMode === 'existing' && existingNav === 'ingest' && (denialsView === 'ingest-mvp' || denialsView === 'v3' || denialsView === 'v2') && (
+            {systemMode === 'existing' && existingNav === 'ingest' && (denialsView === 'v3' || denialsView === 'v2') && (
               <IngestPage features={features} onNavigate={(nav, returnCtx) => {
                 if (nav === 'Denials') { setReturnContext(null); setExistingNav('worklist') }
                 else if (nav === 'new-denial') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }
@@ -1128,41 +1109,6 @@ export default function App() {
                 </Box>
               )
             })}
-          </Box>
-        </Box>
-
-        {/* Divider */}
-        <Box sx={{ height: '1px', bgcolor: 'rgba(255,255,255,0.1)', mx: -0.5 }} />
-
-        {/* ── Ingest panel mvp ── */}
-        <Box>
-          <Box
-            onClick={() => { setSystemMode('existing'); setDenialsView('ingest-mvp'); setExistingNav('ingest') }}
-            sx={{
-              px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer',
-              fontSize: '0.7rem', fontWeight: 600, display: 'inline-flex',
-              bgcolor: systemMode === 'existing' && denialsView === 'ingest-mvp' ? '#fff' : 'rgba(255,255,255,0.12)',
-              color: systemMode === 'existing' && denialsView === 'ingest-mvp' ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
-              '&:hover': { bgcolor: systemMode === 'existing' && denialsView === 'ingest-mvp' ? '#fff' : 'rgba(255,255,255,0.2)' },
-            }}
-          >
-            Ingest panel mvp
-          </Box>
-        </Box>
-
-        {/* ── Ingest panel future state ── */}
-        <Box>
-          <Box
-            onClick={() => { setSystemMode('existing'); setDenialsView('v3'); setExistingNav('ingest') }}
-            sx={{
-              px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer',
-              fontSize: '0.7rem', fontWeight: 600, display: 'inline-flex',
-              bgcolor: systemMode === 'existing' && denialsView === 'v3' ? '#fff' : 'rgba(255,255,255,0.12)',
-              color: systemMode === 'existing' && denialsView === 'v3' ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
-              '&:hover': { bgcolor: systemMode === 'existing' && denialsView === 'v3' ? '#fff' : 'rgba(255,255,255,0.2)' },
-            }}
-          >
-            Ingest panel future state
           </Box>
         </Box>
 

@@ -163,7 +163,7 @@ function FindEncounterStep({ onSelect, onCancel, encounterOnly }: { onSelect: (e
             <Button
               startIcon={<ArrowBackIcon sx={{ fontSize: '18px !important' }} />}
               onClick={onCancel}
-              sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500, p: 0, minWidth: 0, '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}
+              sx={{ fontSize: '0.875rem', p: 0, minWidth: 0 }}
             >
               Back
             </Button>
@@ -173,7 +173,7 @@ function FindEncounterStep({ onSelect, onCancel, encounterOnly }: { onSelect: (e
           {!encounterOnly && (
             <Button
               onClick={onCancel}
-              sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500 }}
+              sx={{ fontSize: '0.875rem' }}
             >
               Cancel
             </Button>
@@ -219,7 +219,7 @@ function FindEncounterStep({ onSelect, onCancel, encounterOnly }: { onSelect: (e
           <Button
             startIcon={<AddIcon sx={{ fontSize: '16px !important' }} />}
             size="small"
-            sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.8125rem', fontWeight: 500, p: 0, minWidth: 0, mb: 2.5, '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}
+            sx={{ fontSize: '0.8125rem', p: 0, minWidth: 0, mb: 2.5 }}
           >
             Add identifier
           </Button>
@@ -375,12 +375,12 @@ function NewDenialDetailsStep({ selectedEncounter, onBack, onCancel, fromDrawer,
             <Button
               startIcon={<ArrowBackIcon sx={{ fontSize: '18px !important' }} />}
               onClick={onBack}
-              sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500, p: 0, minWidth: 0, '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}
+              sx={{ fontSize: '0.875rem', p: 0, minWidth: 0 }}
             >
               {fromDrawer ? 'Back' : 'Find Encounter'}
             </Button>
             {!fromDrawer && (
-              <Button onClick={onCancel} sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500 }}>
+              <Button onClick={onCancel} sx={{ fontSize: '0.875rem' }}>
                 Cancel
               </Button>
             )}
@@ -493,13 +493,13 @@ function NewDenialDetailsStep({ selectedEncounter, onBack, onCancel, fromDrawer,
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <Typography sx={{ fontSize: '0.875rem', fontWeight: 500, color: 'rgba(0,0,0,0.87)' }}>Adjusted Diagnoses</Typography>
-                    <Button startIcon={<AddIcon sx={{ fontSize: '18px !important' }} />} sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 400, p: 0, alignSelf: 'flex-start', '&:hover': { bgcolor: 'transparent' } }}>
+                    <Button startIcon={<AddIcon sx={{ fontSize: '18px !important' }} />} sx={{ fontSize: '0.875rem', p: 0, alignSelf: 'flex-start' }}>
                       Add Diagnosis Code
                     </Button>
                   </Box>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <Typography sx={{ fontSize: '0.875rem', fontWeight: 500, color: 'rgba(0,0,0,0.87)' }}>Adjusted Procedures</Typography>
-                    <Button startIcon={<AddIcon sx={{ fontSize: '18px !important' }} />} sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 400, p: 0, alignSelf: 'flex-start', '&:hover': { bgcolor: 'transparent' } }}>
+                    <Button startIcon={<AddIcon sx={{ fontSize: '18px !important' }} />} sx={{ fontSize: '0.875rem', p: 0, alignSelf: 'flex-start' }}>
                       Add Procedure
                     </Button>
                   </Box>
@@ -525,10 +525,10 @@ function NewDenialDetailsStep({ selectedEncounter, onBack, onCancel, fromDrawer,
 
       {/* Sticky footer */}
       <Box sx={{ bgcolor: '#fff', borderTop: '1px solid #E0E0E0', px: 4, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1.5, flexShrink: 0, boxShadow: '0 -2px 8px rgba(0,0,0,0.06)' }}>
-        <Button variant="outlined" onClick={fromDrawer ? onCancel : onBack} sx={{ color: 'rgba(0,0,0,0.87)', borderColor: 'rgba(0,0,0,0.23)', fontSize: '0.9375rem', fontWeight: 500, px: 2.5 }}>
+        <Button variant="outlined" onClick={fromDrawer ? onCancel : onBack} sx={{ fontSize: '0.9375rem', px: 2.5 }}>
           {fromDrawer ? 'Cancel' : 'Back'}
         </Button>
-        <Button variant="contained" onClick={onCancel} sx={{ fontSize: '0.9375rem', fontWeight: 500, px: 2.5 }}>
+        <Button variant="contained" onClick={onCancel} sx={{ fontSize: '0.9375rem', px: 2.5 }}>
           {fromDrawer ? 'Save' : 'Create Denial'}
         </Button>
       </Box>

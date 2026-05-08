@@ -844,9 +844,8 @@ function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = nu
         onClick={onBack}
         startIcon={<ChevronLeftIcon sx={{ fontSize: '16px !important', mr: '-4px' }} />}
         sx={{
-          color: '#1976D2', fontSize: '0.875rem', fontWeight: 500,
+          fontSize: '0.875rem',
           p: 0, minWidth: 0, mb: 0.75,
-          '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' },
         }}
       >
         Back to Worklist
@@ -930,7 +929,7 @@ function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = nu
             {ratingLabel}
           </Typography>
           <Typography
-            sx={{ color: '#1976D2', fontFamily: 'Archivo, sans-serif', fontSize: '0.706rem', fontWeight: 500, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+            sx={{ color: 'var(--colors-interactive-ghost-text)', fontFamily: 'Archivo, sans-serif', fontSize: '0.706rem', fontWeight: 500, cursor: 'pointer', '&:hover': { color: 'var(--colors-interactive-hover-ghost-text)' } }}
           >
             Add comment
           </Typography>
@@ -1065,7 +1064,7 @@ function CaseInfoPanel({ caseData, drgCodes, ui, dispatch }) {
               <Box
                 component="span"
                 onClick={() => dispatch({ type: 'TOGGLE_REMARKS' })}
-                sx={{ color: '#1976D2', cursor: 'pointer', ml: 0.5, fontSize: '0.8125rem' }}
+                sx={{ color: 'var(--colors-interactive-ghost-text)', cursor: 'pointer', ml: 0.5, fontSize: '0.8125rem' }}
               >
                 {ui.remarksExpanded ? ' View Less' : ' View More'}
               </Box>
@@ -1211,10 +1210,7 @@ function LetterToolbar({ editorRef, saveStatus, savedAt, versionCount, letterMen
             onClick={onManualSave}
             variant={saveStatus === 'unsaved' ? 'contained' : 'outlined'}
             sx={{
-              borderColor: saveStatus === 'unsaved' ? undefined : 'rgba(25,118,210,0.5)',
-              color: saveStatus === 'unsaved' ? undefined : '#1976D2',
-              fontSize: '0.7rem', fontWeight: 700, px: 1.25, py: '6.5px', height: 34,
-              textTransform: 'capitalize',
+              fontSize: '0.7rem', px: 1.25, py: '6.5px', height: 34,
             }}
           >
             Save
@@ -1225,23 +1221,23 @@ function LetterToolbar({ editorRef, saveStatus, savedAt, versionCount, letterMen
           startIcon={<ContentCopyIcon sx={{ fontSize: '21px !important' }} />}
           onClick={onCopy}
           variant="outlined"
-          sx={{ borderColor: 'rgba(25,118,210,0.5)', color: '#1976D2', fontSize: '0.7rem', fontWeight: 700, px: 1.25, py: '6.5px', height: 34, textTransform: 'capitalize' }}
+          sx={{ fontSize: '0.7rem', px: 1.25, py: '6.5px', height: 34 }}
         >
-          copy
+          Copy
         </Button>
         <Button
           size="small"
           startIcon={<AutorenewIcon sx={{ fontSize: '21px !important' }} />}
           onClick={onCreateVersion}
           variant="outlined"
-          sx={{ borderColor: 'rgba(25,118,210,0.5)', color: '#1976D2', fontSize: '0.7rem', fontWeight: 700, px: 1.25, py: '6.5px', height: 34, textTransform: 'capitalize' }}
+          sx={{ fontSize: '0.7rem', px: 1.25, py: '6.5px', height: 34 }}
         >
           Create New Version
         </Button>
         <IconButton
           size="small"
           onClick={(e) => dispatch({ type: 'OPEN_LETTER_MENU', payload: e.currentTarget })}
-          sx={{ border: '1px solid rgba(25,118,210,0.5)', color: '#1976D2', width: 34, height: 34, borderRadius: '4px', '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.04)' } }}
+          sx={{ border: '1px solid var(--colors-interactive-default-border)', color: 'var(--colors-interactive-ghost-text)', width: 34, height: 34, borderRadius: '4px' }}
         >
           <MoreHorizIcon sx={{ fontSize: 17.5 }} />
         </IconButton>
@@ -1392,11 +1388,7 @@ function AiChangesActionBar({ onAccept, onReject }) {
         variant="outlined"
         onClick={onReject}
         startIcon={<DeleteIcon sx={{ fontSize: '14px !important' }} />}
-        sx={{
-          borderColor: 'rgba(25,118,210,0.5)', color: '#1976D2',
-          fontSize: '0.75rem', fontWeight: 700, px: 1.5, height: 30,
-          textTransform: 'none', flexShrink: 0,
-        }}
+        sx={{ fontSize: '0.75rem', px: 1.5, height: 30, flexShrink: 0 }}
       >
         Reject
       </Button>
@@ -1404,10 +1396,7 @@ function AiChangesActionBar({ onAccept, onReject }) {
         size="small"
         variant="contained"
         onClick={onAccept}
-        sx={{
-          fontSize: '0.75rem', fontWeight: 700, px: 1.5, height: 30,
-          textTransform: 'none', flexShrink: 0,
-        }}
+        sx={{ fontSize: '0.75rem', px: 1.5, height: 30, flexShrink: 0 }}
       >
         Accept &amp; Save
       </Button>
@@ -1503,7 +1492,7 @@ function AiPromptBar({ prompt, onPromptChange, uploadedDocs, onAddDoc, onRemoveD
             variant="outlined"
             onClick={onReject}
             startIcon={<DeleteIcon sx={{ fontSize: '14px !important' }} />}
-            sx={{ borderColor: 'rgba(25,118,210,0.5)', color: '#1976D2', fontSize: '0.75rem', fontWeight: 700, px: 1.5, height: 30, textTransform: 'none', flexShrink: 0 }}
+            sx={{ fontSize: '0.75rem', px: 1.5, height: 30, flexShrink: 0 }}
           >
             Reject
           </Button>
@@ -1511,7 +1500,7 @@ function AiPromptBar({ prompt, onPromptChange, uploadedDocs, onAddDoc, onRemoveD
             size="small"
             variant="contained"
             onClick={onAccept}
-            sx={{ fontSize: '0.75rem', fontWeight: 700, px: 1.5, height: 30, textTransform: 'none', flexShrink: 0 }}
+            sx={{ fontSize: '0.75rem', px: 1.5, height: 30, flexShrink: 0 }}
           >
             Accept &amp; Save
           </Button>
@@ -1617,7 +1606,7 @@ function AiPromptBar({ prompt, onPromptChange, uploadedDocs, onAddDoc, onRemoveD
                     <IconButton
                       size="small"
                       onClick={() => fileInputRef.current?.click()}
-                      sx={{ color: '#9CA3AF', '&:hover': { color: '#1976D2' }, width: 28, height: 28 }}
+                      sx={{ color: 'text.disabled', '&:hover': { color: 'var(--colors-interactive-ghost-text)' }, width: 28, height: 28 }}
                     >
                       <AttachFileIcon sx={{ fontSize: 16 }} />
                     </IconButton>
@@ -2107,7 +2096,7 @@ function MainContent({ state, dispatch, view, selectedVersionId, onViewVersionHi
               startIcon={<ChevronLeftIcon sx={{ fontSize: '18px !important', mr: '-4px' }} />}
               onClick={onBack}
               size="small"
-              sx={{ borderColor: 'rgba(25,118,210,0.5)', color: '#1976D2', fontSize: '0.8125rem', fontWeight: 500, px: 1.5 }}
+              sx={{ fontSize: '0.8125rem', px: 1.5 }}
             >
               Back to Current Draft
             </Button>
@@ -2117,7 +2106,7 @@ function MainContent({ state, dispatch, view, selectedVersionId, onViewVersionHi
               onClick={() => onRestore(selectedVersion.id, selectedVersion.content)}
               disabled={selectedVersion.isCurrentDraft}
               size="small"
-              sx={{ fontSize: '0.8125rem', fontWeight: 500, px: 1.5 }}
+              sx={{ fontSize: '0.8125rem', px: 1.5 }}
             >
               Restore This Draft
             </Button>
@@ -2320,7 +2309,7 @@ function HistorySection({ activity, versions, dispatch }) {
                   <Typography
                     component="span"
                     onClick={viewDenialInNewTab}
-                    sx={{ fontSize: '0.75rem', color: '#1976D2', cursor: 'pointer', '&:hover': { textDecoration: 'underline' }, display: 'inline-flex', alignItems: 'center', gap: 0.25 }}
+                    sx={{ fontSize: '0.75rem', color: 'var(--colors-interactive-ghost-text)', cursor: 'pointer', '&:hover': { color: 'var(--colors-interactive-hover-ghost-text)' }, display: 'inline-flex', alignItems: 'center', gap: 0.25 }}
                   >
                     View Denial <OpenInNewIcon sx={{ fontSize: 12 }} />
                   </Typography>
@@ -2328,7 +2317,7 @@ function HistorySection({ activity, versions, dispatch }) {
                 {entry.hasAppealLink && (
                   <Typography
                     component="span"
-                    sx={{ fontSize: '0.75rem', color: '#1976D2', cursor: 'pointer', '&:hover': { textDecoration: 'underline' }, display: 'inline-flex', alignItems: 'center', gap: 0.25 }}
+                    sx={{ fontSize: '0.75rem', color: 'var(--colors-interactive-ghost-text)', cursor: 'pointer', '&:hover': { color: 'var(--colors-interactive-hover-ghost-text)' }, display: 'inline-flex', alignItems: 'center', gap: 0.25 }}
                   >
                     Open Appeal <OpenInNewIcon sx={{ fontSize: 12 }} />
                   </Typography>
@@ -2366,10 +2355,10 @@ function CommentsSection({ comments, dispatch }) {
           {draft === '' ? (
             <Box
               onClick={() => setDraft(' ')}
-              sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', px: 1, py: '6px', borderRadius: '4px', '&:hover': { bgcolor: 'rgba(25,118,210,0.04)' } }}
+              sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', px: 1, py: '6px', borderRadius: '4px', '&:hover': { bgcolor: 'var(--colors-interactive-hover-ghost-background)' } }}
             >
-              <AddIcon sx={{ fontSize: 20, color: '#1976D2' }} />
-              <Typography sx={{ fontSize: '0.875rem', fontWeight: 700, color: '#1976D2', textTransform: 'capitalize' }}>
+              <AddIcon sx={{ fontSize: 20, color: 'var(--colors-interactive-ghost-text)' }} />
+              <Typography sx={{ fontSize: '0.875rem', color: 'var(--colors-interactive-ghost-text)' }}>
                 Add Comment
               </Typography>
             </Box>
@@ -2401,10 +2390,10 @@ function CommentsSection({ comments, dispatch }) {
             {comments.length > 0 && (
               <Box
                 onClick={() => setDraft(' ')}
-                sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:hover': { opacity: 0.8 } }}
+                sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:hover': { bgcolor: 'var(--colors-interactive-hover-ghost-background)' } }}
               >
-                <AddIcon sx={{ fontSize: 20, color: '#1976D2' }} />
-                <Typography sx={{ fontSize: '0.875rem', fontWeight: 700, color: '#1976D2', textTransform: 'capitalize' }}>
+                <AddIcon sx={{ fontSize: 20, color: 'var(--colors-interactive-ghost-text)' }} />
+                <Typography sx={{ fontSize: '0.875rem', color: 'var(--colors-interactive-ghost-text)' }}>
                   Add Comment
                 </Typography>
               </Box>
@@ -2787,7 +2776,7 @@ function EncounterSearchPanel({ activeEncId, encounters, onSelect, onCancel }) {
         <Typography sx={{ fontSize: '0.9375rem', fontWeight: 600, color: 'rgba(0,0,0,0.87)' }}>
           Find the Encounter for the Denial
         </Typography>
-        <Button size="small" onClick={onCancel} sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.8125rem', fontWeight: 400, p: 0, minWidth: 0 }}>
+        <Button size="small" onClick={onCancel} sx={{ fontSize: '0.8125rem', p: 0, minWidth: 0 }}>
           Cancel
         </Button>
       </Box>
@@ -2811,7 +2800,7 @@ function EncounterSearchPanel({ activeEncId, encounters, onSelect, onCancel }) {
       </Box>
 
       <Button startIcon={<AddIcon sx={{ fontSize: '16px !important' }} />} size="small"
-        sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.8125rem', fontWeight: 500, p: 0, minWidth: 0, mb: 2, '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}>
+        sx={{ fontSize: '0.8125rem', p: 0, minWidth: 0, mb: 2 }}>
         Add identifier
       </Button>
 
@@ -2858,7 +2847,7 @@ function EncounterSearchPanel({ activeEncId, encounters, onSelect, onCancel }) {
                     <TableCell sx={{ py: '12px', px: 2, whiteSpace: 'nowrap' }}>{enc.billedDrg}</TableCell>
                     <TableCell sx={{ py: '12px', textAlign: 'right', pr: 2 }}>
                       <Button size="small" onClick={() => onSelect(enc)}
-                        sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.8125rem', fontWeight: 500, p: 0, minWidth: 0, whiteSpace: 'nowrap', '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}>
+                        sx={{ fontSize: '0.8125rem', p: 0, minWidth: 0, whiteSpace: 'nowrap' }}>
                         Select
                       </Button>
                     </TableCell>
@@ -2931,7 +2920,7 @@ function EditFormContent({ caseData, dispatch }) {
               <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: 'rgba(0,0,0,0.54)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Encounter</Typography>
               {!caseInfoEditing && (
                 <Button startIcon={<EditIcon sx={{ fontSize: '17px !important' }} />} size="small" onClick={() => setCaseInfoEditing(true)}
-                  sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.8125rem', fontWeight: 500, p: 0, minWidth: 0, '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}>
+                  sx={{ fontSize: '0.8125rem', p: 0, minWidth: 0 }}>
                   Edit
                 </Button>
               )}
@@ -3112,7 +3101,7 @@ function EditFormContent({ caseData, dispatch }) {
                     </Table>
                   </TableContainer>
                   <Button startIcon={<AddIcon sx={{ fontSize: '18px !important' }} />}
-                    sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 400, p: 0, alignSelf: 'flex-start', '&:hover': { bgcolor: 'transparent' } }}>
+                    sx={{ fontSize: '0.875rem', p: 0, alignSelf: 'flex-start' }}>
                     Add Diagnosis Code
                   </Button>
                 </Box>
@@ -3120,7 +3109,7 @@ function EditFormContent({ caseData, dispatch }) {
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <Typography sx={{ fontSize: '1rem', fontWeight: 500, color: 'rgba(0,0,0,0.87)' }}>Adjusted Procedures</Typography>
                   <Button startIcon={<AddIcon sx={{ fontSize: '18px !important' }} />}
-                    sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 400, p: 0, alignSelf: 'flex-start', '&:hover': { bgcolor: 'transparent' } }}>
+                    sx={{ fontSize: '0.875rem', p: 0, alignSelf: 'flex-start' }}>
                     Add Procedure
                   </Button>
                 </Box>
@@ -3134,12 +3123,12 @@ function EditFormContent({ caseData, dispatch }) {
 
       <Box sx={{ bgcolor: '#fff', borderTop: '1px solid #E0E0E0', px: 4, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1.5, flexShrink: 0, boxShadow: '0 -2px 8px rgba(0,0,0,0.06)' }}>
         <Button variant="outlined" onClick={() => dispatch({ type: 'NAV_TO_CASE' })}
-          sx={{ color: 'rgba(0,0,0,0.87)', borderColor: 'rgba(0,0,0,0.23)', fontSize: '0.9375rem', fontWeight: 500, px: 2.5 }}>
+          sx={{ fontSize: '0.9375rem', px: 2.5 }}>
           Back to Letter
         </Button>
         <Button variant="contained"
           onClick={() => { dispatch({ type: 'SAVE_DENIAL_DETAILS' }); dispatch({ type: 'SHOW_SNACKBAR', payload: 'Saving denial details and regenerating letter…' }); }}
-          sx={{ fontSize: '0.9375rem', fontWeight: 500, px: 2.5 }}>
+          sx={{ fontSize: '0.9375rem', px: 2.5 }}>
           Save and Generate Letter
         </Button>
       </Box>
@@ -3180,10 +3169,10 @@ export function FindEncounterPage({ onSelect, onCancel }) {
         <Box sx={{ maxWidth: 960, mx: 'auto', width: '100%', px: 3, pt: 4, pb: 6 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3.5 }}>
             <Button startIcon={<ArrowBackIcon sx={{ fontSize: '18px !important' }} />} onClick={onCancel}
-              sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500, p: 0, minWidth: 0, '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}>
+              sx={{ fontSize: '0.875rem', p: 0, minWidth: 0 }}>
               Back to Worklist
             </Button>
-            <Button onClick={onCancel} sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500 }}>Cancel</Button>
+            <Button onClick={onCancel} sx={{ fontSize: '0.875rem' }}>Cancel</Button>
           </Box>
 
           <Box sx={{ mb: 3 }}>
@@ -3401,11 +3390,11 @@ export function NewDenialDetailsPage({ selectedEncounter, onBack, onCancel }) {
 
       <Box sx={{ bgcolor: '#fff', borderTop: '1px solid #E0E0E0', px: 4, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1.5, flexShrink: 0, boxShadow: '0 -2px 8px rgba(0,0,0,0.06)' }}>
         <Button variant="outlined" onClick={onBack}
-          sx={{ color: 'rgba(0,0,0,0.87)', borderColor: 'rgba(0,0,0,0.23)', fontSize: '0.9375rem', fontWeight: 500, px: 2.5 }}>
+          sx={{ fontSize: '0.9375rem', px: 2.5 }}>
           Back
         </Button>
         <Button variant="contained" onClick={onCancel}
-          sx={{ fontSize: '0.9375rem', fontWeight: 500, px: 2.5 }}>
+          sx={{ fontSize: '0.9375rem', px: 2.5 }}>
           Create Denial
         </Button>
       </Box>
@@ -3529,12 +3518,12 @@ function VersionHistoryLayout({ selectedVersionId, onSelectVersion, onBack, onRe
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: '#F6F8FA' }}>
         <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid #E0E0E0', px: 3, py: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <Button variant="outlined" startIcon={<ChevronLeftIcon sx={{ fontSize: '18px !important', mr: '-4px' }} />} onClick={onBack} size="small"
-            sx={{ borderColor: 'rgba(25,118,210,0.5)', color: '#1976D2', fontSize: '0.8125rem', fontWeight: 500, px: 1.5 }}>
+            sx={{ fontSize: '0.8125rem', px: 1.5 }}>
             Back to Current Draft
           </Button>
           <Button variant="contained" startIcon={<RestoreIcon sx={{ fontSize: '18px !important' }} />}
             onClick={() => onRestore(selectedVersion.content)} size="small"
-            sx={{ fontSize: '0.8125rem', fontWeight: 500, px: 1.5 }}>
+            sx={{ fontSize: '0.8125rem', px: 1.5 }}>
             Restore This Draft
           </Button>
         </Box>

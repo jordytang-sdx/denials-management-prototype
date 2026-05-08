@@ -51,13 +51,13 @@ const MODULE_TAG: Record<StagingModule, { label: string; bg: string; color: stri
   unknown:      { label: '—',        bg: '#f1f4f6', color: '#636a6f' },
 }
 
-const STATUS_CHIP: Record<StagingStatus, { label: string; bg: string; color: string }> = {
-  processing:     { label: 'Processing',     bg: '#e8f2f5', color: '#157d9d' },
-  auto_processed: { label: 'Auto-processed', bg: '#eaf6f4', color: '#227a6c' },
-  needs_review:   { label: 'Needs Review',   bg: '#fef3ea', color: '#b86823' },
-  resolved:       { label: 'Resolved',       bg: '#eaf6f4', color: '#227a6c' },
-  dismissed:      { label: 'Dismissed',      bg: '#f1f4f6', color: '#939a9f' },
-  expired:        { label: 'Expired',        bg: '#fbedee', color: '#9f383e' },
+const STATUS_CHIP: Record<StagingStatus, { label: string; bg: string; color: string; border: string }> = {
+  processing:     { label: 'Processing',     bg: 'var(--colors-badge-variant-info-background)',    color: 'var(--colors-badge-variant-info-text)',    border: '1px solid var(--colors-badge-variant-info-border)' },
+  auto_processed: { label: 'Auto-processed', bg: 'var(--colors-badge-variant-success-background)', color: 'var(--colors-badge-variant-success-text)', border: '1px solid var(--colors-badge-variant-success-border)' },
+  needs_review:   { label: 'Needs Review',   bg: 'var(--colors-badge-variant-warning-background)', color: 'var(--colors-badge-variant-warning-text)', border: '1px solid var(--colors-badge-variant-warning-border)' },
+  resolved:       { label: 'Resolved',       bg: 'var(--colors-badge-variant-success-background)', color: 'var(--colors-badge-variant-success-text)', border: '1px solid var(--colors-badge-variant-success-border)' },
+  dismissed:      { label: 'Dismissed',      bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' },
+  expired:        { label: 'Expired',        bg: 'var(--colors-badge-variant-error-background)',   color: 'var(--colors-badge-variant-error-text)',   border: '1px solid var(--colors-badge-variant-error-border)' },
 }
 
 const SIGNAL_LABELS: Record<StagingSignalType, string> = {
@@ -114,7 +114,7 @@ const REVIEW_CATEGORY_STYLE: Record<string, { bg: string; color: string; border:
   'Data needs review':           { bg: 'var(--colors-badge-variant-warning-background)',        color: 'var(--colors-badge-variant-warning-text)',        border: '1px solid var(--colors-badge-variant-warning-border)' },
   'Classification needs review': { bg: 'var(--colors-badge-variant-info-background)',           color: 'var(--colors-badge-variant-info-text)',           border: '1px solid var(--colors-badge-variant-info-border)' },
   'Related instance':            { bg: 'var(--colors-badge-variant-info-background)',           color: 'var(--colors-badge-variant-info-text)',           border: '1px solid var(--colors-badge-variant-info-border)' },
-  'Missing Data':                { bg: 'var(--colors-badge-variant-default-subtle-background)', color: 'var(--colors-badge-variant-default-subtle-text)', border: '1px solid var(--colors-badge-variant-default-subtle-border)' },
+  'Missing Data':                { bg: 'var(--colors-badge-variant-default-background)',        color: 'var(--colors-badge-variant-default-text)',        border: '1px solid var(--colors-badge-variant-default-border)' },
 }
 
 const EXISTING_REVIEW_CATEGORY: Partial<Record<NeedsReviewReason, string>> = {
@@ -122,8 +122,8 @@ const EXISTING_REVIEW_CATEGORY: Partial<Record<NeedsReviewReason, string>> = {
 }
 
 const EXISTING_REVIEW_SECONDARY: Partial<Record<NeedsReviewReason, string>> = {
-  low_confidence:   'Identification failed',
-  no_patient_match: 'Identification failed',
+  low_confidence:   'Encounter not found',
+  no_patient_match: 'Encounter not found',
   no_claim_match:   'Missing ICD-10 codes',
   missing_fields:   'Visit not available',
 }
@@ -278,8 +278,8 @@ function StatusChip({ status }: { status: StagingStatus }) {
       label={cfg.label}
       size="small"
       sx={{
-        height: 20, fontSize: '0.6875rem', fontWeight: 600,
-        bgcolor: cfg.bg, color: cfg.color,
+        height: 20, fontSize: '0.6875rem', fontWeight: 'var(--font-weights-regular)' as unknown as number,
+        bgcolor: cfg.bg, color: cfg.color, border: cfg.border,
         '& .MuiChip-label': { px: 1 },
         ...(status === 'processing' ? { animation: 'pulse 1.5s ease-in-out infinite', '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.5 } } } : {}),
       }}
@@ -341,13 +341,14 @@ const ICD10_OPTIONS = [
 // ── IssueCard ─────────────────────────────────────────────────────────────────
 
 function IssueCard({
-  reason, record, onResolved, onDecision, mode,
+  reason, record, onResolved, onDecision, mode, onSearch,
 }: {
   reason: NeedsReviewReason
   record: StagingRecord
   onResolved: (reason: NeedsReviewReason) => void
   onDecision?: (reason: NeedsReviewReason, decision: string) => void
   mode?: 'existing'
+  onSearch?: () => void
 }) {
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null)
   const [manualEntry, setManualEntry] = useState('')
@@ -386,7 +387,7 @@ function IssueCard({
           severity="error"
           sx={{ borderRadius: 0, alignItems: 'flex-start', bgcolor: '#FEE2E2' }}
           action={
-            <Button color="inherit" size="small" sx={{ fontSize: '0.75rem', textTransform: 'none', whiteSpace: 'nowrap' }}>
+            <Button color="inherit" size="small" sx={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
               Contact support
             </Button>
           }
@@ -414,7 +415,7 @@ function IssueCard({
       ) : (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
           <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: 'text.primary' }}>
-            {mode === 'existing' && reason === 'low_confidence' ? 'Select Encounter' : SECTION_TITLE[reason]}
+            {mode === 'existing' && reason === 'low_confidence' ? 'Encounter not found' : SECTION_TITLE[reason]}
           </Typography>
         </Box>
       )}
@@ -482,7 +483,7 @@ function IssueCard({
             <Button
               size="small"
               onClick={() => setDiagnosisRows(prev => [...prev, { code: '', adjustment: '' }])}
-              sx={{ p: 0, fontSize: '0.8125rem', textTransform: 'none', color: 'primary.main' }}
+              sx={{ p: 0, fontSize: '0.8125rem' }}
             >
               + Diagnosis
             </Button>
@@ -539,7 +540,7 @@ function IssueCard({
                   <Typography sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                     Existing instance
                   </Typography>
-                  <Button size="small" sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', textTransform: 'none', color: 'primary.main', lineHeight: 1 }}>
+                  <Button size="small" sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', lineHeight: 1 }}>
                     View instance
                   </Button>
                 </Box>
@@ -669,7 +670,7 @@ function IssueCard({
         mode === 'existing' ? (
           <Box>
             <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary', mb: 1 }}>
-              Extracted: "{String(ext.extractedPatientName ?? '—')}" · DOB {String(ext.extractedDob ?? '—')}. Select the correct encounter.
+              Encounter not found. Select a match or search to find the encounter.
             </Typography>
             {(ext.patientCandidates as Array<{ mrn: string; name: string; dob: string; matchSignals: string[] }> ?? []).map(c => (
               <Box
@@ -687,11 +688,20 @@ function IssueCard({
                 </Typography>
               </Box>
             ))}
-            <TextField
-              size="small" fullWidth placeholder="Or enter MRN manually"
-              value={manualEntry} onChange={e => setManualEntry(e.target.value)}
-              sx={{ mt: 0.5, '& .MuiInputBase-input': { fontSize: '0.8125rem' } }}
-            />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+              <TextField
+                size="small" fullWidth placeholder="Or enter HAR to search manually"
+                value={manualEntry} onChange={e => setManualEntry(e.target.value)}
+                sx={{ '& .MuiInputBase-input': { fontSize: '0.8125rem' } }}
+              />
+              <Button
+                size="small"
+                onClick={onSearch}
+                sx={{ p: 0, minWidth: 0, fontSize: '0.8125rem', flexShrink: 0 }}
+              >
+                Search
+              </Button>
+            </Box>
           </Box>
         ) : (
           <Box>
@@ -723,10 +733,7 @@ function IssueCard({
           size="small"
           disabled={!resolved}
           onClick={() => onResolved(reason)}
-          sx={{
-            mt: 1.5, fontSize: '0.75rem', textTransform: 'none',
-            ...(resolved && { bgcolor: '#157d9d', '&:hover': { bgcolor: '#11647e' } }),
-          }}
+          sx={{ mt: 1.5, fontSize: '0.75rem' }}
         >
           Mark resolved
         </Button>
@@ -759,10 +766,10 @@ function CompletionPanel({
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%', maxWidth: 240 }}>
-          <Button variant="contained" onClick={onClose} sx={{ textTransform: 'none' }}>
+          <Button variant="contained" onClick={onClose}>
             Close
           </Button>
-          <Button variant="outlined" onClick={onViewHistory} sx={{ textTransform: 'none' }}>
+          <Button variant="outlined" onClick={onViewHistory}>
             View history
           </Button>
         </Box>
@@ -897,9 +904,9 @@ function ReviewPanel({
         </Box>
         {record.reviewReasons.length > 0 && (() => {
           const cat = REVIEW_CATEGORY[record.reviewReasons[0]]
-          const catStyle = REVIEW_CATEGORY_STYLE[cat] ?? { bg: '#F1F5F9', color: '#64748B', border: '1px solid #CBD5E1' }
+          const catStyle = REVIEW_CATEGORY_STYLE[cat] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
           return (
-            <Chip label={cat} size="small" sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 600, bgcolor: catStyle.bg, color: catStyle.color, border: catStyle.border, '& .MuiChip-label': { px: 1 } }} />
+            <Chip label={cat} size="small" sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, bgcolor: catStyle.bg, color: catStyle.color, border: catStyle.border, '& .MuiChip-label': { px: 1 } }} />
           )
         })()}
       </Box>
@@ -920,7 +927,7 @@ function ReviewPanel({
             )}
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               {record.reviewReasons.map(r => (
-                <IssueCard key={`${record.id}-${r}`} reason={r} record={record} onResolved={handleResolved} onDecision={handleDecision} mode={mode} />
+                <IssueCard key={`${record.id}-${r}`} reason={r} record={record} onResolved={handleResolved} onDecision={handleDecision} mode={mode} onSearch={onNavigate ? () => onNavigate('new-denial', { tab: 'exceptions', recordId: record.id }) : undefined} />
               ))}
             </Box>
           </Box>
@@ -937,7 +944,7 @@ function ReviewPanel({
                 size="small"
                 endIcon={<OpenInNewOutlined sx={{ fontSize: 12 }} />}
                 onClick={() => onNavigate('new-denial-details', { tab: 'exceptions', recordId: record.id })}
-                sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', textTransform: 'none', color: '#157d9d', lineHeight: 1.2 }}
+                sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', lineHeight: 1.2 }}
               >
                 Edit denial details
               </Button>
@@ -949,7 +956,7 @@ function ReviewPanel({
                 {mode === 'existing' ? (
                   typeChip?.isUnknown
                     ? <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled' }}>–</Typography>
-                    : <Chip label={typeChip?.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 600, bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-label': { px: 0.75 } }} />
+                    : <Chip label={typeChip?.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, bgcolor: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)', '& .MuiChip-label': { px: 0.75 } }} />
                 ) : (
                   <>
                     <Chip label={MODULE_TAG[record.module].label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 700, bgcolor: MODULE_TAG[record.module].bg, color: MODULE_TAG[record.module].color, '& .MuiChip-label': { px: 0.75 } }} />
@@ -968,7 +975,7 @@ function ReviewPanel({
                     size="small"
                     onClick={() => setClassificationExpanded(p => !p)}
                     endIcon={classificationExpanded ? <ExpandLessOutlined /> : <ExpandMoreOutlined />}
-                    sx={{ fontSize: '0.6875rem', textTransform: 'none', color: 'text.secondary', p: 0 }}
+                    sx={{ fontSize: '0.6875rem', p: 0 }}
                   >
                     How was this classified?
                   </Button>
@@ -1001,7 +1008,7 @@ function ReviewPanel({
                   size="small"
                   endIcon={<OpenInNewOutlined sx={{ fontSize: 12 }} />}
                   onClick={() => onNavigate?.('new-denial', { tab: 'exceptions', recordId: record.id })}
-                  sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', textTransform: 'none', color: '#157d9d', lineHeight: 1.2 }}
+                  sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', lineHeight: 1.2 }}
                 >
                   Change encounter
                 </Button>
@@ -1109,12 +1116,12 @@ function ReviewPanel({
               <TextField size="small" fullWidth placeholder="Describe reason" value={dismissOther} onChange={e => setDismissOther(e.target.value)} sx={{ mt: 1, '& .MuiInputBase-input': { fontSize: '0.8125rem' } }} />
             )}
             <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
-              <Button size="small" onClick={() => setShowDismiss(false)} sx={{ textTransform: 'none', fontSize: '0.8125rem', color: 'var(--colors-ocean-4)' }}>Cancel</Button>
+              <Button size="small" onClick={() => setShowDismiss(false)} sx={{ fontSize: '0.8125rem' }}>Cancel</Button>
               <Button
                 size="small" variant="contained" color="error"
                 disabled={!dismissReason || (dismissReason === 'Other' && !dismissOther)}
                 onClick={() => onDismiss(record.id, dismissReason === 'Other' ? dismissOther : dismissReason)}
-                sx={{ textTransform: 'none', fontSize: '0.8125rem' }}
+                sx={{ fontSize: '0.8125rem' }}
               >
                 Dismiss
               </Button>
@@ -1130,7 +1137,7 @@ function ReviewPanel({
           <Button
             variant="text" size="small"
             onClick={() => setShowDismiss(true)}
-            sx={{ textTransform: 'none', fontSize: '0.8125rem', color: 'var(--colors-ocean-4)' }}
+            sx={{ fontSize: '0.8125rem' }}
           >
             Dismiss
           </Button>
@@ -1142,7 +1149,7 @@ function ReviewPanel({
         <Button
           variant="text" size="small"
           onClick={() => guardNav(onSkip, 'skip')}
-          sx={{ textTransform: 'none', fontSize: '0.8125rem', color: 'var(--colors-ocean-4)' }}
+          sx={{ fontSize: '0.8125rem' }}
         >
           Skip
         </Button>
@@ -1152,7 +1159,7 @@ function ReviewPanel({
           <Button
             variant="outlined" size="small"
             onClick={() => onAccept(record.id, matchDecision ?? undefined)}
-            sx={{ textTransform: 'none', fontSize: '0.8125rem' }}
+            sx={{ fontSize: '0.8125rem' }}
           >
             {ctaSaveLabel}
           </Button>
@@ -1163,14 +1170,14 @@ function ReviewPanel({
           <Button
             variant="contained" size="small"
             onClick={() => onAcceptAndNext(record.id, matchDecision ?? undefined)}
-            sx={{ textTransform: 'none', fontSize: '0.8125rem' }}
+            sx={{ fontSize: '0.8125rem' }}
           >
             {ctaNextLabel}
           </Button>
         ) : (
           <Tooltip title={`Resolve ${unresolvedCount} issue${unresolvedCount > 1 ? 's' : ''} above to continue`}>
             <span>
-              <Button variant="contained" size="small" disabled sx={{ textTransform: 'none', fontSize: '0.8125rem' }}>
+              <Button variant="contained" size="small" disabled sx={{ fontSize: '0.8125rem' }}>
                 {ctaNextLabel}
               </Button>
             </span>
@@ -1196,7 +1203,7 @@ function ReviewPanel({
           <Button
             size="small"
             onClick={() => setPendingAction(null)}
-            sx={{ textTransform: 'none', fontSize: '0.8125rem' }}
+            sx={{ fontSize: '0.8125rem' }}
           >
             Cancel
           </Button>
@@ -1204,7 +1211,7 @@ function ReviewPanel({
             size="small"
             color="error"
             onClick={() => executePending(false)}
-            sx={{ textTransform: 'none', fontSize: '0.8125rem' }}
+            sx={{ fontSize: '0.8125rem' }}
           >
             Discard changes
           </Button>
@@ -1213,7 +1220,7 @@ function ReviewPanel({
             variant="contained"
             disabled={!canAccept}
             onClick={() => executePending(true)}
-            sx={{ textTransform: 'none', fontSize: '0.8125rem' }}
+            sx={{ fontSize: '0.8125rem' }}
           >
             Save & continue
           </Button>
@@ -1286,7 +1293,7 @@ function InProgressDrawer({
                 size="small"
                 endIcon={<OpenInNewOutlined sx={{ fontSize: 12 }} />}
                 onClick={() => onNavigate?.('new-denial-details', { tab: 'in-progress', recordId: record.id })}
-                sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', textTransform: 'none', color: '#157d9d', lineHeight: 1.2 }}
+                sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', lineHeight: 1.2 }}
               >
                 Edit denial details
               </Button>
@@ -1295,7 +1302,7 @@ function InProgressDrawer({
           {record.classifiedAs ? (
             typeChip?.isUnknown
               ? <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled' }}>–</Typography>
-              : <Chip label={typeChip?.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 600, bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-label': { px: 0.75 } }} />
+              : <Chip label={typeChip?.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, bgcolor: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)', '& .MuiChip-label': { px: 0.75 } }} />
           ) : (
             <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled' }}>—</Typography>
           )}
@@ -1320,7 +1327,7 @@ function InProgressDrawer({
                   size="small"
                   endIcon={<OpenInNewOutlined sx={{ fontSize: 12 }} />}
                   onClick={() => onNavigate?.('new-denial', { tab: 'in-progress', recordId: record.id })}
-                  sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', textTransform: 'none', color: '#157d9d', lineHeight: 1.2 }}
+                  sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', lineHeight: 1.2 }}
                 >
                   Change encounter
                 </Button>
@@ -1430,7 +1437,7 @@ function InProgressDrawer({
                   size="small"
                   variant="outlined"
                   onClick={() => setNotesSaved(true)}
-                  sx={{ mt: 1, textTransform: 'none', fontSize: '0.75rem', color: notesSaved ? '#16A34A' : undefined, borderColor: notesSaved ? '#16A34A' : undefined }}
+                  sx={{ mt: 1, fontSize: '0.75rem', color: notesSaved ? '#16A34A' : undefined, borderColor: notesSaved ? '#16A34A' : undefined }}
                 >
                   {notesSaved ? 'Correction queued' : 'Queue correction'}
                 </Button>
@@ -1442,7 +1449,7 @@ function InProgressDrawer({
 
       {/* Footer */}
       <Box sx={{ px: 2.5, py: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
-        <Button variant="outlined" size="small" onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.8125rem' }}>
+        <Button variant="outlined" size="small" onClick={onClose} sx={{ fontSize: '0.8125rem' }}>
           Close
         </Button>
       </Box>
@@ -1509,7 +1516,7 @@ function InProgressTab({ records, mode, onNavigate, initialDrawerRecordId, inlin
               </Typography>
               <Box sx={{ width: 140, flexShrink: 0 }}>
                 {typeDisplay && !typeDisplay.isUnknown ? (
-                  <Chip label={typeDisplay.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 }, ...(inlinePanels ? { bgcolor: '#fff', color: '#64748B', border: '1px solid #CBD5E1' } : { bgcolor: '#fef3ea', color: '#b86823' }) }} />
+                  <Chip label={typeDisplay.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, '& .MuiChip-label': { px: 0.75 }, bgcolor: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }} />
                 ) : (
                   <Typography sx={{ fontSize: '0.75rem', color: 'text.disabled' }}>—</Typography>
                 )}
@@ -1679,7 +1686,7 @@ function ExceptionsTab({
             All incoming files have been processed without errors. You'll be notified here if any denials need manual attention.
           </Typography>
         </Box>
-        <Button variant="outlined" size="small" startIcon={<UploadFileOutlined />} sx={{ textTransform: 'none', mt: 1 }}>
+        <Button variant="outlined" size="small" startIcon={<UploadFileOutlined />} sx={{ mt: 1 }}>
           Upload a file manually
         </Button>
       </Box>
@@ -1704,7 +1711,7 @@ function ExceptionsTab({
               variant="contained"
               color="warning"
               onClick={() => openReview(exceptions[0].id)}
-              sx={{ textTransform: 'none', fontSize: '0.6875rem', py: 0.375, px: 1.25 }}
+              sx={{ fontSize: '0.6875rem', py: 0.375, px: 1.25 }}
             >
               Review all →
             </Button>
@@ -1762,15 +1769,15 @@ function ExceptionsTab({
                     if (!firstReason) return null
                     const category = (mode === 'existing' ? EXISTING_REVIEW_CATEGORY[firstReason] : undefined) ?? REVIEW_CATEGORY[firstReason]
                     const secondary = (mode === 'existing' ? EXISTING_REVIEW_SECONDARY[firstReason] : undefined) ?? REVIEW_SECONDARY[firstReason]
-                    const catStyle = REVIEW_CATEGORY_STYLE[category] ?? { bg: '#F1F5F9', color: '#64748B', border: '1px solid #CBD5E1' }
+                    const catStyle = REVIEW_CATEGORY_STYLE[category] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
                     return (
                       <>
                         <Chip
                           label={category}
                           size="small"
-                          sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 600, bgcolor: catStyle.bg, color: catStyle.color, border: catStyle.border, '& .MuiChip-label': { px: 0.875 }, flexShrink: 0 }}
+                          sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, bgcolor: catStyle.bg, color: catStyle.color, border: catStyle.border, '& .MuiChip-label': { px: 0.875 }, flexShrink: 0 }}
                         />
-                        <Typography sx={{ fontSize: '0.6875rem', color: 'text.secondary', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        <Typography sx={{ fontSize: '0.6875rem', color: catStyle.color, whiteSpace: 'nowrap', flexShrink: 0 }}>
                           {secondary}
                         </Typography>
                       </>
@@ -1852,7 +1859,7 @@ function ExceptionsTab({
                 size="small"
                 variant="outlined"
                 onClick={e => { e.stopPropagation(); openReview(record.id) }}
-                sx={{ width: 76, flexShrink: 0, textTransform: 'none', fontSize: '0.6875rem', py: 0.25, color: 'text.secondary', borderColor: '#CBD5E1', '&:hover': { borderColor: '#94A3B8', bgcolor: 'rgba(0,0,0,0.04)' } }}
+                sx={{ width: 76, flexShrink: 0, fontSize: '0.6875rem', py: 0.25 }}
               >
                 Review →
               </Button>
@@ -1906,6 +1913,7 @@ function ExceptionsTab({
                 onDismiss={handleDismiss}
                 onSkip={handleSkip}
                 mode={mode}
+                onNavigate={onNavigate}
               />
             </Box>
           )}
@@ -1981,7 +1989,7 @@ function ExceptionsTab({
               <Button
                 size="small"
                 onClick={() => { onNavigate(toast.worklist); setToast(null) }}
-                sx={{ textTransform: 'none', fontSize: '0.8125rem', fontWeight: 700, p: 0, minWidth: 0, color: 'success.dark' }}
+                sx={{ fontSize: '0.8125rem', p: 0, minWidth: 0, color: 'success.dark' }}
               >
                 View →
               </Button>
@@ -1989,7 +1997,7 @@ function ExceptionsTab({
                 <Button
                   size="small"
                   onClick={handleUndo}
-                  sx={{ textTransform: 'none', fontSize: '0.8125rem', fontWeight: 700, p: 0, minWidth: 0, color: 'success.dark' }}
+                  sx={{ fontSize: '0.8125rem', p: 0, minWidth: 0, color: 'success.dark' }}
                 >
                   Undo
                 </Button>
@@ -2002,7 +2010,7 @@ function ExceptionsTab({
                 <Button
                   size="small"
                   onClick={handleUndo}
-                  sx={{ textTransform: 'none', fontSize: '0.8125rem', fontWeight: 700, p: 0, minWidth: 0, color: 'success.dark' }}
+                  sx={{ fontSize: '0.8125rem', p: 0, minWidth: 0, color: 'success.dark' }}
                 >
                   Undo
                 </Button>
@@ -2015,7 +2023,7 @@ function ExceptionsTab({
                 <Button
                   size="small"
                   onClick={handleUndo}
-                  sx={{ textTransform: 'none', fontSize: '0.8125rem', fontWeight: 700, p: 0, minWidth: 0, color: 'inherit' }}
+                  sx={{ fontSize: '0.8125rem', p: 0, minWidth: 0, color: 'inherit' }}
                 >
                   Undo
                 </Button>
@@ -2028,7 +2036,7 @@ function ExceptionsTab({
                 <Button
                   size="small"
                   onClick={handleUndo}
-                  sx={{ textTransform: 'none', fontSize: '0.8125rem', fontWeight: 700, p: 0, minWidth: 0, color: 'inherit' }}
+                  sx={{ fontSize: '0.8125rem', p: 0, minWidth: 0, color: 'inherit' }}
                 >
                   Undo
                 </Button>
@@ -2128,7 +2136,7 @@ function HistoryTab({ records, mode, inlinePanels }: { records: StagingRecord[];
                   {/* Type */}
                   <Box sx={{ width: 140, flexShrink: 0 }}>
                     {typeDisplay && !typeDisplay.isUnknown ? (
-                      <Chip label={typeDisplay.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 700, '& .MuiChip-label': { px: 0.75 }, ...(inlinePanels ? { bgcolor: '#fff', color: '#64748B', border: '1px solid #CBD5E1' } : { bgcolor: '#fef3ea', color: '#b86823' }) }} />
+                      <Chip label={typeDisplay.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, '& .MuiChip-label': { px: 0.75 }, bgcolor: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }} />
                     ) : (
                       <Typography sx={{ fontSize: '0.75rem', color: 'text.disabled' }}>
                         {mode !== 'existing' ? (record.classifiedAs ?? SIGNAL_LABELS[record.signalType]) : '—'}
@@ -2208,7 +2216,7 @@ export default function IngestPage({ features: _features, onNavigate, mode, init
                   <Chip
                     label={exceptionCount}
                     size="small"
-                    sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 700, '& .MuiChip-label': { px: 0.75 }, bgcolor: 'var(--colors-badge-variant-warning-emphasized-background)', color: 'var(--colors-badge-variant-warning-emphasized-text)' }}
+                    sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, '& .MuiChip-label': { px: 0.75 }, bgcolor: 'var(--colors-badge-variant-warning-emphasized-background)', color: 'var(--colors-badge-variant-warning-emphasized-text)' }}
                   />
                 )}
               </Box>
@@ -2242,8 +2250,7 @@ export default function IngestPage({ features: _features, onNavigate, mode, init
               variant={showUpload ? 'contained' : 'outlined'}
               startIcon={<UploadFileOutlined sx={{ fontSize: 15 }} />}
               onClick={() => setShowUpload(v => !v)}
-              sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.5, px: 1.5, mr: 1.5, my: 'auto',
-                ...(showUpload ? { bgcolor: '#157d9d', '&:hover': { bgcolor: '#11647e' } } : {}) }}
+              sx={{ fontSize: '0.75rem', py: 0.5, px: 1.5, mr: 1.5, my: 'auto' }}
             >
               {showUpload ? 'Cancel' : 'Upload files'}
             </Button>
@@ -2257,7 +2264,7 @@ export default function IngestPage({ features: _features, onNavigate, mode, init
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
             <Button
               onClick={() => setShowUpload(false)}
-              sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500 }}
+              sx={{ fontSize: '0.875rem' }}
             >
               Cancel
             </Button>

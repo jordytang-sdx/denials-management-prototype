@@ -59,10 +59,10 @@ const ALLOWED_DENIAL_TYPES = ['DRG Downgrade', 'Medical Necessity']
 
 const ASSIGNABLE_MEMBERS = TEAM_MEMBERS
 
-const APPEAL_LEVEL_COLORS: Record<string, { bg: string; color: string }> = {
-  L1: { bg: '#e8f2f5', color: '#157d9d' },
-  L2: { bg: '#fef3ea', color: '#b86823' },
-  L3: { bg: '#fbedee', color: '#9f383e' },
+const APPEAL_LEVEL_COLORS: Record<string, { bg: string; color: string; border: string }> = {
+  L1: { bg: 'var(--colors-badge-variant-info-background)',    color: 'var(--colors-badge-variant-info-text)',    border: '1px solid var(--colors-badge-variant-info-border)' },
+  L2: { bg: 'var(--colors-badge-variant-warning-background)', color: 'var(--colors-badge-variant-warning-text)', border: '1px solid var(--colors-badge-variant-warning-border)' },
+  L3: { bg: 'var(--colors-badge-variant-error-background)',   color: 'var(--colors-badge-variant-error-text)',   border: '1px solid var(--colors-badge-variant-error-border)' },
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -200,16 +200,15 @@ function DeniedCell({ d }: { d: DenialRecord }) {
 }
 
 function AppealLevelCell({ d }: { d: DenialRecord }) {
-  const colors = APPEAL_LEVEL_COLORS[d.appealLevel] ?? { bg: '#f1f4f6', color: '#636a6f' }
+  const colors = APPEAL_LEVEL_COLORS[d.appealLevel] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
   return (
     <TableCell>
       <Chip
         label={d.appealLevel}
         size="small"
         sx={{
-          height: 22, fontSize: '0.75rem', fontWeight: 600,
-          bgcolor: colors.bg, color: colors.color,
-          border: `1px solid ${colors.color}`,
+          height: 22, fontSize: '0.75rem', fontWeight: 'var(--font-weights-regular)' as unknown as number,
+          bgcolor: colors.bg, color: colors.color, border: colors.border,
           '& .MuiChip-label': { px: 0.875 },
         }}
       />
@@ -857,7 +856,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
                     label={tabCounts[tab] ?? 0}
                     size="small"
                     sx={{
-                      height: 18, fontSize: '0.6875rem', fontWeight: 600,
+                      height: 18, fontSize: '0.6875rem', fontWeight: 'var(--font-weights-regular)' as unknown as number,
                       bgcolor: activeTab === tab ? 'var(--colors-ocean-1)' : 'rgba(0,0,0,0.06)',
                       color: activeTab === tab ? 'var(--colors-ocean-4)' : 'var(--colors-text-secondary)',
                       '& .MuiChip-label': { px: 0.625 },

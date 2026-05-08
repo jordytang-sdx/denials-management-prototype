@@ -156,20 +156,20 @@ const STATE_COLORS: Partial<Record<DenialState, { bg: string; color: string; bor
   Archive:    { bg: '#f1f4f6', color: '#939a9f', border: '#e2e6e9' },
 }
 
-const APPEAL_LEVEL_COLORS: Record<string, { bg: string; color: string }> = {
-  L1: { bg: '#e8f2f5', color: '#157d9d' },
-  L2: { bg: '#fef3ea', color: '#b86823' },
-  L3: { bg: '#fbedee', color: '#9f383e' },
+const APPEAL_LEVEL_COLORS: Record<string, { bg: string; color: string; border: string }> = {
+  L1: { bg: 'var(--colors-badge-variant-info-background)',    color: 'var(--colors-badge-variant-info-text)',    border: '1px solid var(--colors-badge-variant-info-border)' },
+  L2: { bg: 'var(--colors-badge-variant-warning-background)', color: 'var(--colors-badge-variant-warning-text)', border: '1px solid var(--colors-badge-variant-warning-border)' },
+  L3: { bg: 'var(--colors-badge-variant-error-background)',   color: 'var(--colors-badge-variant-error-text)',   border: '1px solid var(--colors-badge-variant-error-border)' },
 }
 
-const PAYMENT_STATUS_COLORS: Record<PaymentStatus, { bg: string; color: string }> = {
-  Pending:  { bg: '#fef3ea', color: '#b86823' },
-  Received: { bg: '#eaf6f4', color: '#227a6c' },
+const PAYMENT_STATUS_COLORS: Record<PaymentStatus, { bg: string; color: string; border: string }> = {
+  Pending:  { bg: 'var(--colors-badge-variant-warning-background)', color: 'var(--colors-badge-variant-warning-text)', border: '1px solid var(--colors-badge-variant-warning-border)' },
+  Received: { bg: 'var(--colors-badge-variant-success-background)', color: 'var(--colors-badge-variant-success-text)', border: '1px solid var(--colors-badge-variant-success-border)' },
 }
 
-const PACKET_STATUS_COLORS: Record<PacketStatus, { bg: string; color: string }> = {
-  'Assembling':        { bg: '#fef3ea', color: '#b86823' },
-  'Ready for Review':  { bg: '#eaf6f4', color: '#227a6c' },
+const PACKET_STATUS_COLORS: Record<PacketStatus, { bg: string; color: string; border: string }> = {
+  'Assembling':        { bg: 'var(--colors-badge-variant-warning-background)', color: 'var(--colors-badge-variant-warning-text)', border: '1px solid var(--colors-badge-variant-warning-border)' },
+  'Ready for Review':  { bg: 'var(--colors-badge-variant-success-background)', color: 'var(--colors-badge-variant-success-text)', border: '1px solid var(--colors-badge-variant-success-border)' },
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -226,12 +226,12 @@ function AssigneeDisplay({ member }: { member: TeamMember | null }) {
 }
 
 function AppealLevelChip({ level }: { level: string }) {
-  const colors = APPEAL_LEVEL_COLORS[level] ?? { bg: '#F3F4F6', color: '#6B7280' }
+  const colors = APPEAL_LEVEL_COLORS[level] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
   return (
     <Chip
       label={level}
       size="small"
-      sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 700, bgcolor: colors.bg, color: colors.color, '& .MuiChip-label': { px: 0.75 } }}
+      sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, bgcolor: colors.bg, color: colors.color, border: colors.border, '& .MuiChip-label': { px: 0.75 } }}
     />
   )
 }
@@ -317,7 +317,7 @@ function PatientCell({ denial, activeState }: { denial: DenialRecord; activeStat
         <Chip
           label="↩ L1 Upheld"
           size="small"
-          sx={{ mt: 0.5, height: 16, fontSize: '0.6rem', fontWeight: 700, bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-label': { px: 0.75 } }}
+          sx={{ mt: 0.5, height: 16, fontSize: '0.6rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, bgcolor: 'var(--colors-badge-variant-warning-background)', color: 'var(--colors-badge-variant-warning-text)', border: '1px solid var(--colors-badge-variant-warning-border)', '& .MuiChip-label': { px: 0.75 } }}
         />
       )}
     </TableCell>
@@ -401,7 +401,7 @@ function OptionalColCell({ colId, denial }: { colId: string; denial: DenialRecor
   if (colId === 'paymentStatus') return (
     <TableCell sx={{ py: 1.25 }}>
       {denial.paymentStatus ? (
-        <Chip label={denial.paymentStatus} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: PAYMENT_STATUS_COLORS[denial.paymentStatus].bg, color: PAYMENT_STATUS_COLORS[denial.paymentStatus].color, '& .MuiChip-label': { px: 0.75 } }} />
+        <Chip label={denial.paymentStatus} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, bgcolor: PAYMENT_STATUS_COLORS[denial.paymentStatus].bg, color: PAYMENT_STATUS_COLORS[denial.paymentStatus].color, border: PAYMENT_STATUS_COLORS[denial.paymentStatus].border, '& .MuiChip-label': { px: 0.75 } }} />
       ) : (
         <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
       )}
@@ -617,7 +617,7 @@ export default function WorklistPage({
                   <Chip
                     label={tabCount(tab)}
                     size="small"
-                    sx={{ height: 16, fontSize: '0.6875rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 } }}
+                    sx={{ height: 16, fontSize: '0.6875rem', fontWeight: 'var(--font-weights-regular)' as unknown as number, '& .MuiChip-label': { px: 0.75 } }}
                   />
                 </Box>
               }
@@ -917,9 +917,10 @@ export default function WorklistPage({
                           label={denial.packetStatus}
                           size="small"
                           sx={{
-                            height: 20, fontSize: '0.7rem', fontWeight: 600,
+                            height: 20, fontSize: '0.7rem', fontWeight: 'var(--font-weights-regular)' as unknown as number,
                             bgcolor: PACKET_STATUS_COLORS[denial.packetStatus].bg,
                             color: PACKET_STATUS_COLORS[denial.packetStatus].color,
+                            border: PACKET_STATUS_COLORS[denial.packetStatus].border,
                             '& .MuiChip-label': { px: 0.75 },
                           }}
                         />
@@ -1272,7 +1273,7 @@ export default function WorklistPage({
                   </RadioGroup>
                   {sort?.colId === colId && (
                     <Box sx={{ px: 1.5, pb: 0.75 }}>
-                      <Button size="small" variant="text" onClick={clearSort} sx={{ fontSize: '0.75rem', p: 0, color: 'text.secondary' }}>
+                      <Button size="small" variant="text" onClick={clearSort} sx={{ fontSize: '0.75rem', p: 0 }}>
                         Clear sort
                       </Button>
                     </Box>
@@ -1288,7 +1289,7 @@ export default function WorklistPage({
                       Filter
                     </Typography>
                     {currentFilterValues.length > 0 && (
-                      <Button size="small" onClick={() => clearColumnFilter(filterKey)} sx={{ fontSize: '0.6875rem', p: 0, minWidth: 0, color: 'text.secondary' }}>
+                      <Button size="small" onClick={() => clearColumnFilter(filterKey)} sx={{ fontSize: '0.6875rem', p: 0, minWidth: 0 }}>
                         Clear
                       </Button>
                     )}
@@ -1399,7 +1400,7 @@ export default function WorklistPage({
               />
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 2 }}>
-              <Button variant="text" onClick={() => setNotesModal(null)} sx={{ color: 'text.secondary' }}>Cancel</Button>
+              <Button variant="text" onClick={() => setNotesModal(null)}>Cancel</Button>
               <Button variant="contained" disableElevation onClick={() => handleSaveNotes(notesModal.denialId, notesModal.draft)}>Save</Button>
             </DialogActions>
           </Dialog>
@@ -1428,7 +1429,7 @@ export default function WorklistPage({
               slotProps={{ htmlInput: { min: new Date().toISOString().split('T')[0] } }}
             />
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-              <Button size="small" variant="text" onClick={() => setDeadlinePopover(null)} sx={{ color: 'text.secondary' }}>Cancel</Button>
+              <Button size="small" variant="text" onClick={() => setDeadlinePopover(null)}>Cancel</Button>
               <Button size="small" variant="contained" disableElevation
                 onClick={() => { if (deadlineDraftRef.current) handleDeadlineChange(deadlinePopover.denialId, deadlineDraftRef.current) }}
               >
