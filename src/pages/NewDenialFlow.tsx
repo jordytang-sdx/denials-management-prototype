@@ -95,7 +95,7 @@ const RECORD_ENCOUNTER_MAP: Record<string, Encounter> = {
     har: 'HAR-88210', mrn: 'MRN-88210', visitId: '7882-100',
     admit: '03/22/2026', discharge: '03/25/2026',
     dxCode: 'E11.9', dxName: 'Type 2 diabetes mellitus without complications', billedDrg: '638',
-    defaults: { payer: 'Aetna', deadline: '2026-04-07', denialType: 'denied_diagnosis' },
+    defaults: { payer: 'Aetna', deadline: '2026-04-07', denialType: 'drg_downgrade' },
   },
   'stg-009': {
     id: 'stg-009', patientName: 'George Okafor', dob: '08/03/1967',
@@ -109,28 +109,28 @@ const RECORD_ENCOUNTER_MAP: Record<string, Encounter> = {
     har: '2025-1142', mrn: 'MRN-20817', visitId: '1142-001',
     admit: '03/15/2026', discharge: '03/18/2026',
     dxCode: 'F32.9', dxName: 'Major depressive disorder, single episode', billedDrg: '885',
-    defaults: { payer: 'United Healthcare', denialType: 'denied_diagnosis' },
+    defaults: { payer: 'United Healthcare', denialType: 'drg_downgrade' },
   },
   'stg-011': {
     id: 'stg-011', patientName: 'Jose Martinez', dob: '11/28/1963',
     har: '2024-7102', mrn: 'MRN-10042', visitId: '7102-001',
     admit: '02/25/2026', discharge: '03/01/2026',
     dxCode: 'I50.9', dxName: 'Heart failure, unspecified', billedDrg: '293',
-    defaults: { payer: 'Aetna', denialType: 'denied_diagnosis' },
+    defaults: { payer: 'Aetna', denialType: 'drg_downgrade' },
   },
   'stg-012': {
     id: 'stg-012', patientName: 'Thomas Brennan', dob: '09/08/1952',
     har: '2025-8803', mrn: 'MRN-99881', visitId: '8803-001',
     admit: '02/26/2026', discharge: '03/01/2026',
     dxCode: 'J44.1', dxName: 'COPD with acute exacerbation', billedDrg: '190',
-    defaults: { denialType: 'denied_diagnosis' },
+    defaults: { denialType: 'drg_downgrade' },
   },
   'stg-013': {
     id: 'stg-013', patientName: 'Sandra Kim', dob: '07/19/1982',
     har: '2025-9910', mrn: 'MRN-12045', visitId: '9910-001',
     admit: '03/25/2026', discharge: '03/28/2026',
     dxCode: 'J96.21', dxName: 'Acute and chronic respiratory failure with hypoxia', billedDrg: '208',
-    defaults: { payer: 'Cigna', denialType: 'level_of_service' },
+    defaults: { payer: 'Cigna', denialType: 'medical_necessity' },
   },
 }
 
@@ -148,14 +148,7 @@ function FindEncounterStep({ onSelect, onCancel, encounterOnly }: { onSelect: (e
     setSearching(true)
     setHasSearched(true)
     setTimeout(() => {
-      const results = q
-        ? FIND_ENCOUNTER_LOOKUP.filter(enc => {
-            if (searchField === 'HAR')          return enc.har.toLowerCase().includes(q)
-            if (searchField === 'MRN')          return enc.mrn.toLowerCase().includes(q)
-            return enc.patientName.toLowerCase().includes(q)
-          })
-        : FIND_ENCOUNTER_LOOKUP
-      setSearchResults(results)
+      setSearchResults(q.length > 0 ? FIND_ENCOUNTER_LOOKUP : [])
       setSearching(false)
     }, 1500)
   }
@@ -166,13 +159,17 @@ function FindEncounterStep({ onSelect, onCancel, encounterOnly }: { onSelect: (e
 
         {/* Breadcrumb + Cancel row */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3.5 }}>
-          <Button
-            startIcon={<ArrowBackIcon sx={{ fontSize: '18px !important' }} />}
-            onClick={onCancel}
-            sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500, p: 0, minWidth: 0, '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}
-          >
-            {encounterOnly ? 'Back' : 'Denials List'}
-          </Button>
+          {encounterOnly ? (
+            <Button
+              startIcon={<ArrowBackIcon sx={{ fontSize: '18px !important' }} />}
+              onClick={onCancel}
+              sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500, p: 0, minWidth: 0, '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}
+            >
+              Back
+            </Button>
+          ) : (
+            <Box />
+          )}
           {!encounterOnly && (
             <Button
               onClick={onCancel}
@@ -309,10 +306,50 @@ function FindEncounterStep({ onSelect, onCancel, encounterOnly }: { onSelect: (e
   )
 }
 
+// ── SectionCard ───────────────────────────────────────────────────────────────
+
+function SectionCard({ title, children, highlighted }: { title: string; children: React.ReactNode; highlighted?: boolean }) {
+  return (
+    <Box sx={{
+      bgcolor: '#fff',
+      border: highlighted ? '1.5px solid #F59E0B' : '1px solid #E5E5E5',
+      borderRadius: '8px',
+      boxShadow: highlighted ? '0 0 0 3px rgba(245,158,11,0.08)' : '0px 1px 2px 0px rgba(0,0,0,0.05)',
+      overflow: 'hidden',
+    }}>
+      <Box sx={{
+        px: 3, py: 1.75,
+        bgcolor: highlighted ? '#FFFBEB' : '#FAFAFA',
+        borderBottom: '1px solid',
+        borderColor: highlighted ? '#FDE68A' : '#F0F0F0',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: 'rgba(0,0,0,0.54)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          {title}
+        </Typography>
+        {highlighted && (
+          <Typography sx={{ fontSize: '0.6875rem', fontWeight: 700, color: '#92400E', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Needs attention
+          </Typography>
+        )}
+      </Box>
+      <Box sx={{ px: 3, py: 2.5 }}>
+        {children}
+      </Box>
+    </Box>
+  )
+}
+
 // ── NewDenialDetailsStep ──────────────────────────────────────────────────────
 
-function NewDenialDetailsStep({ selectedEncounter, onBack, onCancel, fromDrawer }: { selectedEncounter: Encounter; onBack: () => void; onCancel: () => void; fromDrawer?: boolean }) {
-  const [denialType, setDenialType]         = useState(selectedEncounter.defaults?.denialType ?? 'denied_diagnosis')
+function NewDenialDetailsStep({ selectedEncounter, onBack, onCancel, fromDrawer, highlightSection }: {
+  selectedEncounter: Encounter
+  onBack: () => void
+  onCancel: () => void
+  fromDrawer?: boolean
+  highlightSection?: 'classification' | 'adjustments'
+}) {
+  const [denialType, setDenialType]         = useState(selectedEncounter.defaults?.denialType ?? 'drg_downgrade')
   const [level, setLevel]                   = useState('Level 2')
   const [payer, setPayer]                   = useState(selectedEncounter.defaults?.payer ?? '')
   const [payerRationale, setPayerRationale] = useState(selectedEncounter.defaults?.payerRationale ?? '')
@@ -331,7 +368,7 @@ function NewDenialDetailsStep({ selectedEncounter, onBack, onCancel, fromDrawer 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', bgcolor: '#F6F8FA' }}>
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
-        <Box sx={{ width: '100%', px: 3, pt: 4 }}>
+        <Box sx={{ maxWidth: 680, mx: 'auto', px: 3, pt: 4 }}>
 
           {/* Breadcrumb + Cancel row */}
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3.5 }}>
@@ -343,10 +380,7 @@ function NewDenialDetailsStep({ selectedEncounter, onBack, onCancel, fromDrawer 
               {fromDrawer ? 'Back' : 'Find Encounter'}
             </Button>
             {!fromDrawer && (
-              <Button
-                onClick={onCancel}
-                sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500 }}
-              >
+              <Button onClick={onCancel} sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500 }}>
                 Cancel
               </Button>
             )}
@@ -364,141 +398,96 @@ function NewDenialDetailsStep({ selectedEncounter, onBack, onCancel, fromDrawer 
             )}
           </Box>
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
 
-            {/* Encounter card */}
-            <Box sx={{ bgcolor: '#fff', border: '1px solid #E5E5E5', borderRadius: '8px', boxShadow: '0px 1px 2px 0px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-              <Box sx={{ px: 3, py: 1.75, bgcolor: '#FAFAFA', borderBottom: '1px solid #F0F0F0' }}>
-                <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: 'rgba(0,0,0,0.54)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                  Encounter
-                </Typography>
-              </Box>
-              <Box sx={{ px: 3, py: 2.5 }}>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '6px 24px' }}>
-                  {caseIdentifiers.map(({ label, value, isCode }) => (
-                    <Box key={label}>
-                      <Typography sx={{ fontSize: '0.6875rem', color: 'rgba(0,0,0,0.54)', letterSpacing: '0.4px', lineHeight: 1.66, mb: 0.25 }}>
-                        {label}
-                      </Typography>
-                      {isCode
-                        ? <CodeValue value={value} label={label} fontSize="0.875rem" />
-                        : (
-                          <Typography sx={{ fontSize: '0.875rem', fontWeight: 500, color: 'rgba(0,0,0,0.87)', lineHeight: 1.43 }}>
-                            {value}
-                          </Typography>
-                        )
-                      }
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
-            </Box>
-
-            {/* Denial Details card */}
-            <Box sx={{ bgcolor: '#fff', border: '1px solid #E5E5E5', borderRadius: '8px', boxShadow: '0px 1px 2px 0px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-              <Box sx={{ px: 3, py: 1.75, bgcolor: '#FAFAFA', borderBottom: '1px solid #F0F0F0' }}>
-                <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: 'rgba(0,0,0,0.54)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                  Denial Details
-                </Typography>
-              </Box>
-              <Box sx={{ px: 3, py: 3 }}>
-                <Box sx={{ display: 'flex', gap: 0, flexWrap: 'wrap', alignItems: 'stretch' }}>
-
-                  {/* Left column */}
-                  <Box sx={{ flex: '1 0 220px', display: 'flex', flexDirection: 'column', gap: 3, pr: 4 }}>
-                    <Box sx={{ display: 'flex', gap: 3 }}>
-                      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                        <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>Level</Typography>
-                        <FormControl size="small" fullWidth>
-                          <Select value={level} onChange={e => setLevel(e.target.value)}>
-                            {LEVEL_OPTIONS.map(l => <MenuItem key={l} value={l}>{l}</MenuItem>)}
-                          </Select>
-                        </FormControl>
-                      </Box>
-                      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                        <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>Appeal Deadline</Typography>
-                        <TextField size="small" type="date" fullWidth value={deadlineISO} onChange={e => setDeadlineISO(e.target.value)} />
-                      </Box>
-                    </Box>
-
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                      <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>Payer</Typography>
-                      <FormControl size="small" fullWidth>
-                        <Select
-                          value={payer}
-                          onChange={e => setPayer(e.target.value)}
-                          displayEmpty
-                          renderValue={payer ? undefined : () => <span style={{ color: 'rgba(0,0,0,0.38)' }}>Select payer</span>}
-                        >
-                          <MenuItem value="Blue Cross Blue Shield of Michigan">Blue Cross Blue Shield of Michigan</MenuItem>
-                          <MenuItem value="Aetna">Aetna</MenuItem>
-                          <MenuItem value="United Healthcare">United Healthcare</MenuItem>
-                          <MenuItem value="Cigna">Cigna</MenuItem>
-                        </Select>
-                      </FormControl>
-                    </Box>
-
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                      <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>Review Entity (optional)</Typography>
-                      <FormControl size="small" fullWidth>
-                        <Select value="" displayEmpty renderValue={() => <span style={{ color: 'rgba(0,0,0,0.38)' }}>Search review entity</span>}>
-                          <MenuItem value="Optum">Optum</MenuItem>
-                          <MenuItem value="Cotiviti">Cotiviti</MenuItem>
-                          <MenuItem value="Performant">Performant</MenuItem>
-                        </Select>
-                      </FormControl>
-                    </Box>
-
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                      <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>Denial Type</Typography>
-                      <RadioGroup value={denialType} onChange={e => setDenialType(e.target.value)}>
-                        <FormControlLabel value="denied_diagnosis" control={<Radio size="small" />} label={<Typography sx={{ fontSize: '0.9375rem' }}>Denied Diagnosis</Typography>} />
-                        <FormControlLabel value="level_of_service" control={<Radio size="small" />} label={<Typography sx={{ fontSize: '0.9375rem' }}>Level of Service Medical Necessity</Typography>} />
-                      </RadioGroup>
-                    </Box>
-
-                    {denialType !== 'level_of_service' && (
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                        <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>DRG Review Type</Typography>
-                        <FormControl size="small" fullWidth>
-                          <Select value={drgReviewType} onChange={e => setDrgReviewType(e.target.value)}>
-                            {DRG_REVIEW_TYPE_OPTIONS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
-                          </Select>
-                        </FormControl>
-                      </Box>
-                    )}
+            {/* Encounter */}
+            <SectionCard title="Encounter">
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px 24px' }}>
+                {caseIdentifiers.map(({ label, value, isCode }) => (
+                  <Box key={label}>
+                    <Typography sx={{ fontSize: '0.6875rem', color: 'rgba(0,0,0,0.54)', letterSpacing: '0.4px', lineHeight: 1.66, mb: 0.25 }}>
+                      {label}
+                    </Typography>
+                    {isCode
+                      ? <CodeValue value={value} label={label} fontSize="0.875rem" />
+                      : <Typography sx={{ fontSize: '0.875rem', fontWeight: 500, color: 'rgba(0,0,0,0.87)', lineHeight: 1.43 }}>{value}</Typography>
+                    }
                   </Box>
-
-                  {/* Vertical divider */}
-                  <Box sx={{ width: '1px', bgcolor: '#E5E5E5', alignSelf: 'stretch', flexShrink: 0 }} />
-
-                  {/* Right column — Payer Rationale */}
-                  <Box sx={{ flex: '1 0 220px', display: 'flex', flexDirection: 'column', pl: 4 }}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, flex: 1 }}>
-                      <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>Payer Rationale</Typography>
-                      <TextField
-                        multiline fullWidth size="small"
-                        value={payerRationale}
-                        onChange={e => setPayerRationale(e.target.value)}
-                        placeholder="Enter the payer's rationale for denial…"
-                        minRows={8}
-                      />
-                    </Box>
-                  </Box>
-
-                </Box>
+                ))}
               </Box>
-            </Box>
+            </SectionCard>
 
-            {/* DRG card — hidden when Level of Service */}
-            {denialType !== 'level_of_service' && (
-              <Box sx={{ bgcolor: '#fff', border: '1px solid #E5E5E5', borderRadius: '8px', boxShadow: '0px 1px 2px 0px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-                <Box sx={{ px: 3, py: 1.75, bgcolor: '#FAFAFA', borderBottom: '1px solid #F0F0F0' }}>
-                  <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: 'rgba(0,0,0,0.54)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                    DRG
+            {/* Denial Classification */}
+            <SectionCard title="Denial Classification" highlighted={highlightSection === 'classification'}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                  <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>Denial Type</Typography>
+                  <RadioGroup value={denialType} onChange={e => setDenialType(e.target.value)}>
+                    <FormControlLabel value="drg_downgrade"      control={<Radio size="small" />} label={<Typography sx={{ fontSize: '0.9375rem' }}>DRG Downgrade</Typography>} />
+                    <FormControlLabel value="medical_necessity"  control={<Radio size="small" />} label={<Typography sx={{ fontSize: '0.9375rem' }}>Medical Necessity</Typography>} />
+                    <FormControlLabel value="other"              control={<Radio size="small" />} label={<Typography sx={{ fontSize: '0.9375rem' }}>Other</Typography>} />
+                  </RadioGroup>
+                </Box>
+                {denialType === 'drg_downgrade' && (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                    <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>DRG Review Type</Typography>
+                    <FormControl size="small" sx={{ maxWidth: 320 }}>
+                      <Select value={drgReviewType} onChange={e => setDrgReviewType(e.target.value)}>
+                        {DRG_REVIEW_TYPE_OPTIONS.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                )}
+              </Box>
+            </SectionCard>
+
+            {/* Denial Logistics */}
+            <SectionCard title="Denial Logistics">
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                    <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>Level</Typography>
+                    <FormControl size="small" fullWidth>
+                      <Select value={level} onChange={e => setLevel(e.target.value)}>
+                        {LEVEL_OPTIONS.map(l => <MenuItem key={l} value={l}>{l}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                    <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>Appeal Deadline</Typography>
+                    <TextField size="small" type="date" fullWidth value={deadlineISO} onChange={e => setDeadlineISO(e.target.value)} />
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                  <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>Payer</Typography>
+                  <FormControl size="small" fullWidth>
+                    <Select value={payer} onChange={e => setPayer(e.target.value)} displayEmpty renderValue={payer ? undefined : () => <span style={{ color: 'rgba(0,0,0,0.38)' }}>Select payer</span>}>
+                      <MenuItem value="Blue Cross Blue Shield of Michigan">Blue Cross Blue Shield of Michigan</MenuItem>
+                      <MenuItem value="Aetna">Aetna</MenuItem>
+                      <MenuItem value="United Healthcare">United Healthcare</MenuItem>
+                      <MenuItem value="Cigna">Cigna</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                  <Typography sx={{ fontSize: '0.875rem', color: '#616161' }}>
+                    Review Entity <span style={{ color: 'rgba(0,0,0,0.38)', fontWeight: 400 }}>(optional)</span>
                   </Typography>
+                  <FormControl size="small" fullWidth>
+                    <Select value="" displayEmpty renderValue={() => <span style={{ color: 'rgba(0,0,0,0.38)' }}>Search review entity</span>}>
+                      <MenuItem value="Optum">Optum</MenuItem>
+                      <MenuItem value="Cotiviti">Cotiviti</MenuItem>
+                      <MenuItem value="Performant">Performant</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Box>
-                <Box sx={{ px: 3, py: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              </Box>
+            </SectionCard>
+
+            {/* Payer Adjustments — DRG downgrade only */}
+            {denialType === 'drg_downgrade' && (
+              <SectionCard title="Payer Adjustments" highlighted={highlightSection === 'adjustments'}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <Typography sx={{ fontSize: '0.875rem', color: 'rgba(0,0,0,0.6)', lineHeight: 1.5 }}>
                     Add the diagnoses and procedures the payer adjusted.
                   </Typography>
@@ -515,8 +504,19 @@ function NewDenialDetailsStep({ selectedEncounter, onBack, onCancel, fromDrawer 
                     </Button>
                   </Box>
                 </Box>
-              </Box>
+              </SectionCard>
             )}
+
+            {/* Payer Rationale */}
+            <SectionCard title="Payer Rationale">
+              <TextField
+                multiline fullWidth size="small"
+                value={payerRationale}
+                onChange={e => setPayerRationale(e.target.value)}
+                placeholder="Enter the payer's rationale for denial…"
+                minRows={5}
+              />
+            </SectionCard>
 
             <Box sx={{ height: 48 }} />
           </Box>

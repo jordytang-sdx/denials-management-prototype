@@ -101,12 +101,32 @@ const theme = createTheme({
     MuiTableCell: {
       styleOverrides: {
         head: {
-          fontWeight: 'var(--font-weights-semibold)' as unknown as number,
-          fontSize: 'var(--font-sizes-12)',
-          letterSpacing: '0.05em',
-          textTransform: 'uppercase',
-          color: 'var(--colors-text-secondary)',
-          backgroundColor: 'var(--colors-grey-2)',
+          fontWeight: 'var(--font-weights-medium)' as unknown as number,
+          fontSize: 'var(--font-sizes-table-header-font-size)',
+          color: 'var(--colors-table-header-text)',
+          backgroundColor: 'var(--colors-table-header-background)',
+          borderBottom: '1px solid var(--colors-table-header-border)',
+        },
+        body: {
+          fontSize: 'var(--font-sizes-table-cell-font-size)',
+          color: 'var(--colors-text-primary)',
+          borderBottom: '1px solid var(--colors-table-row-border)',
+        },
+      },
+    },
+    MuiTableRow: {
+      styleOverrides: {
+        root: {
+          backgroundColor: 'var(--colors-table-row-background)',
+          '&:hover': {
+            backgroundColor: 'var(--colors-table-row-hover-background)',
+          },
+        },
+        head: {
+          backgroundColor: 'var(--colors-table-header-background)',
+          '&:hover': {
+            backgroundColor: 'var(--colors-table-header-background)',
+          },
         },
       },
     },

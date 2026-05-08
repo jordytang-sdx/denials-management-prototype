@@ -1,14 +1,14 @@
 import { useState, useMemo } from 'react'
 import {
   Box, Typography, Table, TableHead, TableBody, TableRow, TableCell,
-  TableContainer, Chip, IconButton, Tooltip, Tabs, Tab,
-  InputAdornment, TextField, Avatar, Checkbox, Popover, List, ListItemButton,
+  TableContainer, Chip, IconButton, Tooltip, Tabs, Tab, Avatar,
+  InputAdornment, TextField, Checkbox, Popover, List, ListItemButton,
   ListItemText, Divider,
 } from '@mui/material'
 import {
   ArrowUpward, ArrowDownward, SwapVert,
   StickyNote2Outlined, NoteAltOutlined, SearchOutlined,
-  Check, KeyboardArrowDown, FilterAltOutlined, ViewColumnOutlined,
+  Check, KeyboardArrowDown, FilterAltOutlined,
 } from '@mui/icons-material'
 import { type DenialRecord, type DenialState, type TeamMember, TEAM_MEMBERS, KRISTA } from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
@@ -16,46 +16,19 @@ import { getDenialTypeConfig } from '../data/denialTypeConfig'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SortDir = 'asc' | 'desc'
-type SortCol = 'patient' | 'deadline' | 'daysInQueue'
+type SortCol = 'patient' | 'deniedAmount' | 'deadline' | 'daysInQueue'
 type Sort = { col: SortCol; dir: SortDir } | null
-
-type ColumnKey =
-  | 'payer' | 'class' | 'denialType' | 'deniedAmount' | 'appealLevel'
-  | 'assignedTo' | 'reviewComplete'
-  | 'dos' | 'createdAt' | 'carc' | 'rarc' | 'claimId' | 'mrn' | 'priorityScore' | 'nextAction'
-
-const ALL_COLUMNS: { key: ColumnKey; label: string; defaultOn: boolean }[] = [
-  { key: 'payer',          label: 'Payer',           defaultOn: true  },
-  { key: 'class',          label: 'Class',           defaultOn: true  },
-  { key: 'denialType',     label: 'Denial Type',     defaultOn: true  },
-  { key: 'deniedAmount',   label: 'Denied Amount',   defaultOn: true  },
-  { key: 'appealLevel',    label: 'Appeal Level',    defaultOn: true  },
-  { key: 'assignedTo',     label: 'Assigned To',     defaultOn: true  },
-  { key: 'reviewComplete', label: 'Review Complete', defaultOn: true  },
-  { key: 'dos',            label: 'Date of Service', defaultOn: false },
-  { key: 'createdAt',      label: 'Ingested Date',   defaultOn: false },
-  { key: 'carc',           label: 'CARC Code',       defaultOn: false },
-  { key: 'rarc',           label: 'RARC Code',       defaultOn: false },
-  { key: 'claimId',        label: 'Claim ID',        defaultOn: false },
-  { key: 'mrn',            label: 'MRN',             defaultOn: false },
-  { key: 'priorityScore',  label: 'Priority Score',  defaultOn: false },
-  { key: 'nextAction',     label: 'Next Action',     defaultOn: false },
-]
-
-const DEFAULT_COLUMNS = new Set<ColumnKey>(ALL_COLUMNS.filter(c => c.defaultOn).map(c => c.key))
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS: DenialState[] = ['InProgress', 'Submitted', 'Overturned', 'Closed', 'Archive']
+const TABS: DenialState[] = ['Queue', 'InProgress', 'Submitted', 'Overturned', 'Closed']
 
 const TAB_LABELS: Record<DenialState, string> = {
-  Queue: 'Queue', InProgress: 'Ready', Submitted: 'Submitted',
+  Queue: 'Queue', InProgress: 'In Progress', Submitted: 'Submitted',
   Overturned: 'Overturned', Closed: 'Closed', Archive: 'Archive',
 }
 
 const TODAY = new Date('2026-04-02')
-
-const ALLOWED_DENIAL_TYPES = ['DRG Downgrade', 'Medical Necessity']
 
 const ASSIGNABLE_MEMBERS = TEAM_MEMBERS
 
@@ -170,21 +143,15 @@ function DenialTypeCell({ d }: { d: DenialRecord }) {
       <Typography sx={{ fontSize: '0.875rem', fontWeight: 500, color: cfg.color }}>
         {drg ? drg.typeLabel : d.denialType}
       </Typography>
-      {drg && (
+      {drg ? (
         <Typography sx={{ fontSize: '0.75rem', color: cfg.color }}>
           {drg.changeLabel}
         </Typography>
-      )}
-    </TableCell>
-  )
-}
-
-function ClassCell({ d }: { d: DenialRecord }) {
-  return (
-    <TableCell>
-      <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
-        {d.lineOfBusiness}
-      </Typography>
+      ) : d.denialSubtype ? (
+        <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+          {d.denialSubtype}
+        </Typography>
+      ) : null}
     </TableCell>
   )
 }
@@ -244,92 +211,6 @@ function NotesCell({ d }: { d: DenialRecord }) {
         </IconButton>
       </Tooltip>
     </TableCell>
-  )
-}
-
-// ─── Columns Button ───────────────────────────────────────────────────────────
-
-interface ColumnButtonProps {
-  visibleColumns: Set<ColumnKey>
-  onToggle: (key: ColumnKey) => void
-  onReset: () => void
-}
-
-function ColumnsButton({ visibleColumns, onToggle, onReset }: ColumnButtonProps) {
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
-  const isCustomized = ALL_COLUMNS.some(c => c.defaultOn !== visibleColumns.has(c.key))
-  return (
-    <>
-      <Box
-        component="button"
-        onClick={e => setAnchor(e.currentTarget as HTMLElement)}
-        sx={{
-          display: 'inline-flex', alignItems: 'center', gap: 0.5,
-          px: 1.25, py: 0.5, borderRadius: '6px',
-          border: '1px solid',
-          borderColor: isCustomized ? 'var(--colors-ocean-4)' : 'var(--colors-grey-4)',
-          bgcolor: isCustomized ? 'var(--colors-ocean-1)' : 'transparent',
-          color: isCustomized ? 'var(--colors-ocean-4)' : 'text.secondary',
-          fontSize: '0.8125rem', fontWeight: isCustomized ? 600 : 400,
-          fontFamily: 'inherit', cursor: 'pointer', outline: 'none',
-          lineHeight: 1.4, whiteSpace: 'nowrap',
-          transition: 'background-color 0.1s, border-color 0.1s',
-          '&:hover': { bgcolor: isCustomized ? 'var(--colors-ocean-2)' : 'action.hover' },
-        }}
-      >
-        <ViewColumnOutlined sx={{ fontSize: 15, mr: 0.25 }} />
-        Columns
-        <KeyboardArrowDown sx={{ fontSize: 14, ml: 0.25 }} />
-      </Box>
-      <Popover
-        open={Boolean(anchor)}
-        anchorEl={anchor}
-        onClose={() => setAnchor(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        PaperProps={{
-          sx: {
-            mt: 0.5, minWidth: 220,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-            border: '1px solid var(--colors-grey-4)', borderRadius: '8px',
-          },
-        }}
-      >
-        <Box sx={{ px: 1.5, pt: 1.25, pb: 0.5 }}>
-          <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Columns
-          </Typography>
-        </Box>
-        <List dense disablePadding sx={{ py: 0.5 }}>
-          {ALL_COLUMNS.map(({ key, label }) => {
-            const checked = visibleColumns.has(key)
-            return (
-              <ListItemButton key={key} onClick={() => onToggle(key)} sx={{ px: 1.5, py: 0.375 }}>
-                <Checkbox
-                  size="small" checked={checked} disableRipple
-                  sx={{ p: 0, mr: 1.25, '&.Mui-checked': { color: 'var(--colors-ocean-4)' } }}
-                />
-                <ListItemText primary={label} primaryTypographyProps={{ fontSize: '0.875rem' }} />
-              </ListItemButton>
-            )
-          })}
-        </List>
-        {isCustomized && (
-          <>
-            <Divider />
-            <Box sx={{ px: 1.5, py: 0.75 }}>
-              <Typography
-                variant="caption"
-                onClick={() => { onReset(); setAnchor(null) }}
-                sx={{ cursor: 'pointer', color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}
-              >
-                Reset to default
-              </Typography>
-            </Box>
-          </>
-        )}
-      </Popover>
-    </>
   )
 }
 
@@ -432,41 +313,23 @@ function FilterButton({ label, options, value, onChange }: FilterButtonProps) {
 
 interface Props {
   denials: DenialRecord[]
-  onSelectDenial?: (id: string, fromTab: DenialState) => void
-  reviewCompleteIds?: Set<string>
-  initialTab?: DenialState
-  assignedToMe?: boolean
-  onAssignedToMeChange?: (v: boolean) => void
-  onAssign?: (denialId: string, member: TeamMember | null) => void
+  onSelectDenial?: (id: string) => void
 }
 
-export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewCompleteIds, initialTab, assignedToMe: assignedToMeProp, onAssignedToMeChange, onAssign }: Props) {
-  const [activeTab, setActiveTab] = useState<DenialState>(initialTab ?? 'InProgress')
+export default function DenialsWorklistFutureScopePage({ denials, onSelectDenial }: Props) {
+  const [activeTab, setActiveTab] = useState<DenialState>('Queue')
   const [sort, setSort] = useState<Sort>(null)
   const [search, setSearch] = useState('')
-  const [assignedToMeLocal, setAssignedToMeLocal] = useState(false)
-  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(DEFAULT_COLUMNS)
-  const [closedStatusFilter, setClosedStatusFilter] = useState<string[]>([])
-  const [assignAnchor, setAssignAnchor] = useState<{ el: HTMLElement; denialId: string } | null>(null)
   const [payerFilter, setPayerFilter] = useState<string[]>([])
   const [denialTypeFilter, setDenialTypeFilter] = useState<string[]>([])
   const [appealLevelFilter, setAppealLevelFilter] = useState<string[]>([])
   const [lobFilter, setLobFilter] = useState<string[]>([])
   const [assignedToFilter, setAssignedToFilter] = useState<string[]>([])
-
-  const assignedToMe = assignedToMeProp ?? assignedToMeLocal
-  const setAssignedToMe = onAssignedToMeChange ?? setAssignedToMeLocal
-
-  const col = (key: ColumnKey) => visibleColumns.has(key)
-  function toggleColumn(key: ColumnKey) {
-    setVisibleColumns(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next })
-  }
-
-  function isAssignedToMe(d: DenialRecord): boolean {
-    return d.assignedTo?.id === KRISTA.id
-  }
+  const [assignOverrides, setAssignOverrides] = useState<Record<string, TeamMember | null>>({})
+  const [assignAnchor, setAssignAnchor] = useState<{ el: HTMLElement; denialId: string } | null>(null)
 
   function effectiveAssignee(d: DenialRecord): TeamMember | null {
+    if (d.id in assignOverrides) return assignOverrides[d.id] ?? null
     return d.assignedTo ?? null
   }
 
@@ -481,71 +344,57 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
   }, [search])
 
   const payerOptions = useMemo(() =>
-    [...new Set(denials.filter(d => ALLOWED_DENIAL_TYPES.includes(d.denialType)).map(d => d.payer))].sort(),
+    [...new Set(denials.map(d => d.payer))].sort(),
   [denials])
 
   const denialTypeOptions = useMemo(() =>
-    [...new Set(denials.filter(d => ALLOWED_DENIAL_TYPES.includes(d.denialType)).map(d => d.denialType))].sort(),
+    [...new Set(denials.map(d => d.denialType))].sort(),
   [denials])
 
   const lobOptions = useMemo(() =>
-    [...new Set(denials.filter(d => ALLOWED_DENIAL_TYPES.includes(d.denialType)).map(d => d.lineOfBusiness))].sort(),
+    [...new Set(denials.map(d => d.lineOfBusiness))].sort(),
   [denials])
 
   const assignedToOptions = useMemo(() => {
-    const scoped = denials.filter(d => ALLOWED_DENIAL_TYPES.includes(d.denialType))
-    const names = [...new Set(scoped.filter(d => d.assignedTo).map(d => d.assignedTo!.name))].sort()
-    if (scoped.some(d => !d.assignedTo)) names.push('Unassigned')
+    const names = [...new Set(denials.filter(d => d.assignedTo).map(d => d.assignedTo!.name))].sort()
+    if (denials.some(d => !d.assignedTo)) names.push('Unassigned')
     return names
   }, [denials])
 
-  function matchesTab(d: DenialRecord, t: DenialState): boolean {
-    return t === 'InProgress' ? (d.state === 'InProgress' || d.state === 'Queue') : d.state === t
-  }
-
   const tabCounts = useMemo(() =>
     Object.fromEntries(TABS.map(t => [t, denials.filter(d =>
-      matchesTab(d, t) &&
-      ALLOWED_DENIAL_TYPES.includes(d.denialType) &&
+      d.state === t &&
       (!searchMatches || searchMatches(d)) &&
-      (!assignedToMe || isAssignedToMe(d)) &&
       (payerFilter.length === 0 || payerFilter.includes(d.payer)) &&
       (denialTypeFilter.length === 0 || denialTypeFilter.includes(d.denialType)) &&
       (appealLevelFilter.length === 0 || appealLevelFilter.includes(d.appealLevel)) &&
       (lobFilter.length === 0 || lobFilter.includes(d.lineOfBusiness)) &&
       (assignedToFilter.length === 0 || assignedToFilter.some(n => n === 'Unassigned' ? !d.assignedTo : d.assignedTo?.name === n))
     ).length])),
-  [denials, searchMatches, assignedToMe, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
-
-  const closedStatusOptions = useMemo(() =>
-    [...new Set(denials.filter(d => d.state === 'Closed' && ALLOWED_DENIAL_TYPES.includes(d.denialType)).map(d => d.status))].sort() as string[],
-  [denials])
+  [denials, searchMatches, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
 
   const displayed = useMemo(() => {
     let rows = denials.filter(d =>
-      matchesTab(d, activeTab) &&
-      ALLOWED_DENIAL_TYPES.includes(d.denialType) &&
+      d.state === activeTab &&
       (!searchMatches || searchMatches(d)) &&
-      (!assignedToMe || isAssignedToMe(d)) &&
       (payerFilter.length === 0 || payerFilter.includes(d.payer)) &&
       (denialTypeFilter.length === 0 || denialTypeFilter.includes(d.denialType)) &&
       (appealLevelFilter.length === 0 || appealLevelFilter.includes(d.appealLevel)) &&
       (lobFilter.length === 0 || lobFilter.includes(d.lineOfBusiness)) &&
       (assignedToFilter.length === 0 || assignedToFilter.some(n => n === 'Unassigned' ? !d.assignedTo : d.assignedTo?.name === n))
     )
-    if (activeTab === 'Closed' && closedStatusFilter.length > 0)
-      rows = rows.filter(d => closedStatusFilter.includes(d.status))
     if (sort) {
       rows = [...rows].sort((a, b) => {
         let cmp = 0
         if (sort.col === 'patient')           cmp = formatPatientName(a.patient.name).localeCompare(formatPatientName(b.patient.name))
+        else if (sort.col === 'deniedAmount') cmp = a.deniedAmount - b.deniedAmount
         else if (sort.col === 'deadline')     cmp = new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
         else if (sort.col === 'daysInQueue')  cmp = daysSince(a.createdAt) - daysSince(b.createdAt)
         return sort.dir === 'asc' ? cmp : -cmp
       })
     }
     return rows
-  }, [denials, activeTab, searchMatches, sort, assignedToMe, closedStatusFilter, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
+  }, [denials, activeTab, searchMatches, sort, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
 
   function toggleSort(col: SortCol) {
     setSort(prev =>
@@ -558,7 +407,6 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
   function handleTabChange(_: React.SyntheticEvent, v: DenialState) {
     setActiveTab(v)
     setSort(null)
-    setClosedStatusFilter([])
   }
 
   // ── Column header sets per tab ─────────────────────────────────────────────
@@ -601,72 +449,60 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
   }
 
   function renderHeaders() {
-    const optionalCols = (
-      <>
-        {col('dos')           && <TableCell>Date of Service</TableCell>}
-        {col('createdAt')     && <TableCell>Ingested Date</TableCell>}
-        {col('carc')          && <TableCell>CARC</TableCell>}
-        {col('rarc')          && <TableCell>RARC</TableCell>}
-        {col('claimId')       && <TableCell>Claim ID</TableCell>}
-        {col('mrn')           && <TableCell>MRN</TableCell>}
-        {col('priorityScore') && <TableCell>Priority</TableCell>}
-        {col('nextAction')    && <TableCell>Next Action</TableCell>}
-      </>
-    )
     const shared = (
       <>
         <SortableHeader col="patient" label="Patient / HAR" {...sharedSort} />
-        {col('payer')       && <TableCell>Payer</TableCell>}
-        {col('class')       && <TableCell>Class</TableCell>}
-        {col('denialType')  && <TableCell>Denial Type</TableCell>}
-        {col('deniedAmount') && <TableCell align="right">Denied Amount</TableCell>}
-        {optionalCols}
+        <TableCell>Payer</TableCell>
+        <TableCell>Denial Type</TableCell>
+        <SortableHeader col="deniedAmount" label="Denied" align="right" {...sharedSort} />
       </>
+    )
+    if (activeTab === 'Queue') return (
+      <TableRow>
+        {shared}
+        <TableCell>Appeal Level</TableCell>
+        <SortableHeader col="deadline" label="Deadline" {...sharedSort} />
+        <SortableHeader col="daysInQueue" label="Days in Queue" align="right" {...sharedSort} />
+        <TableCell>Assigned To</TableCell>
+        <TableCell sx={{ width: 48 }} />
+      </TableRow>
     )
     if (activeTab === 'InProgress') return (
       <TableRow>
         {shared}
-        {col('appealLevel')    && <TableCell>Appeal Level</TableCell>}
+        <TableCell>Assigned To</TableCell>
+        <TableCell>Appeal Level</TableCell>
         <SortableHeader col="deadline" label="Deadline" {...sharedSort} />
-        {col('assignedTo')     && <TableCell>Assigned To</TableCell>}
-        {col('reviewComplete') && <TableCell sx={{ width: 120 }}>Review Complete</TableCell>}
-        <TableCell sx={{ width: 48 }} />
-      </TableRow>
-    )
-    if (activeTab === 'Archive') return (
-      <TableRow>
-        {shared}
-        {col('appealLevel') && <TableCell>Appeal Level</TableCell>}
-        <TableCell>Archive Reason</TableCell>
         <TableCell sx={{ width: 48 }} />
       </TableRow>
     )
     if (activeTab === 'Submitted') return (
       <TableRow>
         {shared}
-        {col('appealLevel') && <TableCell>Appeal Level</TableCell>}
+        <TableCell>Appeal Level</TableCell>
         <TableCell>Submitted</TableCell>
         <TableCell>Response Due</TableCell>
-        {col('assignedTo')  && <TableCell>Assigned To</TableCell>}
+        <TableCell>Assigned To</TableCell>
         <TableCell sx={{ width: 48 }} />
       </TableRow>
     )
     if (activeTab === 'Overturned') return (
       <TableRow>
         {shared}
-        {col('appealLevel') && <TableCell>Appeal Level</TableCell>}
+        <TableCell align="right">Recovered</TableCell>
+        <TableCell>Appeal Level</TableCell>
         <TableCell>Overturn Date</TableCell>
-        {col('assignedTo')  && <TableCell>Assigned To</TableCell>}
+        <TableCell>Assigned To</TableCell>
         <TableCell sx={{ width: 48 }} />
       </TableRow>
     )
     return (
       <TableRow>
         {shared}
-        {col('appealLevel') && <TableCell>Appeal Level</TableCell>}
+        <TableCell>Appeal Level</TableCell>
         <TableCell>Close Reason</TableCell>
         <TableCell>Closed Date</TableCell>
-        {col('assignedTo')  && <TableCell>Assigned To</TableCell>}
+        <TableCell>Assigned To</TableCell>
         <TableCell sx={{ width: 48 }} />
       </TableRow>
     )
@@ -677,62 +513,40 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
   function renderRow(d: DenialRecord) {
     const rowProps = {
       key: d.id,
-      onClick: () => onSelectDenial?.(d.id, activeTab),
+      onClick: () => onSelectDenial?.(d.id),
       sx: { cursor: onSelectDenial ? 'pointer' : 'default' },
     }
-
-    const optionalCells = (
-      <>
-        {col('dos')           && <TableCell><Typography sx={{ fontSize: '0.875rem' }}>{d.dos ? formatDate(d.dos) : '—'}</Typography></TableCell>}
-        {col('createdAt')     && <TableCell><Typography sx={{ fontSize: '0.875rem' }}>{d.createdAt ? formatDate(d.createdAt) : '—'}</Typography></TableCell>}
-        {col('carc')          && <TableCell><Typography sx={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{d.carc || '—'}</Typography></TableCell>}
-        {col('rarc')          && <TableCell><Typography sx={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{d.rarc || '—'}</Typography></TableCell>}
-        {col('claimId')       && <TableCell><Typography sx={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{d.claim.claimId || '—'}</Typography></TableCell>}
-        {col('mrn')           && <TableCell><Typography sx={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{d.patient.mrn || '—'}</Typography></TableCell>}
-        {col('priorityScore') && <TableCell><Typography sx={{ fontSize: '0.875rem' }}>{d.priorityScore ?? '—'}</Typography></TableCell>}
-        {col('nextAction')    && <TableCell><Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>{d.nextAction || '—'}</Typography></TableCell>}
-      </>
-    )
 
     const shared = (
       <>
         <PatientCell d={d} />
-        {col('payer')        && <PayerCell d={d} />}
-        {col('class')        && <ClassCell d={d} />}
-        {col('denialType')   && <DenialTypeCell d={d} />}
-        {col('deniedAmount') && <DeniedCell d={d} />}
-        {optionalCells}
+        <PayerCell d={d} />
+        <DenialTypeCell d={d} />
+        <DeniedCell d={d} />
       </>
+    )
+
+    if (activeTab === 'Queue') return (
+      <TableRow {...rowProps}>
+        {shared}
+        <AppealLevelCell d={d} />
+        <DeadlineCell d={d} />
+        <TableCell align="right">
+          <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
+            {daysSince(d.createdAt)}d
+          </Typography>
+        </TableCell>
+        {renderAssigneeCell(d)}
+        <NotesCell d={d} />
+      </TableRow>
     )
 
     if (activeTab === 'InProgress') return (
       <TableRow {...rowProps}>
         {shared}
-        {col('appealLevel')    && <AppealLevelCell d={d} />}
+        {renderAssigneeCell(d)}
+        <AppealLevelCell d={d} />
         <DeadlineCell d={d} />
-        {col('assignedTo')     && renderAssigneeCell(d)}
-        {col('reviewComplete') && (
-          <TableCell>
-            {reviewCompleteIds?.has(d.id) && (
-              <Tooltip title="Review complete — ready to submit">
-                <Check sx={{ fontSize: 18, color: 'var(--colors-ocean-4)' }} />
-              </Tooltip>
-            )}
-          </TableCell>
-        )}
-        <NotesCell d={d} />
-      </TableRow>
-    )
-
-    if (activeTab === 'Archive') return (
-      <TableRow {...rowProps}>
-        {shared}
-        {col('appealLevel') && <AppealLevelCell d={d} />}
-        <TableCell>
-          <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
-            {d.archiveReason ?? d.status}
-          </Typography>
-        </TableCell>
         <NotesCell d={d} />
       </TableRow>
     )
@@ -740,7 +554,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
     if (activeTab === 'Submitted') return (
       <TableRow {...rowProps}>
         {shared}
-        {col('appealLevel') && <AppealLevelCell d={d} />}
+        <AppealLevelCell d={d} />
         <TableCell>
           <Typography sx={{ fontSize: '0.875rem' }}>
             {d.submissionDate ? formatDate(d.submissionDate) : '—'}
@@ -758,7 +572,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
             <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled' }}>—</Typography>
           )}
         </TableCell>
-        {col('assignedTo') && renderAssigneeCell(d)}
+        {renderAssigneeCell(d)}
         <NotesCell d={d} />
       </TableRow>
     )
@@ -766,13 +580,18 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
     if (activeTab === 'Overturned') return (
       <TableRow {...rowProps}>
         {shared}
-        {col('appealLevel') && <AppealLevelCell d={d} />}
+        <TableCell align="right">
+          <Typography sx={{ fontSize: '0.875rem', fontVariantNumeric: 'tabular-nums', color: 'success.dark' }}>
+            {d.paidAmount != null ? formatCurrency(d.paidAmount) : '—'}
+          </Typography>
+        </TableCell>
+        <AppealLevelCell d={d} />
         <TableCell>
           <Typography sx={{ fontSize: '0.875rem' }}>
             {d.overturnDate ? formatDate(d.overturnDate) : '—'}
           </Typography>
         </TableCell>
-        {col('assignedTo') && renderAssigneeCell(d)}
+        {renderAssigneeCell(d)}
         <NotesCell d={d} />
       </TableRow>
     )
@@ -780,7 +599,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
     return (
       <TableRow {...rowProps}>
         {shared}
-        {col('appealLevel') && <AppealLevelCell d={d} />}
+        <AppealLevelCell d={d} />
         <TableCell>
           <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
             {d.closeReason ?? '—'}
@@ -791,7 +610,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
             {d.closedDate ? formatDate(d.closedDate) : '—'}
           </Typography>
         </TableCell>
-        {col('assignedTo') && renderAssigneeCell(d)}
+        {renderAssigneeCell(d)}
         <NotesCell d={d} />
       </TableRow>
     )
@@ -802,7 +621,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-      {/* Search + Filters */}
+      {/* Search + Filters — global across all tabs */}
       <Box sx={{ px: 2, py: 1, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
         <TextField
           size="small"
@@ -834,18 +653,11 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
             Clear all
           </Typography>
         )}
-        <Box sx={{ flex: 1 }} />
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5, my: 0.5 }} />
-        <ColumnsButton
-          visibleColumns={visibleColumns}
-          onToggle={toggleColumn}
-          onReset={() => setVisibleColumns(new Set(DEFAULT_COLUMNS))}
-        />
       </Box>
 
-      {/* Tabs + Assigned to me toggle */}
-      <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-        <Tabs value={activeTab} onChange={handleTabChange} sx={{ minHeight: 40, flex: 1 }}>
+      {/* Tabs — counts reflect active search */}
+      <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+        <Tabs value={activeTab} onChange={handleTabChange} sx={{ minHeight: 40 }}>
           {TABS.map(tab => (
             <Tab
               key={tab}
@@ -869,64 +681,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
             />
           ))}
         </Tabs>
-        <Box sx={{ px: 1.5 }}>
-          <Box
-            component="button"
-            onClick={() => setAssignedToMe(p => !p)}
-            sx={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              px: '12px', py: '8px', borderRadius: '4px',
-              border: 'none', cursor: 'pointer', outline: 'none',
-              bgcolor: assignedToMe ? '#e8f2f5' : 'transparent',
-              color: assignedToMe ? '#31373a' : '#636a6f',
-              fontSize: '0.875rem', fontWeight: 400, fontFamily: 'inherit',
-              lineHeight: '14px', whiteSpace: 'nowrap',
-              transition: 'background-color 0.1s',
-              '&:hover': { bgcolor: assignedToMe ? '#daedf2' : 'rgba(0,0,0,0.04)' },
-            }}
-          >
-            Assigned to me
-          </Box>
-        </Box>
       </Box>
-
-      {/* Closed-tab filters */}
-      {activeTab === 'Closed' && (
-        <Box sx={{ px: 2, py: 0.875, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500, mr: 0.5 }}>
-            Outcome:
-          </Typography>
-          {closedStatusOptions.map(status => {
-            const active = closedStatusFilter.includes(status)
-            return (
-              <Chip
-                key={status}
-                label={status}
-                size="small"
-                onClick={() => setClosedStatusFilter(prev => active ? prev.filter(s => s !== status) : [...prev, status])}
-                sx={{
-                  height: 24, fontSize: '0.75rem', fontWeight: active ? 600 : 400, cursor: 'pointer',
-                  bgcolor: active ? 'var(--colors-ocean-1)' : 'transparent',
-                  color: active ? 'var(--colors-ocean-4)' : 'text.secondary',
-                  border: '1px solid',
-                  borderColor: active ? 'var(--colors-ocean-4)' : 'divider',
-                  '& .MuiChip-label': { px: 1 },
-                  '&:hover': { bgcolor: active ? 'var(--colors-ocean-2)' : 'action.hover' },
-                }}
-              />
-            )
-          })}
-          {closedStatusFilter.length > 0 && (
-            <Typography
-              variant="caption"
-              onClick={() => setClosedStatusFilter([])}
-              sx={{ ml: 0.5, color: 'text.disabled', cursor: 'pointer', '&:hover': { color: 'text.secondary' } }}
-            >
-              Clear
-            </Typography>
-          )}
-        </Box>
-      )}
 
       {/* Table */}
       <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
@@ -935,7 +690,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
           <TableBody>
             {displayed.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} sx={{ textAlign: 'center', py: 8 }}>
+                <TableCell colSpan={9} sx={{ textAlign: 'center', py: 8 }}>
                   <Typography color="text.disabled">
                     {searchMatches
                       ? `No results for "${search.trim()}" in this tab — try another tab or clear the search`
@@ -980,7 +735,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
                     selected={isSelected}
                     onClick={() => {
                       if (assignAnchor) {
-                        onAssign?.(assignAnchor.denialId, m)
+                        setAssignOverrides(prev => ({ ...prev, [assignAnchor.denialId]: m }))
                         setAssignAnchor(null)
                       }
                     }}
@@ -1011,7 +766,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
                   <ListItemButton
                     onClick={() => {
                       if (assignAnchor) {
-                        onAssign?.(assignAnchor.denialId, null)
+                        setAssignOverrides(prev => ({ ...prev, [assignAnchor.denialId]: null }))
                         setAssignAnchor(null)
                       }
                     }}

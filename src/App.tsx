@@ -20,11 +20,11 @@ import { ThemeProvider, CssBaseline } from '@mui/material'
 import {
   Box, AppBar, Toolbar, Typography, Drawer, List, ListItemButton,
   ListItemIcon, ListItemText, Divider, Chip, Avatar, Tooltip, IconButton,
-  Button, Paper, Badge, Snackbar, Alert, Popover, Menu, MenuItem,
+  Button, ButtonGroup, Paper, Badge, Snackbar, Alert, Popover, Menu, MenuItem,
 } from '@mui/material'
 import {
   DashboardOutlined, ListAltOutlined, UploadFileOutlined,
-  SettingsOutlined, AccountTreeOutlined,
+  SettingsOutlined, AccountTreeOutlined, AddOutlined,
   NotificationsOutlined, HelpOutlineOutlined, RestartAltOutlined,
   ChevronLeftOutlined, ChevronRightOutlined, ArchiveOutlined,
   PaymentsOutlined, GavelOutlined, ViewListOutlined,
@@ -50,6 +50,7 @@ import AuditDetailPage from './pages/AuditDetailPage'
 import DenialListStyleEPage from './pages/DenialListStyleEPage'
 import DenialsWorklistV2Page from './pages/DenialsWorklistV2Page'
 import DenialsWorklistV3Page from './pages/DenialsWorklistV3Page'
+import DenialsWorklistFutureScopePage from './pages/DenialsWorklistFutureScopePage'
 import NewDenialFlow from './pages/NewDenialFlow'
 import CasePageAiEditing from './case-page/CasePageAiEditing'
 
@@ -125,6 +126,10 @@ function timeAgo(timestamp: string): string {
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}h ago`
   return `${Math.floor(hrs / 24)}d ago`
+}
+
+const PAGE_TITLES: Partial<Record<NavItem, string>> = {
+  Denials: 'Denials Worklist',
 }
 
 const PAGE_SUBTITLES: Partial<Record<NavItem, string>> = {
@@ -267,7 +272,7 @@ function ExistingSystemSidebar({
 }) {
   const navItems: { id: 'worklist' | 'ingest'; label: string }[] = [
     { id: 'worklist', label: 'Worklist' },
-    { id: 'ingest',   label: 'Ingest' },
+    { id: 'ingest',   label: 'Intake' },
   ]
 
   return (
@@ -380,13 +385,16 @@ export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('FrontlineWorker')
   const [features, setFeatures] = useState<FeatureFlags>(DEFAULT_FLAGS)
   const [systemMode, setSystemMode] = useState<'new' | 'existing'>('existing')
-  const [denialsView, setDenialsView] = useState<'v1' | 'v2' | 'v3'>('v2')
+  const [denialsView, setDenialsView] = useState<'v1' | 'v2' | 'v3' | 'ingest-mvp' | 'future-scope'>('v2')
   const [existingNav, setExistingNav] = useState<'worklist' | 'ingest' | 'new-denial' | 'new-denial-details'>('worklist')
   const [transitionDir, setTransitionDir] = useState<'forward' | 'back'>('forward')
   const [transitionKey, setTransitionKey] = useState(0)
   const [returnContext, setReturnContext] = useState<{ tab: 'exceptions' | 'in-progress'; recordId: string } | null>(null)
   const [widgetExpanded, setWidgetExpanded] = useState(false)
   const [pageKey, setPageKey] = useState(0)
+  const [v3ShowUpload, setV3ShowUpload] = useState(false)
+  const [v3NewDenialAnchor, setV3NewDenialAnchor] = useState<HTMLElement | null>(null)
+  const [v3NewDenialPanelOpen, setV3NewDenialPanelOpen] = useState(false)
 
   // Filter out misclassified ADR and Underpayment denial records — these now live in SEED_AUDITS
   const visibleDenials = denials.filter(d => d.denialType !== 'ADR' && d.denialType !== 'Underpayment')
@@ -544,7 +552,7 @@ export default function App() {
 
         {/* ── Existing System Sidebar ─────────────────────────────────────────── */}
         {systemMode === 'existing' && (
-          <ExistingSystemSidebar activeNav={existingNav} onNavChange={nav => { setReturnContext(null); setSelectedV2CaseId(null); setExistingNav(nav) }} needsReviewCount={needsReviewCount} />
+          <ExistingSystemSidebar activeNav={existingNav} onNavChange={nav => { setReturnContext(null); setSelectedV2CaseId(null); setV3ShowUpload(false); setExistingNav(nav) }} needsReviewCount={needsReviewCount} />
         )}
 
         {/* ── New System Sidebar ───────────────────────────────────────────────── */}
@@ -723,14 +731,14 @@ export default function App() {
           )}
 
           {/* Existing system page sub-header */}
-          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && (
-            <Box sx={{ px: 3, py: 2, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && !((denialsView === 'ingest-mvp' || denialsView === 'v3' || denialsView === 'v2') && existingNav === 'ingest' && v3ShowUpload) && (
+            <Box sx={{ px: 3, height: 56, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
               <Box sx={{ flex: 1 }}>
-                <Typography variant="h6" sx={{ lineHeight: 1.2 }}>
-                  {existingNav === 'worklist' ? 'Denials' : 'Ingest'}
+                <Typography sx={{ fontSize: '1.125rem', fontWeight: 600, lineHeight: 1.2, color: 'text.primary' }}>
+                  {existingNav === 'worklist' ? 'Denials Worklist' : 'Denials Intake'}
                 </Typography>
               </Box>
-              {existingNav === 'ingest' && (
+              {existingNav === 'ingest' && denialsView !== 'ingest-mvp' && denialsView !== 'v3' && denialsView !== 'v2' && (
                 <Button
                   variant="contained"
                   onClick={() => { setReturnContext(null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }}
@@ -738,6 +746,62 @@ export default function App() {
                 >
                   New Denial
                 </Button>
+              )}
+              {existingNav === 'ingest' && (denialsView === 'v3' || denialsView === 'ingest-mvp' || denialsView === 'v2') && (
+                <>
+                  <ButtonGroup
+                    variant="contained"
+                    size="small"
+                    sx={{ '& .MuiButton-root': { bgcolor: '#157d9d', '&:hover': { bgcolor: '#11647e' }, borderColor: '#11647e !important', textTransform: 'none', fontWeight: 500 } }}
+                  >
+                    <Button
+                      onClick={e => setV3NewDenialAnchor(e.currentTarget)}
+                      sx={{ fontSize: '0.8125rem', px: 2 }}
+                    >
+                      New Denial
+                    </Button>
+                    <Button
+                      onClick={e => setV3NewDenialAnchor(e.currentTarget)}
+                      sx={{ px: 0.75, minWidth: 'unset !important' }}
+                    >
+                      <ExpandMoreOutlined sx={{ fontSize: 16 }} />
+                    </Button>
+                  </ButtonGroup>
+                  <Menu
+                    anchorEl={v3NewDenialAnchor}
+                    open={Boolean(v3NewDenialAnchor)}
+                    onClose={() => setV3NewDenialAnchor(null)}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                    slotProps={{ paper: { sx: { mt: 0.5, minWidth: 160 } } }}
+                  >
+                    <MenuItem
+                      dense
+                      onClick={() => {
+                        setV3NewDenialAnchor(null)
+                        if (denialsView === 'ingest-mvp' || denialsView === 'v3') {
+                          setV3NewDenialPanelOpen(true)
+                        } else {
+                          setV3ShowUpload(false)
+                          setReturnContext(null)
+                          setTransitionDir('forward')
+                          setTransitionKey(k => k + 1)
+                          setExistingNav('new-denial')
+                        }
+                      }}
+                      sx={{ fontSize: '0.875rem' }}
+                    >
+                      Start manually
+                    </MenuItem>
+                    <MenuItem
+                      dense
+                      onClick={() => { setV3NewDenialAnchor(null); setV3ShowUpload(true) }}
+                      sx={{ fontSize: '0.875rem' }}
+                    >
+                      Upload files
+                    </MenuItem>
+                  </Menu>
+                </>
               )}
             </Box>
           )}
@@ -778,13 +842,35 @@ export default function App() {
             {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v3' && (
               <DenialsWorklistV3Page denials={visibleDenials} />
             )}
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'ingest-mvp' && !selectedV2CaseId && (
+              <DenialsWorklistV3Page
+                denials={visibleDenials}
+                onSelectDenial={handleV2SelectDenial}
+                reviewCompleteIds={v2ReviewCompleteIds}
+                initialTab={v2ReturnTab}
+                assignedToMe={v2AssignedToMe}
+                onAssignedToMeChange={setV2AssignedToMe}
+                onAssign={(denialId: string, member: TeamMember | null) => setDenials(prev => prev.map(d => d.id === denialId ? { ...d, assignedTo: member } : d))}
+              />
+            )}
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'ingest-mvp' && selectedV2CaseId && (
+              <CasePageAiEditing
+                hideNav
+                onBack={() => setSelectedV2CaseId(null)}
+                caseRecord={visibleDenials.find(d => d.id === selectedV2CaseId) ?? undefined}
+                onStatusAction={handleV2StatusAction}
+              />
+            )}
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'future-scope' && (
+              <DenialsWorklistFutureScopePage denials={visibleDenials} />
+            )}
             {systemMode === 'existing' && existingNav === 'new-denial' && (
               <NewDenialFlow encounterOnly={returnContext !== null} fromDrawer={returnContext !== null} onDone={() => { setTransitionDir('back'); setTransitionKey(k => k + 1); setExistingNav('ingest') }} />
             )}
             {systemMode === 'existing' && existingNav === 'new-denial-details' && (
               <NewDenialFlow initialStep="details" fromDrawer={returnContext !== null} recordId={returnContext?.recordId} onDone={() => { setTransitionDir('back'); setTransitionKey(k => k + 1); setExistingNav('ingest') }} />
             )}
-            {systemMode === 'existing' && existingNav === 'ingest' && (
+            {systemMode === 'existing' && existingNav === 'ingest' && denialsView === 'v1' && (
               <>
                 <Box
                   sx={{
@@ -815,6 +901,14 @@ export default function App() {
                   }} mode="existing" initialOpenDrawer={returnContext} />
                 </Box>
               </>
+            )}
+            {systemMode === 'existing' && existingNav === 'ingest' && (denialsView === 'ingest-mvp' || denialsView === 'v3' || denialsView === 'v2') && (
+              <IngestPage features={features} onNavigate={(nav, returnCtx) => {
+                if (nav === 'Denials') { setReturnContext(null); setExistingNav('worklist') }
+                else if (nav === 'new-denial') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }
+                else if (nav === 'new-denial-details') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial-details') }
+              }} mode="existing" initialOpenDrawer={returnContext} inlinePanels showUpload={v3ShowUpload} onShowUploadChange={setV3ShowUpload}
+              newDenialPanelOpen={v3NewDenialPanelOpen} onNewDenialPanelClose={() => setV3NewDenialPanelOpen(false)} />
             )}
             {systemMode === 'new' && showingWorklist && (
               <WorklistPage
@@ -1034,6 +1128,60 @@ export default function App() {
                 </Box>
               )
             })}
+          </Box>
+        </Box>
+
+        {/* Divider */}
+        <Box sx={{ height: '1px', bgcolor: 'rgba(255,255,255,0.1)', mx: -0.5 }} />
+
+        {/* ── Ingest panel mvp ── */}
+        <Box>
+          <Box
+            onClick={() => { setSystemMode('existing'); setDenialsView('ingest-mvp'); setExistingNav('ingest') }}
+            sx={{
+              px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer',
+              fontSize: '0.7rem', fontWeight: 600, display: 'inline-flex',
+              bgcolor: systemMode === 'existing' && denialsView === 'ingest-mvp' ? '#fff' : 'rgba(255,255,255,0.12)',
+              color: systemMode === 'existing' && denialsView === 'ingest-mvp' ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
+              '&:hover': { bgcolor: systemMode === 'existing' && denialsView === 'ingest-mvp' ? '#fff' : 'rgba(255,255,255,0.2)' },
+            }}
+          >
+            Ingest panel mvp
+          </Box>
+        </Box>
+
+        {/* ── Ingest panel future state ── */}
+        <Box>
+          <Box
+            onClick={() => { setSystemMode('existing'); setDenialsView('v3'); setExistingNav('ingest') }}
+            sx={{
+              px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer',
+              fontSize: '0.7rem', fontWeight: 600, display: 'inline-flex',
+              bgcolor: systemMode === 'existing' && denialsView === 'v3' ? '#fff' : 'rgba(255,255,255,0.12)',
+              color: systemMode === 'existing' && denialsView === 'v3' ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
+              '&:hover': { bgcolor: systemMode === 'existing' && denialsView === 'v3' ? '#fff' : 'rgba(255,255,255,0.2)' },
+            }}
+          >
+            Ingest panel future state
+          </Box>
+        </Box>
+
+        {/* Divider */}
+        <Box sx={{ height: '1px', bgcolor: 'rgba(255,255,255,0.1)', mx: -0.5 }} />
+
+        {/* ── Future scope ── */}
+        <Box>
+          <Box
+            onClick={() => { setSystemMode('existing'); setDenialsView('future-scope'); setExistingNav('worklist') }}
+            sx={{
+              px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer',
+              fontSize: '0.7rem', fontWeight: 600, display: 'inline-flex',
+              bgcolor: systemMode === 'existing' && denialsView === 'future-scope' ? '#fff' : 'rgba(255,255,255,0.12)',
+              color: systemMode === 'existing' && denialsView === 'future-scope' ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
+              '&:hover': { bgcolor: systemMode === 'existing' && denialsView === 'future-scope' ? '#fff' : 'rgba(255,255,255,0.2)' },
+            }}
+          >
+            Future scope
           </Box>
         </Box>
 

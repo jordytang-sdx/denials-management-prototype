@@ -2918,7 +2918,7 @@ function EditFormContent({ caseData, dispatch }) {
       )}
 
       <Box sx={{ flex: 1, overflowY: 'auto', bgcolor: '#F6F8FA' }}>
-        <Box sx={{ maxWidth: 960, mx: 'auto', px: 4, py: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <Box sx={{ width: '100%', px: 3, py: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <Box>
             <Typography sx={{ fontSize: '1.375rem', fontWeight: 600, color: '#272727', letterSpacing: '-0.01em' }}>
               Edit Denial Details

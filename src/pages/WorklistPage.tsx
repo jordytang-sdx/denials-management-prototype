@@ -42,10 +42,11 @@ export interface WorklistFilters {
   assignedTo: string[]
   paymentStatus: string[]
   appealLevel: string[]
+  closedStatus: string[]
 }
 
 export const DEFAULT_WORKLIST_FILTERS: WorklistFilters = {
-  payer: [], lineOfBusiness: [], denialType: [], assignedTo: [], paymentStatus: [], appealLevel: [],
+  payer: [], lineOfBusiness: [], denialType: [], assignedTo: [], paymentStatus: [], appealLevel: [], closedStatus: [],
 }
 
 interface ColPopoverState {
@@ -469,6 +470,7 @@ export default function WorklistPage({
   }, [inState])
   const allPaymentStatuses = useMemo(() => [...new Set(inState.map(d => d.paymentStatus).filter(Boolean))].sort(), [inState]) as PaymentStatus[]
   const allAppealLevels    = useMemo(() => [...new Set(inState.map(d => d.appealLevel))].sort(), [inState])
+  const allClosedStatuses  = useMemo(() => [...new Set(inState.map(d => d.status).filter(Boolean))].sort() as string[], [inState])
 
   // ── Filtered + sorted rows ─────────────────────────────────────────────────
 
@@ -492,6 +494,7 @@ export default function WorklistPage({
     if (filters.assignedTo.length > 0)    rows = rows.filter(r => filters.assignedTo.includes(r.assignedTo?.name ?? 'Unassigned'))
     if (filters.paymentStatus.length > 0) rows = rows.filter(r => r.paymentStatus && filters.paymentStatus.includes(r.paymentStatus))
     if (filters.appealLevel.length > 0)   rows = rows.filter(r => filters.appealLevel.includes(r.appealLevel))
+    if (filters.closedStatus.length > 0)  rows = rows.filter(r => filters.closedStatus.includes(r.status))
 
     if (sort) {
       rows.sort((a, b) => {
@@ -568,12 +571,13 @@ export default function WorklistPage({
   // ── Active filter flags ─────────────────────────────────────────────────────
 
   const activeFilters = {
-    payer:         filters.payer.length > 0,
+    payer:          filters.payer.length > 0,
     lineOfBusiness: filters.lineOfBusiness.length > 0,
-    denialType:    filters.denialType.length > 0,
-    assignedTo:    filters.assignedTo.length > 0,
-    paymentStatus: filters.paymentStatus.length > 0,
-    appealLevel:   filters.appealLevel.length > 0,
+    denialType:     filters.denialType.length > 0,
+    assignedTo:     filters.assignedTo.length > 0,
+    paymentStatus:  filters.paymentStatus.length > 0,
+    appealLevel:    filters.appealLevel.length > 0,
+    closedStatus:   filters.closedStatus.length > 0,
   }
 
   const tabCount = (t: WorklistActiveTab) => denials.filter(d => d.state === t).length
@@ -582,6 +586,11 @@ export default function WorklistPage({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+
+      {/* Page header */}
+      <Box sx={{ px: 3, height: 56, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+        <Typography sx={{ fontSize: '1.125rem', fontWeight: 600, lineHeight: 1.2, color: 'text.primary' }}>Denials Worklist</Typography>
+      </Box>
 
       {/* State tabs */}
       <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
@@ -765,7 +774,7 @@ export default function WorklistPage({
                 <ColHeader label="Denial Type"      colId="denialType"     filterable activeSort={sort} hasFilter={activeFilters.denialType} onOpen={openColPopover} width={185} />
                 <ColHeader label="Denied"           colId="deniedAmount"   sortable   activeSort={sort} hasFilter={false}                   onOpen={openColPopover} align="right" width={90} />
                 <ColHeader label="Appeal Level"     colId="appealLevel"    filterable activeSort={sort} hasFilter={activeFilters.appealLevel} onOpen={openColPopover} width={90} />
-                <ColHeader label="Close Reason"     colId="closeReason"               activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={160} />
+                <ColHeader label="Close Reason"     colId="closeReason"   filterable  activeSort={sort} hasFilter={activeFilters.closedStatus} onOpen={openColPopover} width={160} />
                 <ColHeader label="Closed Date"      colId="closedDate"                activeSort={sort} hasFilter={false}                   onOpen={openColPopover} width={110} />
                 {getOptionalCols('Closed').map(colId => (
                   <OptionalColHeader key={colId} colId={colId} activeSort={sort} hasFilter={colId === 'lineOfBusiness' ? activeFilters.lineOfBusiness : colId === 'assignedTo' ? activeFilters.assignedTo : false} onOpen={openColPopover} />
@@ -1155,6 +1164,9 @@ export default function WorklistPage({
         {activeFilters.appealLevel && (
           <Chip size="small" label={`Level: ${filters.appealLevel.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, appealLevel: [] }))} />
         )}
+        {activeFilters.closedStatus && (
+          <Chip size="small" label={`Close Reason: ${filters.closedStatus.join(', ')}`} onDelete={() => setFilters(p => ({ ...p, closedStatus: [] }))} />
+        )}
 
         <Box sx={{ flex: 1 }} />
 
@@ -1221,6 +1233,7 @@ export default function WorklistPage({
             colId === 'assignedTo'     ? 'assignedTo' :
             colId === 'paymentStatus'  ? 'paymentStatus' :
             colId === 'appealLevel'    ? 'appealLevel' :
+            colId === 'closeReason'    ? 'closedStatus' :
             null
 
           const filterOptions: string[] =
@@ -1230,6 +1243,7 @@ export default function WorklistPage({
             filterKey === 'assignedTo'     ? allAssignees :
             filterKey === 'paymentStatus'  ? allPaymentStatuses :
             filterKey === 'appealLevel'    ? allAppealLevels :
+            filterKey === 'closedStatus'   ? allClosedStatuses :
             []
           const currentFilterValues = filterKey ? filters[filterKey] : []
 

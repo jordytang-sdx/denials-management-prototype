@@ -17,13 +17,22 @@ import {
   type StagingModule, type StagingSignalType, type NeedsReviewReason,
 } from '../data/staging'
 import { type FeatureFlags } from '../data/featureFlags'
+import DenialDetailsPanel from '../components/DenialDetailsPanel'
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
+type ReturnContext = { tab: 'exceptions' | 'in-progress'; recordId: string }
+
 interface IngestPageProps {
   features: FeatureFlags
-  onNavigate: (nav: string) => void
+  onNavigate: (nav: string, returnContext?: ReturnContext) => void
   mode?: 'existing'
+  initialOpenDrawer?: ReturnContext | null
+  inlinePanels?: boolean
+  showUpload?: boolean
+  onShowUploadChange?: (v: boolean) => void
+  newDenialPanelOpen?: boolean
+  onNewDenialPanelClose?: () => void
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -101,11 +110,11 @@ const REVIEW_SECONDARY: Record<NeedsReviewReason, string> = {
   existing_instance_found:  'Possible existing denial',
 }
 
-const REVIEW_CATEGORY_STYLE: Record<string, { bg: string; color: string }> = {
-  'Data needs review':           { bg: '#FEF3C7', color: '#92400E' },
-  'Classification needs review': { bg: '#EEF2FF', color: '#4338CA' },
-  'Related instance':            { bg: '#F0F9FF', color: '#0369A1' },
-  'Missing Data':                { bg: '#F1F5F9', color: '#475569' },
+const REVIEW_CATEGORY_STYLE: Record<string, { bg: string; color: string; border: string }> = {
+  'Data needs review':           { bg: 'var(--colors-badge-variant-warning-background)',        color: 'var(--colors-badge-variant-warning-text)',        border: '1px solid var(--colors-badge-variant-warning-border)' },
+  'Classification needs review': { bg: 'var(--colors-badge-variant-info-background)',           color: 'var(--colors-badge-variant-info-text)',           border: '1px solid var(--colors-badge-variant-info-border)' },
+  'Related instance':            { bg: 'var(--colors-badge-variant-info-background)',           color: 'var(--colors-badge-variant-info-text)',           border: '1px solid var(--colors-badge-variant-info-border)' },
+  'Missing Data':                { bg: 'var(--colors-badge-variant-default-subtle-background)', color: 'var(--colors-badge-variant-default-subtle-text)', border: '1px solid var(--colors-badge-variant-default-subtle-border)' },
 }
 
 const EXISTING_REVIEW_CATEGORY: Partial<Record<NeedsReviewReason, string>> = {
@@ -278,27 +287,27 @@ function StatusChip({ status }: { status: StagingStatus }) {
   )
 }
 
-function MrnCopy({ mrn }: { mrn: string }) {
+function CodeValue({ value, label, fontSize = '0.6875rem' }: { value: string; label: string; fontSize?: string }) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation()
-    navigator.clipboard.writeText(mrn).then(() => {
+    navigator.clipboard.writeText(value).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     })
   }
 
   return (
-    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25, '&:hover .mrn-copy-icon': { opacity: 1 } }}>
-      <Typography sx={{ fontSize: '0.6875rem', fontFamily: '"Roboto Mono", "Courier New", monospace', color: '#475569', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>
-        {mrn}
+    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25, '&:hover .code-copy-icon': { opacity: 1 } }}>
+      <Typography sx={{ fontSize, fontFamily: '"Roboto Mono", "Courier New", monospace', color: '#475569', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>
+        {value}
       </Typography>
-      <Tooltip title={copied ? 'Copied!' : 'Copy MRN'} placement="top">
+      <Tooltip title={copied ? 'Copied!' : `Copy ${label}`} placement="top">
         <IconButton
-          className="mrn-copy-icon"
+          className="code-copy-icon"
           size="small"
-          aria-label={`Copy MRN ${mrn}`}
+          aria-label={`Copy ${label} ${value}`}
           onClick={handleCopy}
           sx={{ p: 0.25, opacity: 0, transition: 'opacity 0.15s', color: copied ? '#16A34A' : 'text.disabled', '&:focus-visible': { opacity: 1 } }}
         >
@@ -392,7 +401,7 @@ function IssueCard({
   }
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5, borderLeft: `3px solid ${catColor}` }}>
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5 }}>
       {isRelatedInstance ? (
         <Box sx={{ mb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 0.375 }}>
@@ -726,21 +735,16 @@ function IssueCard({
   )
 }
 
-// ── CompletionDrawer ───────────────────────────────────────────────────────────
+// ── CompletionPanel ────────────────────────────────────────────────────────────
 
-function CompletionDrawer({
+function CompletionPanel({
   onClose, onViewHistory,
 }: {
   onClose: () => void
   onViewHistory: () => void
 }) {
   return (
-    <Drawer
-      anchor="right"
-      open
-      onClose={onClose}
-      PaperProps={{ sx: { width: 480, display: 'flex', flexDirection: 'column', top: 52, height: 'calc(100% - 52px)' } }}
-    >
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box sx={{ px: 2.5, py: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0 }}>
         <IconButton size="small" onClick={onClose}><CloseOutlined fontSize="small" /></IconButton>
       </Box>
@@ -756,23 +760,23 @@ function CompletionDrawer({
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%', maxWidth: 240 }}>
           <Button variant="contained" onClick={onClose} sx={{ textTransform: 'none' }}>
-            Close drawer
+            Close
           </Button>
           <Button variant="outlined" onClick={onViewHistory} sx={{ textTransform: 'none' }}>
             View history
           </Button>
         </Box>
       </Box>
-    </Drawer>
+    </Box>
   )
 }
 
-// ── ReviewDrawer ──────────────────────────────────────────────────────────────
+// ── ReviewPanel ───────────────────────────────────────────────────────────────
 
-function ReviewDrawer({
+function ReviewPanel({
   record, reviewIndex, reviewTotal,
   onClose, onPrev, onNext,
-  onAccept, onAcceptAndNext, onDismiss, onSkip, mode,
+  onAccept, onAcceptAndNext, onDismiss, onSkip, mode, onNavigate,
 }: {
   record: StagingRecord
   reviewIndex: number
@@ -785,6 +789,7 @@ function ReviewDrawer({
   onDismiss: (id: string, reason: string) => void
   onSkip: () => void
   mode?: 'existing'
+  onNavigate?: (nav: string, returnContext?: ReturnContext) => void
 }) {
   const [resolvedReasons, setResolvedReasons] = useState<Set<NeedsReviewReason>>(new Set())
   const [showDismiss, setShowDismiss] = useState(false)
@@ -845,13 +850,7 @@ function ReviewDrawer({
   }
 
   return (
-    <Drawer
-      anchor="right"
-      open
-      onClose={() => guardNav(onClose, 'close')}
-      PaperProps={{ sx: { width: 480, display: 'flex', flexDirection: 'column', top: 52, height: 'calc(100% - 52px)' } }}
-      slotProps={{ backdrop: { sx: { bgcolor: 'rgba(0,0,0,0.15)' } } }}
-    >
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.paper' }}>
       {/* Sequential nav strip */}
       <Box sx={{ px: 2.5, py: 0.875, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 0.25, bgcolor: '#F8FAFC', flexShrink: 0 }}>
         <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary', flex: 1 }}>
@@ -889,7 +888,7 @@ function ReviewDrawer({
       {/* Header */}
       <Box sx={{ px: 2.5, py: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
+          <Typography sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
             {formatPatientName(record.patientName)}
           </Typography>
           <Typography variant="caption" color="text.secondary">
@@ -898,9 +897,9 @@ function ReviewDrawer({
         </Box>
         {record.reviewReasons.length > 0 && (() => {
           const cat = REVIEW_CATEGORY[record.reviewReasons[0]]
-          const catStyle = REVIEW_CATEGORY_STYLE[cat] ?? { bg: '#F1F5F9', color: '#64748B' }
+          const catStyle = REVIEW_CATEGORY_STYLE[cat] ?? { bg: '#F1F5F9', color: '#64748B', border: '1px solid #CBD5E1' }
           return (
-            <Chip label={cat} size="small" sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 600, bgcolor: catStyle.bg, color: catStyle.color, '& .MuiChip-label': { px: 1 } }} />
+            <Chip label={cat} size="small" sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 600, bgcolor: catStyle.bg, color: catStyle.color, border: catStyle.border, '& .MuiChip-label': { px: 1 } }} />
           )
         })()}
       </Box>
@@ -913,7 +912,7 @@ function ReviewDrawer({
           <Box sx={{ mb: 2.5 }}>
             {!isMissingFieldsExisting && (
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-                <Typography sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                   {unresolvedCount > 0 ? 'Action needed' : 'Ready to save'}
                 </Typography>
                 {unresolvedCount === 0 && <CheckCircleOutlined sx={{ fontSize: 14, color: '#16A34A' }} />}
@@ -930,13 +929,14 @@ function ReviewDrawer({
         {/* Classification */}
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
-            <Typography sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: 'text.secondary', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               Classification
             </Typography>
-            {mode === 'existing' && (
+            {mode === 'existing' && onNavigate && (
               <Button
                 size="small"
                 endIcon={<OpenInNewOutlined sx={{ fontSize: 12 }} />}
+                onClick={() => onNavigate('new-denial-details', { tab: 'exceptions', recordId: record.id })}
                 sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', textTransform: 'none', color: '#157d9d', lineHeight: 1.2 }}
               >
                 Edit denial details
@@ -949,7 +949,7 @@ function ReviewDrawer({
                 {mode === 'existing' ? (
                   typeChip?.isUnknown
                     ? <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled' }}>–</Typography>
-                    : <Chip label={typeChip?.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 700, bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-label': { px: 0.75 } }} />
+                    : <Chip label={typeChip?.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 600, bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-label': { px: 0.75 } }} />
                 ) : (
                   <>
                     <Chip label={MODULE_TAG[record.module].label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 700, bgcolor: MODULE_TAG[record.module].bg, color: MODULE_TAG[record.module].color, '& .MuiChip-label': { px: 0.75 } }} />
@@ -1000,6 +1000,7 @@ function ReviewDrawer({
                 <Button
                   size="small"
                   endIcon={<OpenInNewOutlined sx={{ fontSize: 12 }} />}
+                  onClick={() => onNavigate?.('new-denial', { tab: 'exceptions', recordId: record.id })}
                   sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', textTransform: 'none', color: '#157d9d', lineHeight: 1.2 }}
                 >
                   Change encounter
@@ -1013,9 +1014,14 @@ function ReviewDrawer({
             {record.patientName ? (
               <>
                 <Typography sx={{ fontSize: '0.75rem' }}>{formatPatientName(record.patientName)}</Typography>
-                <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                  {record.patientMrn}{ext.patientMatchMethod ? ` · Matched via ${String(ext.patientMatchMethod)}` : ''}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                  {record.patientMrn && <CodeValue value={record.patientMrn} label="MRN" fontSize="0.75rem" />}
+                  {ext.patientMatchMethod && (
+                    <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                      · Matched via {String(ext.patientMatchMethod)}
+                    </Typography>
+                  )}
+                </Box>
               </>
             ) : (
               <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled' }}>Not matched</Typography>
@@ -1033,8 +1039,18 @@ function ReviewDrawer({
               <Chip label={`${String(ext.claimMatchConfidence)} confidence`} size="small" sx={{ height: 16, fontSize: '0.6rem', '& .MuiChip-label': { px: 0.75 }, bgcolor: ext.claimMatchConfidence === 'high' ? '#F0FDF4' : '#FFFBEB', color: ext.claimMatchConfidence === 'high' ? '#166534' : '#92400E' }} />
             )}
           </Box>
-          {ext.claimId && <Typography sx={{ fontSize: '0.75rem' }}>Claim {String(ext.claimId)}</Typography>}
-          {ext.har && <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>HAR {String(ext.har)}</Typography>}
+          {ext.claimId && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>Claim</Typography>
+              <CodeValue value={String(ext.claimId)} label="Claim ID" fontSize="0.75rem" />
+            </Box>
+          )}
+          {ext.har && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>HAR</Typography>
+              <CodeValue value={String(ext.har)} label="HAR" fontSize="0.75rem" />
+            </Box>
+          )}
           {ext.dos && <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>DOS {String(ext.dos)}</Typography>}
         </Box>
 
@@ -1093,7 +1109,7 @@ function ReviewDrawer({
               <TextField size="small" fullWidth placeholder="Describe reason" value={dismissOther} onChange={e => setDismissOther(e.target.value)} sx={{ mt: 1, '& .MuiInputBase-input': { fontSize: '0.8125rem' } }} />
             )}
             <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
-              <Button size="small" onClick={() => setShowDismiss(false)} sx={{ textTransform: 'none', fontSize: '0.8125rem' }}>Cancel</Button>
+              <Button size="small" onClick={() => setShowDismiss(false)} sx={{ textTransform: 'none', fontSize: '0.8125rem', color: 'var(--colors-ocean-4)' }}>Cancel</Button>
               <Button
                 size="small" variant="contained" color="error"
                 disabled={!dismissReason || (dismissReason === 'Other' && !dismissOther)}
@@ -1114,7 +1130,7 @@ function ReviewDrawer({
           <Button
             variant="text" size="small"
             onClick={() => setShowDismiss(true)}
-            sx={{ textTransform: 'none', fontSize: '0.8125rem', color: 'text.secondary' }}
+            sx={{ textTransform: 'none', fontSize: '0.8125rem', color: 'var(--colors-ocean-4)' }}
           >
             Dismiss
           </Button>
@@ -1126,7 +1142,7 @@ function ReviewDrawer({
         <Button
           variant="text" size="small"
           onClick={() => guardNav(onSkip, 'skip')}
-          sx={{ textTransform: 'none', fontSize: '0.8125rem', color: 'text.secondary' }}
+          sx={{ textTransform: 'none', fontSize: '0.8125rem', color: 'var(--colors-ocean-4)' }}
         >
           Skip
         </Button>
@@ -1203,18 +1219,19 @@ function ReviewDrawer({
           </Button>
         </DialogActions>
       </Dialog>
-    </Drawer>
+    </Box>
   )
 }
 
 // ── InProgressDrawer ──────────────────────────────────────────────────────────
 
 function InProgressDrawer({
-  record, onClose, mode,
+  record, onClose, mode, onNavigate,
 }: {
   record: StagingRecord
   onClose: () => void
   mode?: 'existing'
+  onNavigate?: (nav: string, returnContext?: ReturnContext) => void
 }) {
   const [planNotes, setPlanNotes] = useState('')
   const [notesSaved, setNotesSaved] = useState(false)
@@ -1245,7 +1262,7 @@ function InProgressDrawer({
       {/* Header */}
       <Box sx={{ px: 2.5, py: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
+          <Typography sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
             {formatPatientName(record.patientName)}
           </Typography>
           <Typography variant="caption" color="text.secondary">
@@ -1261,13 +1278,14 @@ function InProgressDrawer({
         {/* Classification */}
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
-            <Typography sx={{ fontSize: '0.6875rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: 'text.secondary', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               Classification
             </Typography>
             {mode === 'existing' && (
               <Button
                 size="small"
                 endIcon={<OpenInNewOutlined sx={{ fontSize: 12 }} />}
+                onClick={() => onNavigate?.('new-denial-details', { tab: 'in-progress', recordId: record.id })}
                 sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', textTransform: 'none', color: '#157d9d', lineHeight: 1.2 }}
               >
                 Edit denial details
@@ -1277,7 +1295,7 @@ function InProgressDrawer({
           {record.classifiedAs ? (
             typeChip?.isUnknown
               ? <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled' }}>–</Typography>
-              : <Chip label={typeChip?.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 700, bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-label': { px: 0.75 } }} />
+              : <Chip label={typeChip?.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 600, bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-label': { px: 0.75 } }} />
           ) : (
             <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled' }}>—</Typography>
           )}
@@ -1301,6 +1319,7 @@ function InProgressDrawer({
                 <Button
                   size="small"
                   endIcon={<OpenInNewOutlined sx={{ fontSize: 12 }} />}
+                  onClick={() => onNavigate?.('new-denial', { tab: 'in-progress', recordId: record.id })}
                   sx={{ p: 0, minWidth: 0, fontSize: '0.6875rem', textTransform: 'none', color: '#157d9d', lineHeight: 1.2 }}
                 >
                   Change encounter
@@ -1314,9 +1333,14 @@ function InProgressDrawer({
             {record.patientName ? (
               <>
                 <Typography sx={{ fontSize: '0.75rem' }}>{formatPatientName(record.patientName)}</Typography>
-                <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                  {record.patientMrn}{ext.patientMatchMethod ? ` · Matched via ${String(ext.patientMatchMethod)}` : ''}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                  {record.patientMrn && <CodeValue value={record.patientMrn} label="MRN" fontSize="0.75rem" />}
+                  {ext.patientMatchMethod && (
+                    <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                      · Matched via {String(ext.patientMatchMethod)}
+                    </Typography>
+                  )}
+                </Box>
               </>
             ) : (
               <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled' }}>Not matched</Typography>
@@ -1334,8 +1358,18 @@ function InProgressDrawer({
               <Chip label={`${String(ext.claimMatchConfidence)} confidence`} size="small" sx={{ height: 16, fontSize: '0.6rem', '& .MuiChip-label': { px: 0.75 }, bgcolor: ext.claimMatchConfidence === 'high' ? '#F0FDF4' : '#FFFBEB', color: ext.claimMatchConfidence === 'high' ? '#166534' : '#92400E' }} />
             )}
           </Box>
-          {ext.claimId && <Typography sx={{ fontSize: '0.75rem' }}>Claim {String(ext.claimId)}</Typography>}
-          {ext.har && <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>HAR {String(ext.har)}</Typography>}
+          {ext.claimId && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>Claim</Typography>
+              <CodeValue value={String(ext.claimId)} label="Claim ID" fontSize="0.75rem" />
+            </Box>
+          )}
+          {ext.har && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>HAR</Typography>
+              <CodeValue value={String(ext.har)} label="HAR" fontSize="0.75rem" />
+            </Box>
+          )}
           {ext.dos && <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>DOS {String(ext.dos)}</Typography>}
         </Box>
 
@@ -1418,8 +1452,8 @@ function InProgressDrawer({
 
 // ── InProgressTab ─────────────────────────────────────────────────────────────
 
-function InProgressTab({ records, mode }: { records: StagingRecord[]; mode?: 'existing' }) {
-  const [drawerRecordId, setDrawerRecordId] = useState<string | null>(null)
+function InProgressTab({ records, mode, onNavigate, initialDrawerRecordId, inlinePanels }: { records: StagingRecord[]; mode?: 'existing'; onNavigate?: (nav: string, returnContext?: ReturnContext) => void; initialDrawerRecordId?: string | null; inlinePanels?: boolean }) {
+  const [drawerRecordId, setDrawerRecordId] = useState<string | null>(initialDrawerRecordId ?? null)
 
   const processing = [...records.filter(r => r.status === 'processing')]
     .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
@@ -1465,7 +1499,7 @@ function InProgressTab({ records, mode }: { records: StagingRecord[]; mode?: 'ex
                 <Typography sx={{ fontSize: '0.8125rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {record.patientName ? formatPatientName(record.patientName) : <span style={{ color: '#94A3B8', fontStyle: 'italic', fontWeight: 400 }}>Unknown patient</span>}
                 </Typography>
-                {record.patientMrn && <MrnCopy mrn={record.patientMrn} />}
+                {record.patientMrn && <CodeValue value={record.patientMrn} label="MRN" />}
                 {!record.patientName && record.sourceFile && (
                   <Typography sx={{ fontSize: '0.6875rem', color: 'text.disabled' }}>{record.sourceFile}</Typography>
                 )}
@@ -1475,7 +1509,7 @@ function InProgressTab({ records, mode }: { records: StagingRecord[]; mode?: 'ex
               </Typography>
               <Box sx={{ width: 140, flexShrink: 0 }}>
                 {typeDisplay && !typeDisplay.isUnknown ? (
-                  <Chip label={typeDisplay.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 700, bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-label': { px: 0.75 } }} />
+                  <Chip label={typeDisplay.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 600, '& .MuiChip-label': { px: 0.75 }, ...(inlinePanels ? { bgcolor: '#fff', color: '#64748B', border: '1px solid #CBD5E1' } : { bgcolor: '#fef3ea', color: '#b86823' }) }} />
                 ) : (
                   <Typography sx={{ fontSize: '0.75rem', color: 'text.disabled' }}>—</Typography>
                 )}
@@ -1496,6 +1530,7 @@ function InProgressTab({ records, mode }: { records: StagingRecord[]; mode?: 'ex
           record={drawerRecord}
           onClose={() => setDrawerRecordId(null)}
           mode={mode}
+          onNavigate={onNavigate}
         />
       )}
     </Box>
@@ -1505,13 +1540,18 @@ function InProgressTab({ records, mode }: { records: StagingRecord[]; mode?: 'ex
 // ── ExceptionsTab ─────────────────────────────────────────────────────────────
 
 function ExceptionsTab({
-  records, onUpdate, onNavigate, onSwitchToHistory, mode,
+  records, onUpdate, onNavigate, onSwitchToHistory, mode, initialDrawerRecordId, inlinePanels,
+  newDenialPanelOpen, onNewDenialPanelClose,
 }: {
   records: StagingRecord[]
   onUpdate: (updated: StagingRecord[]) => void
-  onNavigate: (nav: string) => void
+  onNavigate: (nav: string, returnContext?: ReturnContext) => void
   onSwitchToHistory: () => void
   mode?: 'existing'
+  initialDrawerRecordId?: string | null
+  inlinePanels?: boolean
+  newDenialPanelOpen?: boolean
+  onNewDenialPanelClose?: () => void
 }) {
   type ToastState =
     | { kind: 'created'; instanceId: string; worklist: string }
@@ -1520,7 +1560,7 @@ function ExceptionsTab({
     | { kind: 'dismissed' }
     | null
 
-  const [drawerRecordId, setDrawerRecordId] = useState<string | null>(null)
+  const [drawerRecordId, setDrawerRecordId] = useState<string | null>(initialDrawerRecordId ?? null)
   const [showCompletion, setShowCompletion] = useState(false)
   const [undoRecord, setUndoRecord] = useState<StagingRecord | null>(null)
   const [toast, setToast] = useState<ToastState>(null)
@@ -1633,8 +1673,11 @@ function ExceptionsTab({
     return (
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, py: 8 }}>
         <CheckCircleOutlined sx={{ fontSize: 40, color: '#16A34A' }} />
-        <Box sx={{ textAlign: 'center' }}>
-          <Typography sx={{ fontSize: '0.9375rem', fontWeight: 700, color: '#0F172A' }}>All caught up</Typography>
+        <Box sx={{ textAlign: 'center', maxWidth: 320 }}>
+          <Typography sx={{ fontSize: '0.9375rem', fontWeight: 700, color: '#0F172A', mb: 0.5 }}>No exceptions to review</Typography>
+          <Typography sx={{ fontSize: '0.8125rem', color: 'text.secondary', lineHeight: 1.5 }}>
+            All incoming files have been processed without errors. You'll be notified here if any denials need manual attention.
+          </Typography>
         </Box>
         <Button variant="outlined" size="small" startIcon={<UploadFileOutlined />} sx={{ textTransform: 'none', mt: 1 }}>
           Upload a file manually
@@ -1644,27 +1687,30 @@ function ExceptionsTab({
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-      {/* Sub-header */}
-      <Box sx={{ px: 3, py: 1.25, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: '1px solid', borderColor: 'divider', bgcolor: '#FFFBEB', flexShrink: 0 }}>
-        <WarningAmberOutlined sx={{ fontSize: 15, color: '#B45309' }} />
-        <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#92400E' }}>
-          {exceptions.length} exception{exceptions.length !== 1 ? 's' : ''} require your input
-        </Typography>
-        <Box sx={{ flex: 1 }} />
-        {exceptions.length > 0 && (
-          <Button
-            size="small"
-            variant="contained"
-            color="warning"
-            onClick={() => openReview(exceptions[0].id)}
-            sx={{ textTransform: 'none', fontSize: '0.6875rem', py: 0.375, px: 1.25 }}
-          >
-            Review all →
-          </Button>
-        )}
-      </Box>
-
+    <Box sx={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', ...(!inlinePanels && { flexDirection: 'column' }) }}>
+      {/* List column */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, ...(inlinePanels && { minWidth: 320 }), overflow: 'hidden' }}>
+      {/* Amber banner — V1/V2/v3 only (not inline panels) */}
+      {!inlinePanels && (
+        <Box sx={{ px: 3, py: 1.25, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: '1px solid', borderColor: 'divider', bgcolor: '#FFFBEB', flexShrink: 0 }}>
+          <WarningAmberOutlined sx={{ fontSize: 15, color: '#B45309' }} />
+          <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#92400E' }}>
+            {exceptions.length} exception{exceptions.length !== 1 ? 's' : ''} require your input
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          {exceptions.length > 0 && (
+            <Button
+              size="small"
+              variant="contained"
+              color="warning"
+              onClick={() => openReview(exceptions[0].id)}
+              sx={{ textTransform: 'none', fontSize: '0.6875rem', py: 0.375, px: 1.25 }}
+            >
+              Review all →
+            </Button>
+          )}
+        </Box>
+      )}
       {/* Column headers */}
       <Box sx={{
         px: 3, py: 0.75,
@@ -1679,7 +1725,7 @@ function ExceptionsTab({
       </Box>
 
       {/* Exception list */}
-      <Box sx={{ overflow: 'auto' }}>
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
         {exceptions.map(record => {
           const deadline = getDeadline(record)
           const refDate = new Date('2026-04-03T00:00:00')
@@ -1702,8 +1748,8 @@ function ExceptionsTab({
                 borderBottom: '1px solid', borderColor: 'divider',
                 borderLeft: `3px solid ${isOverdue ? '#DC2626' : isUrgent ? '#D97706' : isSoon ? '#FCD34D' : '#CBD5E1'}`,
                 cursor: 'pointer',
-                bgcolor: drawerRecordId === record.id ? 'rgba(255, 251, 235, 0.8)' : '#fff',
-                '&:hover': { bgcolor: 'rgba(255, 251, 235, 0.6)' },
+                bgcolor: drawerRecordId === record.id ? 'var(--colors-ocean-1)' : '#fff',
+                '&:hover': { bgcolor: drawerRecordId === record.id ? 'var(--colors-ocean-2)' : 'var(--colors-grey-2)' },
               }}
             >
               {/* ISSUE column — 2 lines: chip row / patient · classification · payer · MRN */}
@@ -1716,13 +1762,13 @@ function ExceptionsTab({
                     if (!firstReason) return null
                     const category = (mode === 'existing' ? EXISTING_REVIEW_CATEGORY[firstReason] : undefined) ?? REVIEW_CATEGORY[firstReason]
                     const secondary = (mode === 'existing' ? EXISTING_REVIEW_SECONDARY[firstReason] : undefined) ?? REVIEW_SECONDARY[firstReason]
-                    const catStyle = REVIEW_CATEGORY_STYLE[category] ?? { bg: '#F1F5F9', color: '#64748B' }
+                    const catStyle = REVIEW_CATEGORY_STYLE[category] ?? { bg: '#F1F5F9', color: '#64748B', border: '1px solid #CBD5E1' }
                     return (
                       <>
                         <Chip
                           label={category}
                           size="small"
-                          sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 600, bgcolor: catStyle.bg, color: catStyle.color, '& .MuiChip-label': { px: 0.875 }, flexShrink: 0 }}
+                          sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 600, bgcolor: catStyle.bg, color: catStyle.color, border: catStyle.border, '& .MuiChip-label': { px: 0.875 }, flexShrink: 0 }}
                         />
                         <Typography sx={{ fontSize: '0.6875rem', color: 'text.secondary', whiteSpace: 'nowrap', flexShrink: 0 }}>
                           {secondary}
@@ -1744,7 +1790,7 @@ function ExceptionsTab({
                   </Typography>
 
                   <Box sx={{ width: '1px', height: 10, bgcolor: '#CBD5E1', mx: 0.75, flexShrink: 0 }} />
-                  <Typography sx={{ fontSize: '0.6875rem', fontWeight: 500, color: typeDisplay ? typeDisplay.color : MODULE_TAG[record.module].color, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  <Typography sx={{ fontSize: '0.6875rem', fontWeight: 500, color: inlinePanels ? 'text.secondary' : (typeDisplay ? typeDisplay.color : MODULE_TAG[record.module].color), whiteSpace: 'nowrap', flexShrink: 0 }}>
                     {typeDisplay ? typeDisplay.label : MODULE_TAG[record.module].label}
                   </Typography>
 
@@ -1760,7 +1806,7 @@ function ExceptionsTab({
                   {record.patientMrn && (
                     <>
                       <Box sx={{ width: '1px', height: 10, bgcolor: '#CBD5E1', mx: 0.75, flexShrink: 0 }} />
-                      <MrnCopy mrn={record.patientMrn} />
+                      <CodeValue value={record.patientMrn} label="MRN" />
                     </>
                   )}
                 </Box>
@@ -1805,9 +1851,8 @@ function ExceptionsTab({
               <Button
                 size="small"
                 variant="outlined"
-                color="warning"
                 onClick={e => { e.stopPropagation(); openReview(record.id) }}
-                sx={{ width: 76, flexShrink: 0, textTransform: 'none', fontSize: '0.6875rem', py: 0.25 }}
+                sx={{ width: 76, flexShrink: 0, textTransform: 'none', fontSize: '0.6875rem', py: 0.25, color: 'text.secondary', borderColor: '#CBD5E1', '&:hover': { borderColor: '#94A3B8', bgcolor: 'rgba(0,0,0,0.04)' } }}
               >
                 Review →
               </Button>
@@ -1816,30 +1861,106 @@ function ExceptionsTab({
         })}
       </Box>
 
-      {/* Review drawer */}
-      {drawerRecord && (
-        <ReviewDrawer
-          key={drawerRecord.id}
-          record={drawerRecord}
-          reviewIndex={drawerIndex}
-          reviewTotal={exceptions.length}
-          onClose={closeDrawer}
-          onPrev={handlePrev}
-          onNext={handleNext}
-          onAccept={handleAccept}
-          onAcceptAndNext={handleAcceptAndNext}
-          onDismiss={handleDismiss}
-          onSkip={handleSkip}
-          mode={mode}
-        />
+      </Box>
+
+      {/* Right: detail panel (push layout only) */}
+      {inlinePanels && (
+        <Box sx={{
+          width: (drawerRecord || showCompletion || newDenialPanelOpen) ? 800 : 0,
+          flexShrink: 0,
+          borderLeft: (drawerRecord || showCompletion || newDenialPanelOpen) ? '1px solid' : 'none',
+          borderColor: 'divider',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          transition: 'width 280ms cubic-bezier(0.4, 0, 0.2, 1)',
+        }}>
+          {newDenialPanelOpen && (
+            <Box key="new-denial" sx={{
+              flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              '@keyframes panelFadeIn': { from: { opacity: 0, transform: 'translateX(10px)' }, to: { opacity: 1, transform: 'translateX(0)' } },
+              animation: 'panelFadeIn 220ms 120ms both cubic-bezier(0.4, 0, 0.2, 1)',
+            }}>
+              <DenialDetailsPanel
+                mode="new"
+                onClose={() => onNewDenialPanelClose?.()}
+                onSave={() => onNewDenialPanelClose?.()}
+              />
+            </Box>
+          )}
+          {drawerRecord && !newDenialPanelOpen && (
+            <Box key={drawerRecord.id} sx={{
+              flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              '@keyframes panelFadeIn': { from: { opacity: 0, transform: 'translateX(10px)' }, to: { opacity: 1, transform: 'translateX(0)' } },
+              animation: 'panelFadeIn 220ms 120ms both cubic-bezier(0.4, 0, 0.2, 1)',
+            }}>
+              <ReviewPanel
+                record={drawerRecord}
+                reviewIndex={drawerIndex}
+                reviewTotal={exceptions.length}
+                onClose={closeDrawer}
+                onPrev={handlePrev}
+                onNext={handleNext}
+                onAccept={handleAccept}
+                onAcceptAndNext={handleAcceptAndNext}
+                onDismiss={handleDismiss}
+                onSkip={handleSkip}
+                mode={mode}
+              />
+            </Box>
+          )}
+          {showCompletion && !newDenialPanelOpen && !drawerRecord && (
+            <Box sx={{
+              flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              '@keyframes panelFadeIn': { from: { opacity: 0, transform: 'translateX(10px)' }, to: { opacity: 1, transform: 'translateX(0)' } },
+              animation: 'panelFadeIn 220ms 120ms both cubic-bezier(0.4, 0, 0.2, 1)',
+            }}>
+              <CompletionPanel
+                onClose={closeDrawer}
+                onViewHistory={onSwitchToHistory}
+              />
+            </Box>
+          )}
+        </Box>
       )}
 
-      {/* Completion drawer */}
-      {showCompletion && (
-        <CompletionDrawer
-          onClose={closeDrawer}
-          onViewHistory={onSwitchToHistory}
-        />
+      {/* Legacy drawers (V1 / V2) */}
+      {!inlinePanels && (
+        <>
+          <Drawer
+            anchor="right"
+            open={showCompletion}
+            onClose={closeDrawer}
+            PaperProps={{ sx: { width: 480, display: 'flex', flexDirection: 'column', top: 52, height: 'calc(100% - 52px)' } }}
+          >
+            <CompletionPanel onClose={closeDrawer} onViewHistory={onSwitchToHistory} />
+          </Drawer>
+          <Drawer
+            anchor="right"
+            open={!!drawerRecord}
+            onClose={closeDrawer}
+            PaperProps={{ sx: { width: 480, display: 'flex', flexDirection: 'column', top: 52, height: 'calc(100% - 52px)' } }}
+            slotProps={{ backdrop: { sx: { bgcolor: 'rgba(0,0,0,0.15)' } } }}
+          >
+            {drawerRecord && (
+              <ReviewPanel
+                key={drawerRecord.id}
+                record={drawerRecord}
+                reviewIndex={drawerIndex}
+                reviewTotal={exceptions.length}
+                onClose={closeDrawer}
+                onPrev={handlePrev}
+                onNext={handleNext}
+                onAccept={handleAccept}
+                onAcceptAndNext={handleAcceptAndNext}
+                onDismiss={handleDismiss}
+                onSkip={handleSkip}
+                mode={mode}
+                onNavigate={onNavigate}
+              />
+            )}
+          </Drawer>
+        </>
       )}
 
       {/* Toast */}
@@ -1929,7 +2050,7 @@ const COL_HEADER_SX = {
   textTransform: 'uppercase' as const, letterSpacing: '0.07em',
 }
 
-function HistoryTab({ records, mode }: { records: StagingRecord[]; mode?: 'existing' }) {
+function HistoryTab({ records, mode, inlinePanels }: { records: StagingRecord[]; mode?: 'existing'; inlinePanels?: boolean }) {
   const history = records
     .filter(r => HISTORY_STATUSES.includes(r.status))
     .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
@@ -1996,7 +2117,7 @@ function HistoryTab({ records, mode }: { records: StagingRecord[]; mode?: 'exist
                     <Typography sx={{ fontSize: '0.8125rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {record.patientName ? formatPatientName(record.patientName) : <span style={{ color: '#94A3B8', fontStyle: 'italic', fontWeight: 400 }}>Unknown patient</span>}
                     </Typography>
-                    {record.patientMrn && <MrnCopy mrn={record.patientMrn} />}
+                    {record.patientMrn && <CodeValue value={record.patientMrn} label="MRN" />}
                   </Box>
 
                   {/* Payer */}
@@ -2007,7 +2128,7 @@ function HistoryTab({ records, mode }: { records: StagingRecord[]; mode?: 'exist
                   {/* Type */}
                   <Box sx={{ width: 140, flexShrink: 0 }}>
                     {typeDisplay && !typeDisplay.isUnknown ? (
-                      <Chip label={typeDisplay.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 700, bgcolor: '#fef3ea', color: '#b86823', '& .MuiChip-label': { px: 0.75 } }} />
+                      <Chip label={typeDisplay.label} size="small" sx={{ height: 18, fontSize: '0.625rem', fontWeight: 700, '& .MuiChip-label': { px: 0.75 }, ...(inlinePanels ? { bgcolor: '#fff', color: '#64748B', border: '1px solid #CBD5E1' } : { bgcolor: '#fef3ea', color: '#b86823' }) }} />
                     ) : (
                       <Typography sx={{ fontSize: '0.75rem', color: 'text.disabled' }}>
                         {mode !== 'existing' ? (record.classifiedAs ?? SIGNAL_LABELS[record.signalType]) : '—'}
@@ -2048,9 +2169,16 @@ function HistoryTab({ records, mode }: { records: StagingRecord[]; mode?: 'exist
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function IngestPage({ features: _features, onNavigate, mode }: IngestPageProps) {
-  const [activeTab, setActiveTab] = useState(0)
+export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose }: IngestPageProps) {
+  const [activeTab, setActiveTab] = useState(initialOpenDrawer?.tab === 'in-progress' ? 1 : 0)
   const [records, setRecords] = useState<StagingRecord[]>(SEED_STAGING)
+  const [showUploadInternal, setShowUploadInternal] = useState(false)
+  const showUpload = showUploadProp !== undefined ? showUploadProp : showUploadInternal
+  const setShowUpload = (v: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof v === 'function' ? v(showUpload) : v
+    setShowUploadInternal(next)
+    onShowUploadChange?.(next)
+  }
 
   const exceptionCount = records.filter(r =>
     r.status === 'needs_review' &&
@@ -2064,12 +2192,13 @@ export default function IngestPage({ features: _features, onNavigate, mode }: In
   const historyTabIndex = mode === 'existing' ? 2 : 1
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', px: 3, flexShrink: 0 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      {/* Tab bar + upload button — hidden while upload zone is open in V3 */}
+      {!(inlinePanels && showUpload) && <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
         <Tabs
           value={activeTab}
-          onChange={(_, v) => setActiveTab(v)}
-          sx={{ '& .MuiTab-root': { textTransform: 'none', fontSize: '0.8125rem', minWidth: 0, px: 2 } }}
+          onChange={(_, v) => { setActiveTab(v as number); setShowUpload(false) }}
+          sx={{ minHeight: 40, '& .MuiTab-root': { minWidth: 0 } }}
         >
           <Tab
             label={
@@ -2079,11 +2208,12 @@ export default function IngestPage({ features: _features, onNavigate, mode }: In
                   <Chip
                     label={exceptionCount}
                     size="small"
-                    sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 700, bgcolor: '#b86823', color: '#fff', '& .MuiChip-label': { px: 0.75 } }}
+                    sx={{ height: 18, fontSize: '0.6875rem', fontWeight: 700, '& .MuiChip-label': { px: 0.75 }, bgcolor: 'var(--colors-badge-variant-warning-emphasized-background)', color: 'var(--colors-badge-variant-warning-emphasized-text)' }}
                   />
                 )}
               </Box>
             }
+            sx={{ minHeight: 40, py: 0, px: 2 }}
           />
           {mode === 'existing' && (
             <Tab
@@ -2099,25 +2229,83 @@ export default function IngestPage({ features: _features, onNavigate, mode }: In
                   )}
                 </Box>
               }
+              sx={{ minHeight: 40, py: 0, px: 2 }}
             />
           )}
-          <Tab label="History" />
+          <Tab label="History" sx={{ minHeight: 40, py: 0, px: 2 }} />
         </Tabs>
-      </Box>
+        {!inlinePanels && (
+          <>
+            <Box sx={{ flex: 1 }} />
+            <Button
+              size="small"
+              variant={showUpload ? 'contained' : 'outlined'}
+              startIcon={<UploadFileOutlined sx={{ fontSize: 15 }} />}
+              onClick={() => setShowUpload(v => !v)}
+              sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.5, px: 1.5, mr: 1.5, my: 'auto',
+                ...(showUpload ? { bgcolor: '#157d9d', '&:hover': { bgcolor: '#11647e' } } : {}) }}
+            >
+              {showUpload ? 'Cancel' : 'Upload files'}
+            </Button>
+          </>
+        )}
+      </Box>}
 
-      {activeTab === 0 && (
-        <ExceptionsTab
-          records={records}
-          onUpdate={setRecords}
-          onNavigate={onNavigate}
-          onSwitchToHistory={() => setActiveTab(historyTabIndex)}
-          mode={mode}
-        />
+      {/* Upload zone (replaces tab content) */}
+      {showUpload ? (
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <Button
+              onClick={() => setShowUpload(false)}
+              sx={{ color: 'var(--colors-ocean-4)', fontSize: '0.875rem', fontWeight: 500 }}
+            >
+              Cancel
+            </Button>
+          </Box>
+          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box
+            sx={{
+              width: '100%', maxWidth: 560,
+              border: '2px dashed #d1d9de', borderRadius: 2,
+              p: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5,
+              cursor: 'pointer', bgcolor: '#fafafa',
+              '&:hover': { bgcolor: '#f0f4f6', borderColor: '#4a9abb' },
+            }}
+          >
+            <UploadFileOutlined sx={{ fontSize: 36, color: '#939a9f' }} />
+            <Typography sx={{ fontWeight: 600, fontSize: '0.9375rem', color: '#334155' }}>
+              Drop files here or click to browse
+            </Typography>
+            <Typography sx={{ fontSize: '0.8125rem', color: 'text.secondary', textAlign: 'center' }}>
+              Appeal letters are created using patient data.<br />Data availability varies per location.
+            </Typography>
+            <Typography sx={{ fontSize: '0.8125rem', color: 'text.secondary' }}>
+              Accepted formats: <strong>.pdf</strong> and <strong>.docx</strong>
+            </Typography>
+          </Box>
+          </Box>
+        </Box>
+      ) : (
+        <>
+          {activeTab === 0 && (
+            <ExceptionsTab
+              records={records}
+              onUpdate={setRecords}
+              onNavigate={onNavigate}
+              onSwitchToHistory={() => setActiveTab(historyTabIndex)}
+              mode={mode}
+              initialDrawerRecordId={initialOpenDrawer?.tab === 'exceptions' ? initialOpenDrawer.recordId : null}
+              inlinePanels={inlinePanels}
+              newDenialPanelOpen={newDenialPanelOpen}
+              onNewDenialPanelClose={onNewDenialPanelClose}
+            />
+          )}
+          {mode === 'existing' && activeTab === 1 && (
+            <InProgressTab records={records} mode={mode} onNavigate={onNavigate} initialDrawerRecordId={initialOpenDrawer?.tab === 'in-progress' ? initialOpenDrawer.recordId : null} inlinePanels={inlinePanels} />
+          )}
+          {activeTab === historyTabIndex && <HistoryTab records={records} mode={mode} inlinePanels={inlinePanels} />}
+        </>
       )}
-      {mode === 'existing' && activeTab === 1 && (
-        <InProgressTab records={records} mode={mode} />
-      )}
-      {activeTab === historyTabIndex && <HistoryTab records={records} mode={mode} />}
     </Box>
   )
 }
