@@ -12,6 +12,7 @@ import {
 } from '@mui/icons-material'
 import { type DenialRecord, type DenialState, type TeamMember, TEAM_MEMBERS, KRISTA } from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
+import DenialsWorklistV4Page from './DenialsWorklistV4Page'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,11 +47,19 @@ const DEFAULT_COLUMNS = new Set<ColumnKey>(ALL_COLUMNS.filter(c => c.defaultOn).
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS: DenialState[] = ['InProgress', 'Submitted', 'Overturned', 'Closed', 'Archive']
+const TABS: DenialState[] = ['InProgress', 'Submitted', 'Closed']
 
 const TAB_LABELS: Record<DenialState, string> = {
   Queue: 'Queue', InProgress: 'Ready', Submitted: 'Submitted',
-  Overturned: 'Overturned', Closed: 'Closed', Archive: 'Archive',
+  Overturned: 'Overturned', Closed: 'Closed', Archive: 'Archived',
+}
+
+const OUTCOME_CHIPS = ['Overturned', 'Upheld - Will Appeal', 'Upheld - Will Not Appeal', 'Will Not Appeal'] as const
+
+function matchesOutcome(d: DenialRecord, chip: string): boolean {
+  if (chip === 'Overturned') return d.state === 'Overturned'
+  if (chip === 'Upheld - Will Not Appeal') return d.status === 'Upheld - Will Not Appeal' || d.status === 'Upheld by Payer'
+  return d.status === chip
 }
 
 const TODAY = new Date('2026-04-02')
@@ -142,10 +151,10 @@ function SortableHeader({ col, label, align = 'left', sort, onSort }: SortableHe
 function PatientCell({ d }: { d: DenialRecord }) {
   return (
     <TableCell>
-      <Typography sx={{ fontSize: '0.875rem', fontWeight: 500 }}>
+      <Typography variant="inherit" sx={{ fontWeight: 'var(--font-weights-medium)' }}>
         {formatPatientName(d.patient.name)}
       </Typography>
-      <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary', fontFamily: 'monospace' }}>
+      <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
         {d.claim.har}
       </Typography>
     </TableCell>
@@ -154,9 +163,7 @@ function PatientCell({ d }: { d: DenialRecord }) {
 
 function PayerCell({ d }: { d: DenialRecord }) {
   return (
-    <TableCell>
-      <Typography sx={{ fontSize: '0.875rem' }}>{d.payer}</Typography>
-    </TableCell>
+    <TableCell>{d.payer}</TableCell>
   )
 }
 
@@ -167,11 +174,11 @@ function DenialTypeCell({ d }: { d: DenialRecord }) {
     : null
   return (
     <TableCell>
-      <Typography sx={{ fontSize: '0.875rem', fontWeight: 500, color: cfg.color }}>
+      <Typography variant="inherit" sx={{ fontWeight: 'var(--font-weights-medium)', color: cfg.color }}>
         {drg ? drg.typeLabel : d.denialType}
       </Typography>
       {drg && (
-        <Typography sx={{ fontSize: '0.75rem', color: cfg.color }}>
+        <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: cfg.color }}>
           {drg.changeLabel}
         </Typography>
       )}
@@ -181,20 +188,16 @@ function DenialTypeCell({ d }: { d: DenialRecord }) {
 
 function ClassCell({ d }: { d: DenialRecord }) {
   return (
-    <TableCell>
-      <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
-        {d.lineOfBusiness}
-      </Typography>
+    <TableCell sx={{ color: 'text.secondary' }}>
+      {d.lineOfBusiness}
     </TableCell>
   )
 }
 
 function DeniedCell({ d }: { d: DenialRecord }) {
   return (
-    <TableCell align="right">
-      <Typography sx={{ fontSize: '0.875rem', fontVariantNumeric: 'tabular-nums' }}>
-        {formatCurrency(d.deniedAmount)}
-      </Typography>
+    <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+      {formatCurrency(d.deniedAmount)}
     </TableCell>
   )
 }
@@ -207,7 +210,7 @@ function AppealLevelCell({ d }: { d: DenialRecord }) {
         label={d.appealLevel}
         size="small"
         sx={{
-          height: 22, fontSize: '0.75rem', fontWeight: 'var(--font-weights-regular)' as unknown as number,
+          height: 22, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number,
           bgcolor: colors.bg, color: colors.color, border: colors.border,
           '& .MuiChip-label': { px: 0.875 },
         }}
@@ -222,10 +225,10 @@ function DeadlineCell({ d }: { d: DenialRecord }) {
   const urgent = !overdue && left <= 7
   return (
     <TableCell>
-      <Typography sx={{ fontSize: '0.875rem', color: overdue ? 'error.main' : urgent ? 'warning.dark' : 'text.primary' }}>
+      <Typography variant="inherit" sx={{ color: overdue ? 'error.main' : urgent ? 'warning.dark' : 'text.primary' }}>
         {formatDate(d.deadline)}
       </Typography>
-      <Typography sx={{ fontSize: '0.75rem', color: overdue ? 'error.light' : 'text.secondary' }}>
+      <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: overdue ? 'error.light' : 'text.secondary' }}>
         {overdue ? `${Math.abs(left)}d overdue` : left === 0 ? 'Today' : `${left}d left`}
       </Typography>
     </TableCell>
@@ -264,12 +267,12 @@ function ColumnsButton({ visibleColumns, onToggle, onReset }: ColumnButtonProps)
         onClick={e => setAnchor(e.currentTarget as HTMLElement)}
         sx={{
           display: 'inline-flex', alignItems: 'center', gap: 0.5,
-          px: 1.25, py: 0.5, borderRadius: '6px',
+          px: 1.25, py: 0.5, borderRadius: 'var(--radii-sm)',
           border: '1px solid',
           borderColor: isCustomized ? 'var(--colors-ocean-4)' : 'var(--colors-grey-4)',
           bgcolor: isCustomized ? 'var(--colors-ocean-1)' : 'transparent',
           color: isCustomized ? 'var(--colors-ocean-4)' : 'text.secondary',
-          fontSize: '0.8125rem', fontWeight: isCustomized ? 600 : 400,
+          fontSize: 'var(--font-sizes-14)', fontWeight: isCustomized ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)',
           fontFamily: 'inherit', cursor: 'pointer', outline: 'none',
           lineHeight: 1.4, whiteSpace: 'nowrap',
           transition: 'background-color 0.1s, border-color 0.1s',
@@ -289,13 +292,13 @@ function ColumnsButton({ visibleColumns, onToggle, onReset }: ColumnButtonProps)
         PaperProps={{
           sx: {
             mt: 0.5, minWidth: 220,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-            border: '1px solid var(--colors-grey-4)', borderRadius: '8px',
+            boxShadow: 'var(--shadows-medium)',
+            border: '1px solid var(--colors-grey-4)', borderRadius: 'var(--radii-md)',
           },
         }}
       >
         <Box sx={{ px: 1.5, pt: 1.25, pb: 0.5 }}>
-          <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Columns
           </Typography>
         </Box>
@@ -308,7 +311,7 @@ function ColumnsButton({ visibleColumns, onToggle, onReset }: ColumnButtonProps)
                   size="small" checked={checked} disableRipple
                   sx={{ p: 0, mr: 1.25, '&.Mui-checked': { color: 'var(--colors-ocean-4)' } }}
                 />
-                <ListItemText primary={label} primaryTypographyProps={{ fontSize: '0.875rem' }} />
+                <ListItemText primary={label} primaryTypographyProps={{ fontSize: 'var(--font-sizes-14)' }} />
               </ListItemButton>
             )
           })}
@@ -351,12 +354,12 @@ function FilterButton({ label, options, value, onChange }: FilterButtonProps) {
         onClick={e => setAnchor(e.currentTarget as HTMLElement)}
         sx={{
           display: 'inline-flex', alignItems: 'center', gap: 0.5,
-          px: 1.25, py: 0.5, borderRadius: '6px',
+          px: 1.25, py: 0.5, borderRadius: 'var(--radii-sm)',
           border: '1px solid',
           borderColor: active ? 'var(--colors-ocean-4)' : 'var(--colors-grey-4)',
           bgcolor: active ? 'var(--colors-ocean-1)' : 'transparent',
           color: active ? 'var(--colors-ocean-4)' : 'text.secondary',
-          fontSize: '0.8125rem', fontWeight: active ? 600 : 400,
+          fontSize: 'var(--font-sizes-14)', fontWeight: active ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)',
           fontFamily: 'inherit', cursor: 'pointer', outline: 'none',
           lineHeight: 1.4, whiteSpace: 'nowrap',
           transition: 'background-color 0.1s, border-color 0.1s',
@@ -368,8 +371,8 @@ function FilterButton({ label, options, value, onChange }: FilterButtonProps) {
           <Box component="span" sx={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             minWidth: 16, height: 16, px: 0.5, ml: 0.25,
-            borderRadius: '10px', bgcolor: 'var(--colors-ocean-4)', color: '#fff',
-            fontSize: '0.6875rem', fontWeight: 700,
+            borderRadius: 'var(--radii-pill)', bgcolor: 'var(--colors-ocean-4)', color: 'var(--colors-grey-1)',
+            fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-bold)',
           }}>
             {value.length}
           </Box>
@@ -385,8 +388,8 @@ function FilterButton({ label, options, value, onChange }: FilterButtonProps) {
         PaperProps={{
           sx: {
             mt: 0.5, minWidth: 200,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-            border: '1px solid var(--colors-grey-4)', borderRadius: '8px',
+            boxShadow: 'var(--shadows-medium)',
+            border: '1px solid var(--colors-grey-4)', borderRadius: 'var(--radii-md)',
           },
         }}
       >
@@ -403,7 +406,7 @@ function FilterButton({ label, options, value, onChange }: FilterButtonProps) {
                   size="small" checked={checked} disableRipple
                   sx={{ p: 0, mr: 1.25, '&.Mui-checked': { color: 'var(--colors-ocean-4)' } }}
                 />
-                <ListItemText primary={opt} primaryTypographyProps={{ fontSize: '0.875rem' }} />
+                <ListItemText primary={opt} primaryTypographyProps={{ fontSize: 'var(--font-sizes-14)' }} />
               </ListItemButton>
             )
           })}
@@ -437,10 +440,15 @@ interface Props {
   assignedToMe?: boolean
   onAssignedToMeChange?: (v: boolean) => void
   onAssign?: (denialId: string, member: TeamMember | null) => void
+  viewMode?: 'worklist' | 'all-records'
 }
 
-export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewCompleteIds, initialTab, assignedToMe: assignedToMeProp, onAssignedToMeChange, onAssign }: Props) {
-  const [activeTab, setActiveTab] = useState<DenialState>(initialTab ?? 'InProgress')
+export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewCompleteIds, initialTab, assignedToMe: assignedToMeProp, onAssignedToMeChange, onAssign, viewMode = 'worklist' }: Props) {
+  const [activeTab, setActiveTab] = useState<DenialState>(
+    initialTab === 'Overturned' ? 'Closed'
+      : initialTab === 'Archive' ? 'InProgress'
+      : (initialTab ?? 'InProgress')
+  )
   const [sort, setSort] = useState<Sort>(null)
   const [search, setSearch] = useState('')
   const [assignedToMeLocal, setAssignedToMeLocal] = useState(false)
@@ -499,7 +507,9 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
   }, [denials])
 
   function matchesTab(d: DenialRecord, t: DenialState): boolean {
-    return t === 'InProgress' ? (d.state === 'InProgress' || d.state === 'Queue') : d.state === t
+    if (t === 'InProgress') return d.state === 'InProgress' || d.state === 'Queue'
+    if (t === 'Closed')     return d.state === 'Closed' || d.state === 'Overturned'
+    return d.state === t
   }
 
   const tabCounts = useMemo(() =>
@@ -516,9 +526,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
     ).length])),
   [denials, searchMatches, assignedToMe, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
 
-  const closedStatusOptions = useMemo(() =>
-    [...new Set(denials.filter(d => d.state === 'Closed' && ALLOWED_DENIAL_TYPES.includes(d.denialType)).map(d => d.status))].sort() as string[],
-  [denials])
+  const closedStatusOptions = OUTCOME_CHIPS
 
   const displayed = useMemo(() => {
     let rows = denials.filter(d =>
@@ -533,7 +541,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
       (assignedToFilter.length === 0 || assignedToFilter.some(n => n === 'Unassigned' ? !d.assignedTo : d.assignedTo?.name === n))
     )
     if (activeTab === 'Closed' && closedStatusFilter.length > 0)
-      rows = rows.filter(d => closedStatusFilter.includes(d.status))
+      rows = rows.filter(d => closedStatusFilter.some(c => matchesOutcome(d, c)))
     if (sort) {
       rows = [...rows].sort((a, b) => {
         let cmp = 0
@@ -574,22 +582,22 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
           sx={{
             display: 'inline-flex', alignItems: 'center', gap: 0.75,
             background: 'none', border: '1px solid transparent', cursor: 'pointer',
-            borderRadius: '6px', px: 0.75, py: 0.375, mx: -0.75,
+            borderRadius: 'var(--radii-sm)', px: 0.75, py: 0.375, mx: -0.75,
             '&:hover': { borderColor: 'var(--colors-grey-4)', bgcolor: 'var(--colors-grey-3)' },
             transition: 'border-color 0.1s, background-color 0.1s',
           }}
         >
           {assignee ? (
             <>
-              <Avatar sx={{ width: 22, height: 22, fontSize: '0.6875rem', fontWeight: 600, bgcolor: 'var(--colors-ocean-1)', color: 'var(--colors-ocean-4)' }}>
+              <Avatar sx={{ width: 22, height: 22, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', bgcolor: 'var(--colors-ocean-1)', color: 'var(--colors-ocean-4)' }}>
                 {assignee.initials}
               </Avatar>
-              <Typography sx={{ fontSize: '0.875rem', color: 'text.primary' }}>
+              <Typography variant="inherit" sx={{ color: 'text.primary' }}>
                 {assignee.name}
               </Typography>
             </>
           ) : (
-            <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled', fontStyle: 'italic' }}>
+            <Typography variant="inherit" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>
               Assign…
             </Typography>
           )}
@@ -650,20 +658,11 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
         <TableCell sx={{ width: 48 }} />
       </TableRow>
     )
-    if (activeTab === 'Overturned') return (
-      <TableRow>
-        {shared}
-        {col('appealLevel') && <TableCell>Appeal Level</TableCell>}
-        <TableCell>Overturn Date</TableCell>
-        {col('assignedTo')  && <TableCell>Assigned To</TableCell>}
-        <TableCell sx={{ width: 48 }} />
-      </TableRow>
-    )
     return (
       <TableRow>
         {shared}
         {col('appealLevel') && <TableCell>Appeal Level</TableCell>}
-        <TableCell>Close Reason</TableCell>
+        <TableCell>Outcome</TableCell>
         <TableCell>Closed Date</TableCell>
         {col('assignedTo')  && <TableCell>Assigned To</TableCell>}
         <TableCell sx={{ width: 48 }} />
@@ -682,14 +681,14 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
 
     const optionalCells = (
       <>
-        {col('dos')           && <TableCell><Typography sx={{ fontSize: '0.875rem' }}>{d.dos ? formatDate(d.dos) : '—'}</Typography></TableCell>}
-        {col('createdAt')     && <TableCell><Typography sx={{ fontSize: '0.875rem' }}>{d.createdAt ? formatDate(d.createdAt) : '—'}</Typography></TableCell>}
-        {col('carc')          && <TableCell><Typography sx={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{d.carc || '—'}</Typography></TableCell>}
-        {col('rarc')          && <TableCell><Typography sx={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{d.rarc || '—'}</Typography></TableCell>}
-        {col('claimId')       && <TableCell><Typography sx={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{d.claim.claimId || '—'}</Typography></TableCell>}
-        {col('mrn')           && <TableCell><Typography sx={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{d.patient.mrn || '—'}</Typography></TableCell>}
-        {col('priorityScore') && <TableCell><Typography sx={{ fontSize: '0.875rem' }}>{d.priorityScore ?? '—'}</Typography></TableCell>}
-        {col('nextAction')    && <TableCell><Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>{d.nextAction || '—'}</Typography></TableCell>}
+        {col('dos')           && <TableCell>{d.dos ? formatDate(d.dos) : '—'}</TableCell>}
+        {col('createdAt')     && <TableCell>{d.createdAt ? formatDate(d.createdAt) : '—'}</TableCell>}
+        {col('carc')          && <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{d.carc || '—'}</TableCell>}
+        {col('rarc')          && <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{d.rarc || '—'}</TableCell>}
+        {col('claimId')       && <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{d.claim.claimId || '—'}</TableCell>}
+        {col('mrn')           && <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{d.patient.mrn || '—'}</TableCell>}
+        {col('priorityScore') && <TableCell>{d.priorityScore ?? '—'}</TableCell>}
+        {col('nextAction')    && <TableCell sx={{ color: 'text.secondary' }}>{d.nextAction || '—'}</TableCell>}
       </>
     )
 
@@ -727,10 +726,8 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
       <TableRow {...rowProps}>
         {shared}
         {col('appealLevel') && <AppealLevelCell d={d} />}
-        <TableCell>
-          <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
-            {d.archiveReason ?? d.status}
-          </Typography>
+        <TableCell sx={{ color: 'text.secondary' }}>
+          {d.archiveReason ?? d.status}
         </TableCell>
         <NotesCell d={d} />
       </TableRow>
@@ -741,35 +738,19 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
         {shared}
         {col('appealLevel') && <AppealLevelCell d={d} />}
         <TableCell>
-          <Typography sx={{ fontSize: '0.875rem' }}>
-            {d.submissionDate ? formatDate(d.submissionDate) : '—'}
-          </Typography>
+          {d.submissionDate ? formatDate(d.submissionDate) : '—'}
         </TableCell>
         <TableCell>
           {d.responseDueDate ? (
             <>
-              <Typography sx={{ fontSize: '0.875rem' }}>{formatDate(d.responseDueDate)}</Typography>
-              <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+              {formatDate(d.responseDueDate)}
+              <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
                 {daysUntil(d.responseDueDate)}d left
               </Typography>
             </>
           ) : (
-            <Typography sx={{ fontSize: '0.875rem', color: 'text.disabled' }}>—</Typography>
+            <Typography variant="inherit" sx={{ color: 'text.disabled' }}>—</Typography>
           )}
-        </TableCell>
-        {col('assignedTo') && renderAssigneeCell(d)}
-        <NotesCell d={d} />
-      </TableRow>
-    )
-
-    if (activeTab === 'Overturned') return (
-      <TableRow {...rowProps}>
-        {shared}
-        {col('appealLevel') && <AppealLevelCell d={d} />}
-        <TableCell>
-          <Typography sx={{ fontSize: '0.875rem' }}>
-            {d.overturnDate ? formatDate(d.overturnDate) : '—'}
-          </Typography>
         </TableCell>
         {col('assignedTo') && renderAssigneeCell(d)}
         <NotesCell d={d} />
@@ -780,15 +761,14 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
       <TableRow {...rowProps}>
         {shared}
         {col('appealLevel') && <AppealLevelCell d={d} />}
-        <TableCell>
-          <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
-            {d.closeReason ?? '—'}
-          </Typography>
+        <TableCell sx={{ color: 'text.secondary' }}>
+          {d.state === 'Overturned' ? d.status : (d.closeReason ?? d.status ?? '—')}
         </TableCell>
         <TableCell>
-          <Typography sx={{ fontSize: '0.875rem' }}>
-            {d.closedDate ? formatDate(d.closedDate) : '—'}
-          </Typography>
+          {(() => {
+            const dt = d.state === 'Overturned' ? d.overturnDate : d.closedDate
+            return dt ? formatDate(dt) : '—'
+          })()}
         </TableCell>
         {col('assignedTo') && renderAssigneeCell(d)}
         <NotesCell d={d} />
@@ -797,6 +777,20 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
+
+  if (viewMode === 'all-records') {
+    return (
+      <DenialsWorklistV4Page
+        denials={denials}
+        onSelectDenial={onSelectDenial}
+        reviewCompleteIds={reviewCompleteIds}
+        initialTab={initialTab}
+        assignedToMe={assignedToMeProp}
+        onAssignedToMeChange={onAssignedToMeChange}
+        onAssign={onAssign}
+      />
+    )
+  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -856,8 +850,8 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
                     label={tabCounts[tab] ?? 0}
                     size="small"
                     sx={{
-                      height: 18, fontSize: '0.6875rem', fontWeight: 'var(--font-weights-regular)' as unknown as number,
-                      bgcolor: activeTab === tab ? 'var(--colors-ocean-1)' : 'rgba(0,0,0,0.06)',
+                      height: 18, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number,
+                      bgcolor: activeTab === tab ? 'var(--colors-ocean-1)' : 'var(--colors-grey-3)',
                       color: activeTab === tab ? 'var(--colors-ocean-4)' : 'var(--colors-text-secondary)',
                       '& .MuiChip-label': { px: 0.625 },
                     }}
@@ -874,14 +868,14 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
             onClick={() => setAssignedToMe(p => !p)}
             sx={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              px: '12px', py: '8px', borderRadius: '4px',
+              px: '12px', py: '8px', borderRadius: 'var(--radii-sm)',
               border: 'none', cursor: 'pointer', outline: 'none',
-              bgcolor: assignedToMe ? '#e8f2f5' : 'transparent',
-              color: assignedToMe ? '#31373a' : '#636a6f',
-              fontSize: '0.875rem', fontWeight: 400, fontFamily: 'inherit',
+              bgcolor: assignedToMe ? 'var(--colors-ocean-1)' : 'transparent',
+              color: assignedToMe ? 'var(--colors-text-primary)' : 'var(--colors-text-secondary)',
+              fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-regular)', fontFamily: 'inherit',
               lineHeight: '14px', whiteSpace: 'nowrap',
               transition: 'background-color 0.1s',
-              '&:hover': { bgcolor: assignedToMe ? '#daedf2' : 'rgba(0,0,0,0.04)' },
+              '&:hover': { bgcolor: assignedToMe ? 'var(--colors-ocean-2)' : 'var(--colors-grey-3)' },
             }}
           >
             Assigned to me
@@ -892,7 +886,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
       {/* Closed-tab filters */}
       {activeTab === 'Closed' && (
         <Box sx={{ px: 2, py: 0.875, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500, mr: 0.5 }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 'var(--font-weights-medium)', mr: 0.5 }}>
             Outcome:
           </Typography>
           {closedStatusOptions.map(status => {
@@ -904,7 +898,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
                 size="small"
                 onClick={() => setClosedStatusFilter(prev => active ? prev.filter(s => s !== status) : [...prev, status])}
                 sx={{
-                  height: 24, fontSize: '0.75rem', fontWeight: active ? 600 : 400, cursor: 'pointer',
+                  height: 24, fontSize: 'var(--font-sizes-12)', fontWeight: active ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)', cursor: 'pointer',
                   bgcolor: active ? 'var(--colors-ocean-1)' : 'transparent',
                   color: active ? 'var(--colors-ocean-4)' : 'text.secondary',
                   border: '1px solid',
@@ -963,9 +957,9 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
             PaperProps={{
               sx: {
                 width: 220, mt: 0.5,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                boxShadow: 'var(--shadows-medium)',
                 border: '1px solid var(--colors-grey-4)',
-                borderRadius: '8px',
+                borderRadius: 'var(--radii-md)',
               },
             }}
           >
@@ -990,15 +984,15 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
                     }}
                   >
                     <Avatar sx={{
-                      width: 26, height: 26, fontSize: '0.6875rem', fontWeight: 600, mr: 1.25, flexShrink: 0,
+                      width: 26, height: 26, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', mr: 1.25, flexShrink: 0,
                       bgcolor: isSelected ? 'var(--colors-ocean-4)' : 'var(--colors-grey-4)',
-                      color: isSelected ? '#ffffff' : 'var(--colors-text-secondary)',
+                      color: isSelected ? 'var(--colors-grey-1)' : 'var(--colors-text-secondary)',
                     }}>
                       {m.initials}
                     </Avatar>
                     <ListItemText
                       primary={isMe ? `${m.name} (me)` : m.name}
-                      primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: isSelected ? 600 : 400 }}
+                      primaryTypographyProps={{ fontSize: 'var(--font-sizes-14)', fontWeight: isSelected ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)' }}
                     />
                     {isSelected && <Check sx={{ fontSize: 16, color: 'var(--colors-ocean-4)', ml: 0.5 }} />}
                   </ListItemButton>
@@ -1018,7 +1012,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
                   >
                     <ListItemText
                       primary="Unassign"
-                      primaryTypographyProps={{ fontSize: '0.875rem', color: 'text.secondary' }}
+                      primaryTypographyProps={{ fontSize: 'var(--font-sizes-14)', color: 'text.secondary' }}
                     />
                   </ListItemButton>
                 </>

@@ -178,7 +178,7 @@ function EventRow({ event, isLast, systemExpanded, onNavigateToCase }: EventRowP
               </Typography>
             )}
             {event.document && (
-              <Typography variant="caption" sx={{ color: 'secondary.main', fontFamily: 'monospace', fontSize: '0.7rem', cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
+              <Typography variant="caption" sx={{ color: 'secondary.main', fontVariantNumeric: 'tabular-nums', fontSize: '0.7rem', cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
                 {event.document}
               </Typography>
             )}

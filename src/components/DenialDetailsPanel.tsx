@@ -112,7 +112,7 @@ function CodeValue({ value, label, fontSize = '0.75rem' }: { value: string; labe
   }
   return (
     <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25, '&:hover .ddp-copy': { opacity: 1 } }}>
-      <Typography sx={{ fontSize, fontFamily: '"Roboto Mono","Courier New",monospace', color: '#475569', letterSpacing: '0.01em' }}>
+      <Typography sx={{ fontSize, fontVariantNumeric: 'tabular-nums', color: '#475569' }}>
         {value}
       </Typography>
       <Tooltip title={copied ? 'Copied!' : `Copy ${label}`} placement="top">
@@ -467,7 +467,7 @@ export default function DenialDetailsPanel({
                         <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1, '&:not(:last-child)': { borderBottom: '1px solid', borderColor: 'divider' } }}>
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
-                              <Typography sx={{ fontSize: '0.8125rem', fontFamily: '"Roboto Mono","Courier New",monospace', color: '#475569', flexShrink: 0 }}>
+                              <Typography sx={{ fontSize: '0.8125rem', fontVariantNumeric: 'tabular-nums', color: '#475569', flexShrink: 0 }}>
                                 {diag.code}
                               </Typography>
                               <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

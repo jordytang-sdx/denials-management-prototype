@@ -1,4 +1,4 @@
-import { useState, useRef, Component, type ErrorInfo, type ReactNode } from 'react'
+import { useState, useEffect, useRef, Component, type ErrorInfo, type ReactNode } from 'react'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   constructor(props: { children: ReactNode }) { super(props); this.state = { error: null } }
@@ -28,7 +28,7 @@ import {
   NotificationsOutlined, HelpOutlineOutlined, RestartAltOutlined,
   ChevronLeftOutlined, ChevronRightOutlined, ArchiveOutlined,
   PaymentsOutlined, GavelOutlined, ViewListOutlined,
-  ExpandMoreOutlined, ExpandLessOutlined, UnfoldMoreOutlined,
+  ExpandMoreOutlined, UnfoldMoreOutlined,
 } from '@mui/icons-material'
 import theme from './theme'
 import WorklistPage, {
@@ -50,6 +50,7 @@ import AuditDetailPage from './pages/AuditDetailPage'
 import DenialListStyleEPage from './pages/DenialListStyleEPage'
 import DenialsWorklistV2Page from './pages/DenialsWorklistV2Page'
 import DenialsWorklistV3Page from './pages/DenialsWorklistV3Page'
+import DenialsWorklistV4Page from './pages/DenialsWorklistV4Page'
 import DenialsWorklistFutureScopePage from './pages/DenialsWorklistFutureScopePage'
 import NewDenialFlow from './pages/NewDenialFlow'
 import CasePageAiEditing from './case-page/CasePageAiEditing'
@@ -364,6 +365,230 @@ function ExistingSystemSidebar({
   )
 }
 
+// ── Prototype Controls ────────────────────────────────────────────────────────
+
+type DenialsViewId = 'v1' | 'v2' | 'v3' | 'v4' | 'future-scope'
+
+interface ScenarioConfig {
+  label: string
+  view: string
+  hasAttachments?: boolean
+}
+
+interface VersionConfig {
+  id: DenialsViewId
+  label: string
+  description?: string
+  hasPause: boolean
+  scenarios: ScenarioConfig[]
+}
+
+const VERSIONS: VersionConfig[] = [
+  { id: 'v1',           label: 'V1',           hasPause: false, scenarios: [] },
+  { id: 'v2',           label: 'V2',           hasPause: false, scenarios: [] },
+  { id: 'v3',           label: 'V3',           hasPause: false, scenarios: [] },
+  { id: 'v4',           label: 'V4',           description: 'Worklist hierarchy', hasPause: false, scenarios: [] },
+  { id: 'future-scope', label: 'Future scope', hasPause: false, scenarios: [] },
+]
+
+interface PrototypeControlsProps {
+  activeVersion: DenialsViewId
+  onVersionChange: (id: DenialsViewId) => void
+  onNavigate: (view: string, hasAttachments?: boolean) => void
+  onTogglePause: () => void
+  isPaused: boolean
+  onReset: () => void
+}
+
+function PrototypeControls({ activeVersion, onVersionChange, onNavigate, onTogglePause, isPaused, onReset }: PrototypeControlsProps) {
+  const [expanded, setExpanded] = useState(true)
+  const [visible, setVisible] = useState(true)
+  const [hovered, setHovered] = useState<string | null>(null)
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        setVisible(v => !v)
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [])
+
+  if (!visible) return null
+
+  const activeVersionData = VERSIONS.find(v => v.id === activeVersion)
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: 24, left: 24, zIndex: 9999,
+      width: 240,
+      background: '#18181B',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 16,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+      overflow: 'hidden',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Inter", sans-serif',
+    }}>
+      <div
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 14px',
+          borderBottom: expanded ? '1px solid rgba(255,255,255,0.07)' : 'none',
+          cursor: 'pointer',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)' }}>
+            Prototype Controls
+          </span>
+          {!expanded && activeVersionData && (
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', color: 'rgba(255,255,255,0.22)', textTransform: 'uppercase' }}>
+              · {activeVersionData.label}
+            </span>
+          )}
+        </div>
+        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13, lineHeight: 1, userSelect: 'none' }}>
+          {expanded ? '−' : '+'}
+        </span>
+      </div>
+
+      {expanded && (
+        <div style={{ padding: '6px 8px 8px' }}>
+          {VERSIONS.map((version, index) => (
+            <div key={version.id}>
+              <button
+                onClick={() => onVersionChange(version.id)}
+                onMouseEnter={() => setHovered(version.id)}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  width: '100%',
+                  padding: '7px 8px',
+                  background: activeVersion === version.id
+                    ? 'rgba(255,255,255,0.08)'
+                    : hovered === version.id ? 'rgba(255,255,255,0.04)' : 'transparent',
+                  border: 'none',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background 0.15s',
+                }}
+              >
+                <div>
+                  <span style={{
+                    fontSize: 13,
+                    fontWeight: activeVersion === version.id ? 600 : 500,
+                    color: activeVersion === version.id ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)',
+                    letterSpacing: '-0.01em',
+                  }}>
+                    {version.label}
+                  </span>
+                  {version.description && (
+                    <span style={{
+                      fontSize: 12,
+                      fontWeight: 400,
+                      color: activeVersion === version.id ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.22)',
+                      letterSpacing: '-0.01em',
+                      marginLeft: 6,
+                    }}>
+                      {version.description}
+                    </span>
+                  )}
+                </div>
+                {activeVersion !== version.id && (
+                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', userSelect: 'none', flexShrink: 0 }}>›</span>
+                )}
+              </button>
+
+              {activeVersion === version.id && (
+                <div style={{ marginTop: 2, marginBottom: 4 }}>
+                  {version.scenarios.map(scenario => (
+                    <button
+                      key={scenario.label}
+                      onClick={() => onNavigate(scenario.view, scenario.hasAttachments)}
+                      onMouseEnter={() => setHovered(scenario.label)}
+                      onMouseLeave={() => setHovered(null)}
+                      style={{
+                        display: 'flex', alignItems: 'center',
+                        width: '100%',
+                        padding: '6px 8px 6px 18px',
+                        background: hovered === scenario.label ? 'rgba(255,255,255,0.06)' : 'transparent',
+                        border: 'none',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'background 0.15s',
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 400, color: 'rgba(255,255,255,0.65)', letterSpacing: '-0.01em', lineHeight: 1.4 }}>
+                        {scenario.label}
+                      </span>
+                    </button>
+                  ))}
+
+                  {version.hasPause && (
+                    <button
+                      onClick={onTogglePause}
+                      onMouseEnter={() => setHovered('pause')}
+                      onMouseLeave={() => setHovered(null)}
+                      style={{
+                        display: 'flex', alignItems: 'center',
+                        width: '100%',
+                        padding: '6px 8px 6px 18px',
+                        background: isPaused ? 'rgba(251,191,36,0.1)' : hovered === 'pause' ? 'rgba(255,255,255,0.06)' : 'transparent',
+                        border: 'none',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'background 0.15s',
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 400, color: isPaused ? '#FBBF24' : 'rgba(255,255,255,0.4)', letterSpacing: '-0.01em' }}>
+                        {isPaused ? '▶ Resume' : '⏸ Pause'}
+                      </span>
+                    </button>
+                  )}
+
+                  {(version.scenarios.length > 0 || version.hasPause) && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', margin: '5px 0 3px' }} />
+                  )}
+                  <button
+                    onClick={onReset}
+                    onMouseEnter={() => setHovered('reset')}
+                    onMouseLeave={() => setHovered(null)}
+                    style={{
+                      display: 'flex', alignItems: 'center',
+                      width: '100%',
+                      padding: '6px 8px',
+                      background: hovered === 'reset' ? 'rgba(255,255,255,0.04)' : 'transparent',
+                      border: 'none',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'background 0.15s',
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.3)', letterSpacing: '-0.01em' }}>
+                      Reset to default view
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              {index < VERSIONS.length - 1 && (
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', margin: '3px 0' }} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [activeNav, setActiveNav] = useState<NavItem>('Denials')
   const [navCollapsed, setNavCollapsed] = useState(false)
@@ -385,16 +610,16 @@ export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('FrontlineWorker')
   const [features, setFeatures] = useState<FeatureFlags>(DEFAULT_FLAGS)
   const [systemMode, setSystemMode] = useState<'new' | 'existing'>('existing')
-  const [denialsView, setDenialsView] = useState<'v1' | 'v2' | 'v3' | 'future-scope'>('v2')
+  const [denialsView, setDenialsView] = useState<DenialsViewId>('v4')
   const [existingNav, setExistingNav] = useState<'worklist' | 'ingest' | 'new-denial' | 'new-denial-details'>('worklist')
   const [transitionDir, setTransitionDir] = useState<'forward' | 'back'>('forward')
   const [transitionKey, setTransitionKey] = useState(0)
   const [returnContext, setReturnContext] = useState<{ tab: 'exceptions' | 'in-progress'; recordId: string } | null>(null)
-  const [widgetExpanded, setWidgetExpanded] = useState(false)
   const [pageKey, setPageKey] = useState(0)
   const [v3ShowUpload, setV3ShowUpload] = useState(false)
   const [v3NewDenialAnchor, setV3NewDenialAnchor] = useState<HTMLElement | null>(null)
   const [v3NewDenialPanelOpen, setV3NewDenialPanelOpen] = useState(false)
+  const [v3ViewMode, setV3ViewMode] = useState<'worklist' | 'all-records'>('worklist')
 
   // Filter out misclassified ADR and Underpayment denial records — these now live in SEED_AUDITS
   const visibleDenials = denials.filter(d => d.denialType !== 'ADR' && d.denialType !== 'Underpayment')
@@ -404,6 +629,32 @@ export default function App() {
   function handleV2SelectDenial(id: string, fromTab: DenialState) {
     setV2ReturnTab(fromTab)
     setSelectedV2CaseId(id)
+  }
+
+  function handlePrototypeVersionChange(versionId: DenialsViewId) {
+    setSystemMode('existing')
+    setDenialsView(versionId)
+    setExistingNav('worklist')
+    setSelectedV2CaseId(null)
+    setV2ReturnTab('InProgress')
+    setV3ShowUpload(false)
+    setPageKey(k => k + 1)
+  }
+
+  function handlePrototypeNavigate(_view: string, _hasAttachments?: boolean) {
+    setSystemMode('existing')
+    setExistingNav('worklist')
+    setSelectedV2CaseId(null)
+    setV3ShowUpload(false)
+    setPageKey(k => k + 1)
+  }
+
+  function handlePrototypeReset() {
+    setExistingNav('worklist')
+    setSelectedV2CaseId(null)
+    setV2ReturnTab('InProgress')
+    setV3ShowUpload(false)
+    setPageKey(k => k + 1)
   }
 
   function todayISO() {
@@ -731,14 +982,45 @@ export default function App() {
           )}
 
           {/* Existing system page sub-header */}
-          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && !((denialsView === 'v3' || denialsView === 'v2') && existingNav === 'ingest' && v3ShowUpload) && (
+          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && !((denialsView === 'v4' || denialsView === 'v3' || denialsView === 'v2') && existingNav === 'ingest' && v3ShowUpload) && (
             <Box sx={{ px: 3, height: 56, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
               <Box sx={{ flex: 1 }}>
                 <Typography sx={{ fontSize: '1.125rem', fontWeight: 600, lineHeight: 1.2, color: 'text.primary' }}>
-                  {existingNav === 'worklist' ? 'Denials Worklist' : 'Denials Intake'}
+                  {existingNav === 'worklist'
+                    ? (denialsView === 'v3' && v3ViewMode === 'all-records' ? 'All Denials' : 'Denials Worklist')
+                    : 'Denials Intake'}
                 </Typography>
               </Box>
-              {existingNav === 'ingest' && denialsView !== 'v3' && denialsView !== 'v2' && (
+              {existingNav === 'worklist' && denialsView === 'v3' && (
+                <Box sx={{ display: 'inline-flex', border: '1px solid var(--colors-grey-4)', borderRadius: 'var(--radii-sm)', overflow: 'hidden' }}>
+                  {(['worklist', 'all-records'] as const).map((mode, idx) => {
+                    const active = v3ViewMode === mode
+                    const label = mode === 'worklist' ? 'By Stage' : 'All Denials'
+                    return (
+                      <Box
+                        key={mode}
+                        component="button"
+                        onClick={() => setV3ViewMode(mode)}
+                        sx={{
+                          px: 1.75, py: '6px',
+                          border: 'none', outline: 'none', cursor: 'pointer',
+                          borderLeft: idx === 0 ? 'none' : '1px solid var(--colors-grey-4)',
+                          bgcolor: active ? 'var(--colors-ocean-1)' : 'transparent',
+                          color: active ? 'var(--colors-ocean-4)' : 'var(--colors-text-secondary)',
+                          fontSize: 'var(--font-sizes-12)',
+                          fontWeight: active ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)',
+                          fontFamily: 'inherit',
+                          transition: 'background-color 0.1s',
+                          '&:hover': { bgcolor: active ? 'var(--colors-ocean-2)' : 'var(--colors-grey-3)' },
+                        }}
+                      >
+                        {label}
+                      </Box>
+                    )
+                  })}
+                </Box>
+              )}
+              {existingNav === 'ingest' && denialsView !== 'v4' && denialsView !== 'v3' && denialsView !== 'v2' && (
                 <Button
                   variant="contained"
                   onClick={() => { setReturnContext(null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }}
@@ -747,7 +1029,7 @@ export default function App() {
                   New Denial
                 </Button>
               )}
-              {existingNav === 'ingest' && (denialsView === 'v3' || denialsView === 'v2') && (
+              {existingNav === 'ingest' && (denialsView === 'v4' || denialsView === 'v3' || denialsView === 'v2') && (
                 <>
                   <ButtonGroup
                     variant="contained"
@@ -779,7 +1061,7 @@ export default function App() {
                       dense
                       onClick={() => {
                         setV3NewDenialAnchor(null)
-                        if (denialsView === 'v3') {
+                        if (denialsView === 'v3' || denialsView === 'v4') {
                           setV3NewDenialPanelOpen(true)
                         } else {
                           setV3ShowUpload(false)
@@ -831,16 +1113,37 @@ export default function App() {
                 onAssign={(denialId: string, member: TeamMember | null) => setDenials(prev => prev.map(d => d.id === denialId ? { ...d, assignedTo: member } : d))}
               />
             )}
-            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v2' && selectedV2CaseId && (
+            {systemMode === 'existing' && existingNav === 'worklist' && (denialsView === 'v2' || denialsView === 'v3' || denialsView === 'v4') && selectedV2CaseId && (
               <CasePageAiEditing
                 hideNav
                 onBack={() => setSelectedV2CaseId(null)}
                 caseRecord={visibleDenials.find(d => d.id === selectedV2CaseId) ?? undefined}
                 onStatusAction={handleV2StatusAction}
+                useInlineEditPanel={denialsView === 'v3' || denialsView === 'v4'}
               />
             )}
-            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v3' && (
-              <DenialsWorklistV3Page denials={visibleDenials} />
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v3' && !selectedV2CaseId && (
+              <DenialsWorklistV3Page
+                denials={visibleDenials}
+                onSelectDenial={handleV2SelectDenial}
+                reviewCompleteIds={v2ReviewCompleteIds}
+                initialTab={v2ReturnTab}
+                assignedToMe={v2AssignedToMe}
+                onAssignedToMeChange={setV2AssignedToMe}
+                onAssign={(denialId: string, member: TeamMember | null) => setDenials(prev => prev.map(d => d.id === denialId ? { ...d, assignedTo: member } : d))}
+                viewMode={v3ViewMode}
+              />
+            )}
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v4' && !selectedV2CaseId && (
+              <DenialsWorklistV4Page
+                denials={visibleDenials}
+                onSelectDenial={handleV2SelectDenial}
+                reviewCompleteIds={v2ReviewCompleteIds}
+                initialTab={v2ReturnTab}
+                assignedToMe={v2AssignedToMe}
+                onAssignedToMeChange={setV2AssignedToMe}
+                onAssign={(denialId: string, member: TeamMember | null) => setDenials(prev => prev.map(d => d.id === denialId ? { ...d, assignedTo: member } : d))}
+              />
             )}
 {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'future-scope' && (
               <DenialsWorklistFutureScopePage denials={visibleDenials} />
@@ -883,7 +1186,7 @@ export default function App() {
                 </Box>
               </>
             )}
-            {systemMode === 'existing' && existingNav === 'ingest' && (denialsView === 'v3' || denialsView === 'v2') && (
+            {systemMode === 'existing' && existingNav === 'ingest' && (denialsView === 'v4' || denialsView === 'v3' || denialsView === 'v2') && (
               <IngestPage features={features} onNavigate={(nav, returnCtx) => {
                 if (nav === 'Denials') { setReturnContext(null); setExistingNav('worklist') }
                 else if (nav === 'new-denial') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }
@@ -1049,190 +1352,15 @@ export default function App() {
         </Box>
       </Popover>
 
-      {/* ── Prototype Widget ─────────────────────────────────────────────────── */}
-      <Box
-        sx={{
-          position: 'fixed', bottom: 16, left: 16, zIndex: 9999,
-          bgcolor: '#1A1A1A', color: '#fff', borderRadius: 1.5,
-          px: 2, py: 1.25, display: 'flex', flexDirection: 'column', gap: 0.875,
-          minWidth: 140,
-        }}
-      >
-        {/* Header */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.125 }}>
-          <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)' }}>
-            PROTOTYPE
-          </Typography>
-          <Tooltip title="Reset page" placement="top">
-            <IconButton
-              size="small"
-              onClick={() => setPageKey(k => k + 1)}
-              sx={{ p: 0.25, color: 'rgba(255,255,255,0.35)', '&:hover': { color: 'rgba(255,255,255,0.8)', bgcolor: 'transparent' } }}
-            >
-              <RestartAltOutlined sx={{ fontSize: 14 }} />
-            </IconButton>
-          </Tooltip>
-        </Box>
-
-        {/* ── Current branch ── */}
-        <Box>
-          <Box
-            onClick={() => setSystemMode('existing')}
-            sx={{
-              px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer',
-              fontSize: '0.7rem', fontWeight: 600, display: 'inline-flex',
-              bgcolor: systemMode === 'existing' ? '#fff' : 'rgba(255,255,255,0.12)',
-              color: systemMode === 'existing' ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
-              '&:hover': { bgcolor: systemMode === 'existing' ? '#fff' : 'rgba(255,255,255,0.2)' },
-            }}
-          >
-            Current
-          </Box>
-
-          {/* Version sub-toggles — indented, subordinate styling */}
-          <Box sx={{ display: 'flex', gap: 0.375, mt: 0.625, ml: 0.375, pl: 0.5 }}>
-            {(['v1', 'v2', 'v3'] as const).map(v => {
-              const active = systemMode === 'existing' && denialsView === v
-              return (
-                <Box
-                  key={v}
-                  onClick={() => { setSystemMode('existing'); setDenialsView(v); setExistingNav('worklist') }}
-                  sx={{
-                    px: 0.875, py: 0.3125, borderRadius: 0.75, cursor: 'pointer',
-                    fontSize: '0.65rem', fontWeight: 600,
-                    bgcolor: active ? 'rgba(255,255,255,0.16)' : 'transparent',
-                    color: active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.38)',
-                    '&:hover': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.75)' },
-                  }}
-                >
-                  {v.toUpperCase()}
-                </Box>
-              )
-            })}
-          </Box>
-        </Box>
-
-        {/* Divider */}
-        <Box sx={{ height: '1px', bgcolor: 'rgba(255,255,255,0.1)', mx: -0.5 }} />
-
-        {/* ── Future scope ── */}
-        <Box>
-          <Box
-            onClick={() => { setSystemMode('existing'); setDenialsView('future-scope'); setExistingNav('worklist') }}
-            sx={{
-              px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer',
-              fontSize: '0.7rem', fontWeight: 600, display: 'inline-flex',
-              bgcolor: systemMode === 'existing' && denialsView === 'future-scope' ? '#fff' : 'rgba(255,255,255,0.12)',
-              color: systemMode === 'existing' && denialsView === 'future-scope' ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
-              '&:hover': { bgcolor: systemMode === 'existing' && denialsView === 'future-scope' ? '#fff' : 'rgba(255,255,255,0.2)' },
-            }}
-          >
-            Future scope
-          </Box>
-        </Box>
-
-        {/* Divider */}
-        <Box sx={{ height: '1px', bgcolor: 'rgba(255,255,255,0.1)', mx: -0.5 }} />
-
-        {/* ── Old branch ── */}
-        <Box>
-          <Box
-            onClick={() => setSystemMode('new')}
-            sx={{
-              px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer',
-              fontSize: '0.7rem', fontWeight: 600, display: 'inline-flex',
-              bgcolor: systemMode === 'new' ? '#fff' : 'rgba(255,255,255,0.12)',
-              color: systemMode === 'new' ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
-              '&:hover': { bgcolor: systemMode === 'new' ? '#fff' : 'rgba(255,255,255,0.2)' },
-            }}
-          >
-            Old
-          </Box>
-
-          {systemMode === 'new' && (
-            <Box sx={{ mt: 0.625 }}>
-              <Box
-                onClick={() => setWidgetExpanded(e => !e)}
-                sx={{
-                  display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer',
-                  color: 'rgba(255,255,255,0.38)', fontSize: '0.6rem', fontWeight: 700,
-                  letterSpacing: '0.08em', userSelect: 'none',
-                  '&:hover': { color: 'rgba(255,255,255,0.65)' },
-                }}
-              >
-                {widgetExpanded
-                  ? <ExpandLessOutlined sx={{ fontSize: 12 }} />
-                  : <ExpandMoreOutlined sx={{ fontSize: 12 }} />}
-                {widgetExpanded ? 'FEWER OPTIONS' : 'MORE OPTIONS'}
-              </Box>
-
-              {widgetExpanded && (
-                <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.875 }}>
-                  {/* VIEW AS */}
-                  <Box>
-                    <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.38)', mb: 0.625 }}>
-                      VIEW AS
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      {([
-                        { role: 'Manager' as UserRole, label: 'Manager' },
-                        { role: 'FrontlineWorker' as UserRole, label: 'Frontline' },
-                      ]).map(({ role, label }) => (
-                        <Box
-                          key={role}
-                          onClick={() => {
-                            setUserRole(role)
-                            if (role === 'FrontlineWorker' && activeNav === 'Archive') setActiveNav('Denials')
-                          }}
-                          sx={{
-                            px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
-                            bgcolor: userRole === role ? '#fff' : 'rgba(255,255,255,0.12)',
-                            color: userRole === role ? '#1A1A1A' : 'rgba(255,255,255,0.7)',
-                            '&:hover': { bgcolor: userRole === role ? '#fff' : 'rgba(255,255,255,0.2)' },
-                          }}
-                        >
-                          {label}
-                        </Box>
-                      ))}
-                    </Box>
-                  </Box>
-
-                  {/* PACKAGE */}
-                  <Box>
-                    <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.38)', mb: 0.625 }}>
-                      PACKAGE
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', maxWidth: 200 }}>
-                      {([
-                        { key: 'denials' as const, label: 'Denials' },
-                        { key: 'underpayments' as const, label: 'Underpay.' },
-                        { key: 'audits' as const, label: 'Audits' },
-                      ]).map(({ key, label }) => (
-                        <Box
-                          key={key}
-                          onClick={() => {
-                            const next = { ...features, [key]: !features[key] }
-                            setFeatures(next)
-                            if (!next[key] && activeNav.toLowerCase() === key) setActiveNav('Dashboard')
-                          }}
-                          sx={{
-                            px: 1.25, py: 0.5, borderRadius: 1, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
-                            bgcolor: features[key] ? '#fff' : 'rgba(255,255,255,0.12)',
-                            color: features[key] ? '#1A1A1A' : 'rgba(255,255,255,0.5)',
-                            '&:hover': { bgcolor: features[key] ? '#f0f0f0' : 'rgba(255,255,255,0.2)' },
-                          }}
-                        >
-                          {label}
-                        </Box>
-                      ))}
-                    </Box>
-                  </Box>
-                </Box>
-              )}
-            </Box>
-          )}
-        </Box>
-      </Box>
+      {/* ── PrototypeControls (worklist version switcher) ────────────────────── */}
+      <PrototypeControls
+        activeVersion={denialsView}
+        onVersionChange={handlePrototypeVersionChange}
+        onNavigate={handlePrototypeNavigate}
+        onTogglePause={() => {}}
+        isPaused={false}
+        onReset={handlePrototypeReset}
+      />
 
       {/* ── Toast ────────────────────────────────────────────────────────────── */}
       <Snackbar

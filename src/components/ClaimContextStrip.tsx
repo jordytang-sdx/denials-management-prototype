@@ -46,7 +46,7 @@ export function ClaimContextStrip({ claim }: ClaimContextStripProps) {
         }}
         onClick={() => setOpen(o => !o)}
       >
-        <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: '0.75rem', letterSpacing: 0.2 }}>
+        <Typography variant="caption" sx={{ fontVariantNumeric: 'tabular-nums', color: 'text.secondary', fontSize: '0.75rem', letterSpacing: 0.2 }}>
           {collapsedLine}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>

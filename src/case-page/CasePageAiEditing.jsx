@@ -90,6 +90,7 @@ import {
   MOCK_DENIAL_LETTER_HTML,
 } from './mockData';
 import { AI_EDIT_SCENARIOS, QUICK_ACTIONS, SCOPE_TRANSFORMS, DEL_STYLE, INS_STYLE } from './aiMockDeltas';
+import CaseEditDenialDetailsPanel from './CaseEditDenialDetailsPanel';
 
 // ─── CodeValue ────────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ function CodeValue({ value, label, fontSize = '0.6875rem' }) {
   };
   return (
     <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25, '&:hover .code-copy-icon': { opacity: 1 } }}>
-      <Typography sx={{ fontSize, fontFamily: '"Roboto Mono", "Courier New", monospace', color: '#475569', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>
+      <Typography sx={{ fontSize, fontVariantNumeric: 'tabular-nums', color: '#475569', whiteSpace: 'nowrap' }}>
         {value}
       </Typography>
       <Tooltip title={copied ? 'Copied!' : `Copy ${label}`} placement="top">
@@ -418,6 +419,7 @@ const initialState = {
     snackbar: { open: false, message: '' },
     view: 'case',
     hasAttachments: false,
+    inlineEditPanelOpen: false,
   },
 };
 
@@ -569,6 +571,10 @@ function reducer(state, action) {
       return { ...state, ui: { ...state.ui, statusMenuAnchor: null } };
     case 'NAV_TO_EDIT':
       return { ...state, ui: { ...state.ui, view: 'edit', caseMenuAnchor: null } };
+    case 'OPEN_INLINE_EDIT_PANEL':
+      return { ...state, ui: { ...state.ui, inlineEditPanelOpen: true, caseMenuAnchor: null } };
+    case 'CLOSE_INLINE_EDIT_PANEL':
+      return { ...state, ui: { ...state.ui, inlineEditPanelOpen: false } };
     case 'NAV_TO_CASE':
       return { ...state, ui: { ...state.ui, view: 'case' } };
     case 'NAV_TO_VERSION_HISTORY':
@@ -831,7 +837,7 @@ function StarRating({ rating, onChange }) {
 
 // ─── CaseHeader ──────────────────────────────────────────────────────────────
 
-function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = null }) {
+function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = null, useInlineEditPanel = false }) {
   const { caseData, ui } = state;
   const statusCfg = STATUS_CONFIG[caseData.status] || STATUS_CONFIG.Archived;
   const ratingLabel = RATING_LABELS[caseData.rating] || 'Needs Rating';
@@ -983,7 +989,7 @@ function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = nu
           <ListItemIcon><OpenInNewIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Open denial in new tab</ListItemText>
         </MenuItem>
-        <MenuItem onClick={() => dispatch({ type: 'NAV_TO_EDIT' })} sx={{ fontSize: '0.875rem' }}>
+        <MenuItem onClick={() => dispatch({ type: useInlineEditPanel ? 'OPEN_INLINE_EDIT_PANEL' : 'NAV_TO_EDIT' })} sx={{ fontSize: '0.875rem' }}>
           <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Edit denial details</ListItemText>
         </MenuItem>
@@ -3588,7 +3594,7 @@ function VersionHistoryLayout({ selectedVersionId, onSelectVersion, onBack, onRe
 
 // ─── CasePageAiEditing (root) ─────────────────────────────────────────────────
 
-export default function CasePageAiEditing({ onBack = () => {}, initialView = 'case', initialHasAttachments = false, isPaused = false, hideNav = false, caseRecord = null, onStatusAction = null }) {
+export default function CasePageAiEditing({ onBack = () => {}, initialView = 'case', initialHasAttachments = false, isPaused = false, hideNav = false, caseRecord = null, onStatusAction = null, useInlineEditPanel = false }) {
   const [state, dispatch] = useReducer(reducer, null, () => {
     const overrides = buildCaseOverrides(caseRecord);
     const base = {
@@ -3685,8 +3691,8 @@ export default function CasePageAiEditing({ onBack = () => {}, initialView = 'ca
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {!hideNav && <AppNav />}
-      <CaseHeader state={state} dispatch={dispatch} onBack={handleBack} onStatusMenuClick={handleStatusMenuClick} />
-      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <CaseHeader state={state} dispatch={dispatch} onBack={handleBack} onStatusMenuClick={handleStatusMenuClick} useInlineEditPanel={useInlineEditPanel} />
+      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {(ui.view === 'case' || ui.view === 'version-history') && (
             <MainContent
@@ -3724,6 +3730,40 @@ export default function CasePageAiEditing({ onBack = () => {}, initialView = 'ca
           selectedVersionId={selectedVersionId}
           onSelectVersion={setSelectedVersionId}
         />
+        {useInlineEditPanel && ui.inlineEditPanelOpen && (
+          <>
+            <Box
+              onClick={() => dispatch({ type: 'CLOSE_INLINE_EDIT_PANEL' })}
+              sx={{
+                position: 'absolute', inset: 0,
+                bgcolor: 'rgba(0,0,0,0.32)',
+                zIndex: 10,
+                animation: 'sdxFadeIn 160ms ease-out',
+                '@keyframes sdxFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+              }}
+            />
+            <Box
+              sx={{
+                position: 'absolute', top: 0, right: 0, bottom: 0,
+                width: 480, maxWidth: '100%',
+                bgcolor: 'background.paper',
+                boxShadow: '-8px 0 24px rgba(0,0,0,0.12)',
+                zIndex: 11,
+                display: 'flex', flexDirection: 'column',
+                animation: 'sdxSlideInRight 220ms cubic-bezier(0.2, 0, 0, 1)',
+                '@keyframes sdxSlideInRight': {
+                  from: { transform: 'translateX(100%)' },
+                  to:   { transform: 'translateX(0)' },
+                },
+              }}
+            >
+              <CaseEditDenialDetailsPanel
+                caseData={caseData}
+                onClose={() => dispatch({ type: 'CLOSE_INLINE_EDIT_PANEL' })}
+              />
+            </Box>
+          </>
+        )}
       </Box>
       <DeleteDenialDialog patientName={caseData.patientName} open={ui.deleteDialogOpen} dispatch={dispatch} />
       <CreateNewVersionModal

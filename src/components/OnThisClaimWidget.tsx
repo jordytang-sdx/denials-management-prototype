@@ -82,7 +82,7 @@ export function OnThisClaimWidget({ claimId, cases, onNavigateToCase }: OnThisCl
                 {/* Case ID + state/status */}
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-                    <Typography variant="caption" sx={{ fontWeight: 600, fontFamily: 'monospace', fontSize: '0.75rem', color: c.isCurrent ? 'primary.main' : 'text.primary' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', fontSize: '0.75rem', color: c.isCurrent ? 'primary.main' : 'text.primary' }}>
                       {c.caseId}
                     </Typography>
                     {c.isCurrent && (
