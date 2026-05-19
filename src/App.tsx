@@ -1360,7 +1360,7 @@ export default function App() {
                   patientName: v4Screen.encounterFromWizard.patientName,
                   patientDob: v4Screen.encounterFromWizard.dob,
                   payer: null,
-                  classifiedAs: null,
+                  classifiedAs: 'DRG Downgrade',
                   deadline: null,
                   encounter: {
                     har: v4Screen.encounterFromWizard.har,

@@ -49,7 +49,7 @@ const MOCK_RESULT: EncounterResult = {
 
 // ── Chrome variants ───────────────────────────────────────────────────────────
 
-function WizardChrome({ onCancel, onBackToList }: { onCancel: () => void; onBackToList: () => void }) {
+function WizardChrome({ onBackToList }: { onBackToList: () => void }) {
   return (
     <Box sx={{
       bgcolor: 'background.paper',
@@ -152,7 +152,7 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
       bgcolor: 'var(--colors-grey-2)',
     }}>
       {chrome.kind === 'wizard'
-        ? <WizardChrome onCancel={chrome.onCancel} onBackToList={chrome.onBackToList} />
+        ? <WizardChrome onBackToList={chrome.onBackToList} />
         : <ChangeEncounterChrome onBack={chrome.onBack} />
       }
 

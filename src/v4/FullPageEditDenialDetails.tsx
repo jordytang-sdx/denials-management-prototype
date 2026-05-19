@@ -71,7 +71,7 @@ function parseDenialTypeFromClassification(classifiedAs: string | null): 'drg_do
 
 // ── Top-chrome variants ───────────────────────────────────────────────────────
 
-function WizardChrome({ onCancel, onBackToFindEncounter }: { onCancel: () => void; onBackToFindEncounter: () => void }) {
+function WizardChrome({ onBackToFindEncounter }: { onBackToFindEncounter: () => void }) {
   return (
     <Box sx={{
       bgcolor: 'background.paper',
@@ -473,7 +473,7 @@ function FormBody({
           </Box>
         </SectionCard>
 
-        {denialType === 'drg_downgrade' && draft.drgAdjustments && (
+        {denialType === 'drg_downgrade' && (
           <SectionCard id="payer-adj" title="Payer Adjustments">
             <DrgAdjustmentsSection adjustments={draft.drgAdjustments} />
           </SectionCard>
@@ -571,7 +571,7 @@ export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncou
       height: '100%', overflow: 'hidden',
       bgcolor: 'var(--colors-grey-2)',
     }}>
-      {chrome.kind === 'wizard' && <WizardChrome onCancel={chrome.onCancel} onBackToFindEncounter={chrome.onBackToFindEncounter} />}
+      {chrome.kind === 'wizard' && <WizardChrome onBackToFindEncounter={chrome.onBackToFindEncounter} />}
       {chrome.kind === 'queue' && (
         <QueueChrome
           position={chrome.position} total={chrome.total} deadlineLabel={chrome.deadlineLabel}
