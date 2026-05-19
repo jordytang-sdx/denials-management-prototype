@@ -461,7 +461,7 @@ export default function AuditWorklistPage({ audits, onSelectAudit }: Props) {
                   {/* Patient / HAR */}
                   <TableCell sx={{ py: 1.25 }}>
                     <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>{formatPatientName(record.patient.name)}</Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: '0.75rem' }}>{record.claim.har}</Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums', fontSize: '0.75rem' }}>{record.claim.har}</Typography>
                   </TableCell>
 
                   {/* Audit Type */}

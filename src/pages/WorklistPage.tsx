@@ -310,7 +310,7 @@ function PatientCell({ denial, activeState }: { denial: DenialRecord; activeStat
       <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
         {displayName}
       </Typography>
-      <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+      <Typography variant="caption" sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
         {denial.claim.har}
       </Typography>
       {showReturned && (

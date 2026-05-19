@@ -33,6 +33,8 @@ interface IngestPageProps {
   onShowUploadChange?: (v: boolean) => void
   newDenialPanelOpen?: boolean
   onNewDenialPanelClose?: () => void
+  /** V4 only: intercept exception-review clicks to open a full-page editor instead of the side panel. */
+  onReviewExceptionFullPage?: (records: StagingRecord[], currentIndex: number) => void
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1847,7 +1849,7 @@ function InlineEditDenialDetailsPanel({
 
 function ExceptionsTab({
   records, onUpdate, onNavigate, onSwitchToHistory, mode, initialDrawerRecordId, inlinePanels,
-  newDenialPanelOpen, onNewDenialPanelClose,
+  newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage,
 }: {
   records: StagingRecord[]
   onUpdate: (updated: StagingRecord[]) => void
@@ -1858,6 +1860,7 @@ function ExceptionsTab({
   inlinePanels?: boolean
   newDenialPanelOpen?: boolean
   onNewDenialPanelClose?: () => void
+  onReviewExceptionFullPage?: (records: StagingRecord[], currentIndex: number) => void
 }) {
   type ToastState =
     | { kind: 'created'; instanceId: string; worklist: string }
@@ -1887,6 +1890,13 @@ function ExceptionsTab({
   ).length
 
   const openReview = (id: string) => {
+    if (onReviewExceptionFullPage) {
+      const index = exceptions.findIndex(r => r.id === id)
+      if (index >= 0) {
+        onReviewExceptionFullPage(exceptions, index)
+        return
+      }
+    }
     setDrawerRecordId(id)
     setShowCompletion(false)
     setEditDetailsOpen(false)
@@ -2492,7 +2502,7 @@ function HistoryTab({ records, mode, inlinePanels }: { records: StagingRecord[];
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose }: IngestPageProps) {
+export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage }: IngestPageProps) {
   const [activeTab, setActiveTab] = useState(initialOpenDrawer?.tab === 'in-progress' ? 1 : 0)
   const [records, setRecords] = useState<StagingRecord[]>(SEED_STAGING)
   const [showUploadInternal, setShowUploadInternal] = useState(false)
@@ -2620,6 +2630,7 @@ export default function IngestPage({ features: _features, onNavigate, mode, init
               inlinePanels={inlinePanels}
               newDenialPanelOpen={newDenialPanelOpen}
               onNewDenialPanelClose={onNewDenialPanelClose}
+              onReviewExceptionFullPage={onReviewExceptionFullPage}
             />
           )}
           {mode === 'existing' && activeTab === 1 && (

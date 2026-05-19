@@ -118,7 +118,7 @@ function PatientCell({ d }: { d: DenialRecord }) {
       <Typography sx={{ fontSize: '0.875rem', fontWeight: 500 }}>
         {formatPatientName(d.patient.name)}
       </Typography>
-      <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary', fontFamily: 'monospace' }}>
+      <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
         {d.claim.har}
       </Typography>
     </TableCell>

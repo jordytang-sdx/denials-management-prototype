@@ -4197,7 +4197,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
           <Divider orientation="vertical" flexItem />
           {/* [D] badge */}
           <Chip label="D" size="small" sx={{ height: 20, width: 20, fontSize: '0.625rem', fontWeight: 800, bgcolor: '#fef3ea', color: '#b86823', borderRadius: '4px', '& .MuiChip-label': { px: 0 } }} />
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '0.875rem' }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontSize: '0.875rem' }}>
             {denial.id}
           </Typography>
           {(() => {
@@ -4237,7 +4237,7 @@ export default function DenialDetailPage({ denial, onBack, onDenialUpdate, onSub
         {/* Row 2: patient · mrn · payer · case type · subtype · CARC · RARC */}
         <Box sx={{ px: 2.5, pb: 1.25, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>{denial.patient.name}</Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{denial.patient.mrn}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>{denial.patient.mrn}</Typography>
           <Typography variant="caption" color="text.disabled">·</Typography>
           <Typography variant="body2" color="text.secondary">{denial.payer}</Typography>
           <Typography variant="caption" color="text.disabled">·</Typography>

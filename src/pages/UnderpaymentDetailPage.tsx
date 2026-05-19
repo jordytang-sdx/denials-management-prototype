@@ -1547,7 +1547,7 @@ export default function UnderpaymentDetailPage({ underpaymentId, onBack, onNavig
         {/* Row 2: patient · mrn · payer · category icon+label · DOS */}
         <Box sx={{ px: 2.5, pb: 1.25, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>{record.patient.name}</Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{record.patient.mrn}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>{record.patient.mrn}</Typography>
           <Typography variant="caption" color="text.disabled">·</Typography>
           <Typography variant="body2" color="text.secondary">{record.payer}</Typography>
           <Typography variant="caption" color="text.disabled">·</Typography>

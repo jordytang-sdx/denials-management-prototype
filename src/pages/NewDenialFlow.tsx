@@ -62,7 +62,7 @@ function CodeValue({ value, label, fontSize = '0.6875rem' }: { value: string; la
   }
   return (
     <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25, '&:hover .code-copy-icon': { opacity: 1 } }}>
-      <Typography sx={{ fontSize, fontFamily: '"Roboto Mono", "Courier New", monospace', color: '#475569', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>
+      <Typography sx={{ fontSize, fontVariantNumeric: 'tabular-nums', color: '#475569', whiteSpace: 'nowrap' }}>
         {value}
       </Typography>
       <Tooltip title={copied ? 'Copied!' : `Copy ${label}`} placement="top">

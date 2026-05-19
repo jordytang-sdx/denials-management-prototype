@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import {
   Box, Typography, Table, TableHead, TableBody, TableRow, TableCell,
-  TableContainer, Chip, IconButton, Tooltip, Tabs, Tab,
+  TableContainer, Chip, IconButton, Tooltip,
   InputAdornment, TextField, Avatar, Checkbox, Popover, List, ListItemButton,
   ListItemText, Divider,
 } from '@mui/material'
@@ -12,7 +12,6 @@ import {
 } from '@mui/icons-material'
 import { type DenialRecord, type DenialState, type TeamMember, TEAM_MEMBERS, KRISTA } from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
-import DenialsAllRecordsView from './DenialsAllRecordsView'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,19 +46,32 @@ const DEFAULT_COLUMNS = new Set<ColumnKey>(ALL_COLUMNS.filter(c => c.defaultOn).
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS: DenialState[] = ['InProgress', 'Submitted', 'Closed']
+const STAGE_CHIPS = ['Ready', 'Submitted', 'Closed', 'Overturned', 'Upheld', 'Will not appeal', 'Archived'] as const
+type StageChip = typeof STAGE_CHIPS[number]
 
-const TAB_LABELS: Record<DenialState, string> = {
-  Queue: 'Queue', InProgress: 'Ready', Submitted: 'Submitted',
+function matchesStageChip(d: DenialRecord, chip: StageChip): boolean {
+  if (chip === 'Ready')           return d.state === 'InProgress' || d.state === 'Queue'
+  if (chip === 'Submitted')       return d.state === 'Submitted'
+  if (chip === 'Closed')          return d.state === 'Closed'
+  if (chip === 'Overturned')      return d.state === 'Overturned'
+  if (chip === 'Upheld')          return (d.status ?? '').toLowerCase().includes('upheld')
+  if (chip === 'Will not appeal') return d.status === 'Upheld - Will Not Appeal' || d.status === 'Will Not Appeal'
+  if (chip === 'Archived')        return d.state === 'Archive'
+  return false
+}
+
+const STAGE_LABELS: Record<DenialState, string> = {
+  Queue: 'Ready', InProgress: 'Ready', Submitted: 'Submitted',
   Overturned: 'Overturned', Closed: 'Closed', Archive: 'Archived',
 }
 
-const OUTCOME_CHIPS = ['Overturned', 'Upheld - Will Appeal', 'Upheld - Will Not Appeal', 'Will Not Appeal'] as const
-
-function matchesOutcome(d: DenialRecord, chip: string): boolean {
-  if (chip === 'Overturned') return d.state === 'Overturned'
-  if (chip === 'Upheld - Will Not Appeal') return d.status === 'Upheld - Will Not Appeal' || d.status === 'Upheld by Payer'
-  return d.status === chip
+const STAGE_COLORS: Record<DenialState, { bg: string; color: string; border: string }> = {
+  Queue:      { bg: 'var(--colors-badge-variant-info-background)',    color: 'var(--colors-badge-variant-info-text)',    border: 'var(--colors-badge-variant-info-border)'    },
+  InProgress: { bg: 'var(--colors-badge-variant-info-background)',    color: 'var(--colors-badge-variant-info-text)',    border: 'var(--colors-badge-variant-info-border)'    },
+  Submitted:  { bg: 'var(--colors-badge-variant-warning-background)', color: 'var(--colors-badge-variant-warning-text)', border: 'var(--colors-badge-variant-warning-border)' },
+  Closed:     { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: 'var(--colors-badge-variant-default-border)' },
+  Overturned: { bg: 'var(--colors-badge-variant-success-background)', color: 'var(--colors-badge-variant-success-text)', border: 'var(--colors-badge-variant-success-border)' },
+  Archive:    { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: 'var(--colors-badge-variant-default-border)' },
 }
 
 const TODAY = new Date('2026-04-02')
@@ -440,20 +452,14 @@ interface Props {
   assignedToMe?: boolean
   onAssignedToMeChange?: (v: boolean) => void
   onAssign?: (denialId: string, member: TeamMember | null) => void
-  viewMode?: 'worklist' | 'all-records'
 }
 
-export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewCompleteIds, initialTab, assignedToMe: assignedToMeProp, onAssignedToMeChange, onAssign, viewMode = 'worklist' }: Props) {
-  const [activeTab, setActiveTab] = useState<DenialState>(
-    initialTab === 'Overturned' ? 'Closed'
-      : initialTab === 'Archive' ? 'InProgress'
-      : (initialTab ?? 'InProgress')
-  )
+export default function DenialsAllRecordsView({ denials, onSelectDenial, reviewCompleteIds, assignedToMe: assignedToMeProp, onAssignedToMeChange, onAssign }: Props) {
+  const [stageFilter, setStageFilter] = useState<StageChip[]>([])
   const [sort, setSort] = useState<Sort>(null)
   const [search, setSearch] = useState('')
   const [assignedToMeLocal, setAssignedToMeLocal] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(DEFAULT_COLUMNS)
-  const [closedStatusFilter, setClosedStatusFilter] = useState<string[]>([])
   const [assignAnchor, setAssignAnchor] = useState<{ el: HTMLElement; denialId: string } | null>(null)
   const [payerFilter, setPayerFilter] = useState<string[]>([])
   const [denialTypeFilter, setDenialTypeFilter] = useState<string[]>([])
@@ -506,32 +512,10 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
     return names
   }, [denials])
 
-  function matchesTab(d: DenialRecord, t: DenialState): boolean {
-    if (t === 'InProgress') return d.state === 'InProgress' || d.state === 'Queue'
-    if (t === 'Closed')     return d.state === 'Closed' || d.state === 'Overturned'
-    return d.state === t
-  }
-
-  const tabCounts = useMemo(() =>
-    Object.fromEntries(TABS.map(t => [t, denials.filter(d =>
-      matchesTab(d, t) &&
-      ALLOWED_DENIAL_TYPES.includes(d.denialType) &&
-      (!searchMatches || searchMatches(d)) &&
-      (!assignedToMe || isAssignedToMe(d)) &&
-      (payerFilter.length === 0 || payerFilter.includes(d.payer)) &&
-      (denialTypeFilter.length === 0 || denialTypeFilter.includes(d.denialType)) &&
-      (appealLevelFilter.length === 0 || appealLevelFilter.includes(d.appealLevel)) &&
-      (lobFilter.length === 0 || lobFilter.includes(d.lineOfBusiness)) &&
-      (assignedToFilter.length === 0 || assignedToFilter.some(n => n === 'Unassigned' ? !d.assignedTo : d.assignedTo?.name === n))
-    ).length])),
-  [denials, searchMatches, assignedToMe, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
-
-  const closedStatusOptions = OUTCOME_CHIPS
-
   const displayed = useMemo(() => {
     let rows = denials.filter(d =>
-      matchesTab(d, activeTab) &&
       ALLOWED_DENIAL_TYPES.includes(d.denialType) &&
+      (stageFilter.length === 0 || stageFilter.some(c => matchesStageChip(d, c))) &&
       (!searchMatches || searchMatches(d)) &&
       (!assignedToMe || isAssignedToMe(d)) &&
       (payerFilter.length === 0 || payerFilter.includes(d.payer)) &&
@@ -540,8 +524,6 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
       (lobFilter.length === 0 || lobFilter.includes(d.lineOfBusiness)) &&
       (assignedToFilter.length === 0 || assignedToFilter.some(n => n === 'Unassigned' ? !d.assignedTo : d.assignedTo?.name === n))
     )
-    if (activeTab === 'Closed' && closedStatusFilter.length > 0)
-      rows = rows.filter(d => closedStatusFilter.some(c => matchesOutcome(d, c)))
     if (sort) {
       rows = [...rows].sort((a, b) => {
         let cmp = 0
@@ -552,7 +534,7 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
       })
     }
     return rows
-  }, [denials, activeTab, searchMatches, sort, assignedToMe, closedStatusFilter, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
+  }, [denials, stageFilter, searchMatches, sort, assignedToMe, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
 
   function toggleSort(col: SortCol) {
     setSort(prev =>
@@ -560,12 +542,6 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
         ? prev.dir === 'asc' ? { col, dir: 'desc' } : null
         : { col, dir: 'asc' }
     )
-  }
-
-  function handleTabChange(_: React.SyntheticEvent, v: DenialState) {
-    setActiveTab(v)
-    setSort(null)
-    setClosedStatusFilter([])
   }
 
   // ── Column header sets per tab ─────────────────────────────────────────────
@@ -608,8 +584,13 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
   }
 
   function renderHeaders() {
-    const optionalCols = (
-      <>
+    return (
+      <TableRow>
+        <SortableHeader col="patient" label="Patient / HAR" {...sharedSort} />
+        {col('payer')        && <TableCell>Payer</TableCell>}
+        {col('class')        && <TableCell>Class</TableCell>}
+        {col('denialType')   && <TableCell>Denial Type</TableCell>}
+        {col('deniedAmount') && <TableCell align="right">Denied Amount</TableCell>}
         {col('dos')           && <TableCell>Date of Service</TableCell>}
         {col('createdAt')     && <TableCell>Ingested Date</TableCell>}
         {col('carc')          && <TableCell>CARC</TableCell>}
@@ -618,69 +599,117 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
         {col('mrn')           && <TableCell>MRN</TableCell>}
         {col('priorityScore') && <TableCell>Priority</TableCell>}
         {col('nextAction')    && <TableCell>Next Action</TableCell>}
-      </>
-    )
-    const shared = (
-      <>
-        <SortableHeader col="patient" label="Patient / HAR" {...sharedSort} />
-        {col('payer')       && <TableCell>Payer</TableCell>}
-        {col('class')       && <TableCell>Class</TableCell>}
-        {col('denialType')  && <TableCell>Denial Type</TableCell>}
-        {col('deniedAmount') && <TableCell align="right">Denied Amount</TableCell>}
-        {optionalCols}
-      </>
-    )
-    if (activeTab === 'InProgress') return (
-      <TableRow>
-        {shared}
-        {col('appealLevel')    && <TableCell>Appeal Level</TableCell>}
-        <SortableHeader col="deadline" label="Deadline" {...sharedSort} />
-        {col('assignedTo')     && <TableCell>Assigned To</TableCell>}
-        {col('reviewComplete') && <TableCell sx={{ width: 120 }}>Review Complete</TableCell>}
-        <TableCell sx={{ width: 48 }} />
-      </TableRow>
-    )
-    if (activeTab === 'Archive') return (
-      <TableRow>
-        {shared}
         {col('appealLevel') && <TableCell>Appeal Level</TableCell>}
-        <TableCell>Archive Reason</TableCell>
-        <TableCell sx={{ width: 48 }} />
-      </TableRow>
-    )
-    if (activeTab === 'Submitted') return (
-      <TableRow>
-        {shared}
-        {col('appealLevel') && <TableCell>Appeal Level</TableCell>}
-        <TableCell>Submitted</TableCell>
-        <TableCell>Response Due</TableCell>
-        {col('assignedTo')  && <TableCell>Assigned To</TableCell>}
-        <TableCell sx={{ width: 48 }} />
-      </TableRow>
-    )
-    return (
-      <TableRow>
-        {shared}
-        {col('appealLevel') && <TableCell>Appeal Level</TableCell>}
-        <TableCell>Outcome</TableCell>
-        <TableCell>Closed Date</TableCell>
-        {col('assignedTo')  && <TableCell>Assigned To</TableCell>}
+        <TableCell>Stage</TableCell>
+        <SortableHeader col="deadline" label="Key Date" {...sharedSort} />
+        {col('assignedTo') && <TableCell>Assigned To</TableCell>}
         <TableCell sx={{ width: 48 }} />
       </TableRow>
     )
   }
 
-  // ── Row renderers per tab ──────────────────────────────────────────────────
+  function renderStageCell(d: DenialRecord) {
+    const c = STAGE_COLORS[d.state]
+    const label = STAGE_LABELS[d.state]
+    const showStatus =
+      (d.state === 'Closed' || d.state === 'Archive') && (d.status || d.closeReason || d.archiveReason)
+    const sublabel = d.state === 'Archive'
+      ? (d.archiveReason ?? d.status)
+      : d.state === 'Closed'
+        ? (d.closeReason ?? d.status)
+        : null
+    return (
+      <TableCell>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, alignItems: 'flex-start' }}>
+          <Chip
+            label={label}
+            size="small"
+            sx={{
+              height: 20, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-medium)',
+              bgcolor: c.bg, color: c.color,
+              border: '1px solid', borderColor: c.border,
+              '& .MuiChip-label': { px: 0.875 },
+            }}
+          />
+          {showStatus && sublabel && (
+            <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', lineHeight: 1.2 }}>
+              {sublabel}
+            </Typography>
+          )}
+        </Box>
+      </TableCell>
+    )
+  }
+
+  function renderKeyDateCell(d: DenialRecord) {
+    if (d.state === 'InProgress' || d.state === 'Queue') {
+      return <DeadlineCell d={d} />
+    }
+    if (d.state === 'Submitted') {
+      return (
+        <TableCell>
+          {d.responseDueDate ? (
+            <>
+              {formatDate(d.responseDueDate)}
+              <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
+                Response due
+              </Typography>
+            </>
+          ) : d.submissionDate ? (
+            <>
+              {formatDate(d.submissionDate)}
+              <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
+                Submitted
+              </Typography>
+            </>
+          ) : (
+            <Typography variant="inherit" sx={{ color: 'text.disabled' }}>—</Typography>
+          )}
+        </TableCell>
+      )
+    }
+    if (d.state === 'Overturned') {
+      return (
+        <TableCell>
+          {d.overturnDate ? (
+            <>
+              {formatDate(d.overturnDate)}
+              <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
+                Overturned
+              </Typography>
+            </>
+          ) : <Typography variant="inherit" sx={{ color: 'text.disabled' }}>—</Typography>}
+        </TableCell>
+      )
+    }
+    return (
+      <TableCell>
+        {d.closedDate ? (
+          <>
+            {formatDate(d.closedDate)}
+            <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
+              {d.state === 'Archive' ? 'Archived' : 'Closed'}
+            </Typography>
+          </>
+        ) : <Typography variant="inherit" sx={{ color: 'text.disabled' }}>—</Typography>}
+      </TableCell>
+    )
+  }
 
   function renderRow(d: DenialRecord) {
     const rowProps = {
       key: d.id,
-      onClick: () => onSelectDenial?.(d.id, activeTab),
+      onClick: () => onSelectDenial?.(d.id, d.state),
       sx: { cursor: onSelectDenial ? 'pointer' : 'default' },
     }
 
-    const optionalCells = (
-      <>
+    return (
+      <TableRow {...rowProps}>
+        <PatientCell d={d} />
+        {col('payer')        && <PayerCell d={d} />}
+        {col('class')        && <ClassCell d={d} />}
+        {col('denialType')   && <DenialTypeCell d={d} />}
+        {col('deniedAmount') && <DeniedCell d={d} />}
         {col('dos')           && <TableCell>{d.dos ? formatDate(d.dos) : '—'}</TableCell>}
         {col('createdAt')     && <TableCell>{d.createdAt ? formatDate(d.createdAt) : '—'}</TableCell>}
         {col('carc')          && <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{d.carc || '—'}</TableCell>}
@@ -689,87 +718,9 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
         {col('mrn')           && <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{d.patient.mrn || '—'}</TableCell>}
         {col('priorityScore') && <TableCell>{d.priorityScore ?? '—'}</TableCell>}
         {col('nextAction')    && <TableCell sx={{ color: 'text.secondary' }}>{d.nextAction || '—'}</TableCell>}
-      </>
-    )
-
-    const shared = (
-      <>
-        <PatientCell d={d} />
-        {col('payer')        && <PayerCell d={d} />}
-        {col('class')        && <ClassCell d={d} />}
-        {col('denialType')   && <DenialTypeCell d={d} />}
-        {col('deniedAmount') && <DeniedCell d={d} />}
-        {optionalCells}
-      </>
-    )
-
-    if (activeTab === 'InProgress') return (
-      <TableRow {...rowProps}>
-        {shared}
-        {col('appealLevel')    && <AppealLevelCell d={d} />}
-        <DeadlineCell d={d} />
-        {col('assignedTo')     && renderAssigneeCell(d)}
-        {col('reviewComplete') && (
-          <TableCell>
-            {reviewCompleteIds?.has(d.id) && (
-              <Tooltip title="Review complete — ready to submit">
-                <Check sx={{ fontSize: 18, color: 'var(--colors-ocean-4)' }} />
-              </Tooltip>
-            )}
-          </TableCell>
-        )}
-        <NotesCell d={d} />
-      </TableRow>
-    )
-
-    if (activeTab === 'Archive') return (
-      <TableRow {...rowProps}>
-        {shared}
         {col('appealLevel') && <AppealLevelCell d={d} />}
-        <TableCell sx={{ color: 'text.secondary' }}>
-          {d.archiveReason ?? d.status}
-        </TableCell>
-        <NotesCell d={d} />
-      </TableRow>
-    )
-
-    if (activeTab === 'Submitted') return (
-      <TableRow {...rowProps}>
-        {shared}
-        {col('appealLevel') && <AppealLevelCell d={d} />}
-        <TableCell>
-          {d.submissionDate ? formatDate(d.submissionDate) : '—'}
-        </TableCell>
-        <TableCell>
-          {d.responseDueDate ? (
-            <>
-              {formatDate(d.responseDueDate)}
-              <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
-                {daysUntil(d.responseDueDate)}d left
-              </Typography>
-            </>
-          ) : (
-            <Typography variant="inherit" sx={{ color: 'text.disabled' }}>—</Typography>
-          )}
-        </TableCell>
-        {col('assignedTo') && renderAssigneeCell(d)}
-        <NotesCell d={d} />
-      </TableRow>
-    )
-
-    return (
-      <TableRow {...rowProps}>
-        {shared}
-        {col('appealLevel') && <AppealLevelCell d={d} />}
-        <TableCell sx={{ color: 'text.secondary' }}>
-          {d.state === 'Overturned' ? d.status : (d.closeReason ?? d.status ?? '—')}
-        </TableCell>
-        <TableCell>
-          {(() => {
-            const dt = d.state === 'Overturned' ? d.overturnDate : d.closedDate
-            return dt ? formatDate(dt) : '—'
-          })()}
-        </TableCell>
+        {renderStageCell(d)}
+        {renderKeyDateCell(d)}
         {col('assignedTo') && renderAssigneeCell(d)}
         <NotesCell d={d} />
       </TableRow>
@@ -777,20 +728,6 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
-
-  if (viewMode === 'all-records') {
-    return (
-      <DenialsAllRecordsView
-        denials={denials}
-        onSelectDenial={onSelectDenial}
-        reviewCompleteIds={reviewCompleteIds}
-        initialTab={initialTab}
-        assignedToMe={assignedToMeProp}
-        onAssignedToMeChange={onAssignedToMeChange}
-        onAssign={onAssign}
-      />
-    )
-  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -836,90 +773,56 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
         />
       </Box>
 
-      {/* Tabs + Assigned to me toggle */}
-      <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-        <Tabs value={activeTab} onChange={handleTabChange} sx={{ minHeight: 40, flex: 1 }}>
-          {TABS.map(tab => (
-            <Tab
-              key={tab}
-              value={tab}
-              label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                  {TAB_LABELS[tab]}
-                  <Chip
-                    label={tabCounts[tab] ?? 0}
-                    size="small"
-                    sx={{
-                      height: 18, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number,
-                      bgcolor: activeTab === tab ? 'var(--colors-ocean-1)' : 'var(--colors-grey-3)',
-                      color: activeTab === tab ? 'var(--colors-ocean-4)' : 'var(--colors-text-secondary)',
-                      '& .MuiChip-label': { px: 0.625 },
-                    }}
-                  />
-                </Box>
-              }
-              sx={{ minHeight: 40, py: 0, px: 2 }}
+      {/* Quick-filter chips + Assigned to me toggle */}
+      <Box sx={{ px: 2, py: 0.875, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+        {STAGE_CHIPS.map(chip => {
+          const active = stageFilter.includes(chip)
+          return (
+            <Chip
+              key={chip}
+              label={chip}
+              size="small"
+              onClick={() => setStageFilter(prev => active ? prev.filter(s => s !== chip) : [...prev, chip])}
+              sx={{
+                height: 24, fontSize: 'var(--font-sizes-12)', fontWeight: active ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)', cursor: 'pointer',
+                bgcolor: active ? 'var(--colors-ocean-1)' : 'transparent',
+                color: active ? 'var(--colors-ocean-4)' : 'text.secondary',
+                border: '1px solid',
+                borderColor: active ? 'var(--colors-ocean-4)' : 'divider',
+                '& .MuiChip-label': { px: 1 },
+                '&:hover': { bgcolor: active ? 'var(--colors-ocean-2)' : 'action.hover' },
+              }}
             />
-          ))}
-        </Tabs>
-        <Box sx={{ px: 1.5 }}>
-          <Box
-            component="button"
-            onClick={() => setAssignedToMe(p => !p)}
-            sx={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              px: '12px', py: '8px', borderRadius: 'var(--radii-sm)',
-              border: 'none', cursor: 'pointer', outline: 'none',
-              bgcolor: assignedToMe ? 'var(--colors-ocean-1)' : 'transparent',
-              color: assignedToMe ? 'var(--colors-text-primary)' : 'var(--colors-text-secondary)',
-              fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-regular)', fontFamily: 'inherit',
-              lineHeight: '14px', whiteSpace: 'nowrap',
-              transition: 'background-color 0.1s',
-              '&:hover': { bgcolor: assignedToMe ? 'var(--colors-ocean-2)' : 'var(--colors-grey-3)' },
-            }}
+          )
+        })}
+        {stageFilter.length > 0 && (
+          <Typography
+            variant="caption"
+            onClick={() => setStageFilter([])}
+            sx={{ ml: 0.5, color: 'text.disabled', cursor: 'pointer', '&:hover': { color: 'text.secondary' } }}
           >
-            Assigned to me
-          </Box>
+            Clear
+          </Typography>
+        )}
+        <Box sx={{ flex: 1 }} />
+        <Box
+          component="button"
+          onClick={() => setAssignedToMe(p => !p)}
+          sx={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            px: '12px', py: '6px', borderRadius: 'var(--radii-sm)',
+            border: 'none', cursor: 'pointer', outline: 'none',
+            bgcolor: assignedToMe ? 'var(--colors-ocean-1)' : 'transparent',
+            color: assignedToMe ? 'var(--colors-text-primary)' : 'var(--colors-text-secondary)',
+            fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-regular)', fontFamily: 'inherit',
+            lineHeight: '14px', whiteSpace: 'nowrap',
+            transition: 'background-color 0.1s',
+            '&:hover': { bgcolor: assignedToMe ? 'var(--colors-ocean-2)' : 'var(--colors-grey-3)' },
+          }}
+        >
+          Assigned to me
         </Box>
       </Box>
-
-      {/* Closed-tab filters */}
-      {activeTab === 'Closed' && (
-        <Box sx={{ px: 2, py: 0.875, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 'var(--font-weights-medium)', mr: 0.5 }}>
-            Outcome:
-          </Typography>
-          {closedStatusOptions.map(status => {
-            const active = closedStatusFilter.includes(status)
-            return (
-              <Chip
-                key={status}
-                label={status}
-                size="small"
-                onClick={() => setClosedStatusFilter(prev => active ? prev.filter(s => s !== status) : [...prev, status])}
-                sx={{
-                  height: 24, fontSize: 'var(--font-sizes-12)', fontWeight: active ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)', cursor: 'pointer',
-                  bgcolor: active ? 'var(--colors-ocean-1)' : 'transparent',
-                  color: active ? 'var(--colors-ocean-4)' : 'text.secondary',
-                  border: '1px solid',
-                  borderColor: active ? 'var(--colors-ocean-4)' : 'divider',
-                  '& .MuiChip-label': { px: 1 },
-                  '&:hover': { bgcolor: active ? 'var(--colors-ocean-2)' : 'action.hover' },
-                }}
-              />
-            )
-          })}
-          {closedStatusFilter.length > 0 && (
-            <Typography
-              variant="caption"
-              onClick={() => setClosedStatusFilter([])}
-              sx={{ ml: 0.5, color: 'text.disabled', cursor: 'pointer', '&:hover': { color: 'text.secondary' } }}
-            >
-              Clear
-            </Typography>
-          )}
-        </Box>
-      )}
 
       {/* Table */}
       <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
@@ -931,8 +834,8 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
                 <TableCell colSpan={8} sx={{ textAlign: 'center', py: 8 }}>
                   <Typography color="text.disabled">
                     {searchMatches
-                      ? `No results for "${search.trim()}" in this tab — try another tab or clear the search`
-                      : 'No records in this tab'}
+                      ? `No results for "${search.trim()}" — try clearing filters or the search`
+                      : 'No records match the current filters'}
                   </Typography>
                 </TableCell>
               </TableRow>

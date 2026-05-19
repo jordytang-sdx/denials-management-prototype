@@ -837,7 +837,7 @@ function StarRating({ rating, onChange }) {
 
 // ─── CaseHeader ──────────────────────────────────────────────────────────────
 
-function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = null, useInlineEditPanel = false }) {
+function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = null, useInlineEditPanel = false, onEditDenialDetails = null }) {
   const { caseData, ui } = state;
   const statusCfg = STATUS_CONFIG[caseData.status] || STATUS_CONFIG.Archived;
   const ratingLabel = RATING_LABELS[caseData.rating] || 'Needs Rating';
@@ -989,7 +989,11 @@ function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = nu
           <ListItemIcon><OpenInNewIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Open denial in new tab</ListItemText>
         </MenuItem>
-        <MenuItem onClick={() => dispatch({ type: useInlineEditPanel ? 'OPEN_INLINE_EDIT_PANEL' : 'NAV_TO_EDIT' })} sx={{ fontSize: '0.875rem' }}>
+        <MenuItem onClick={() => {
+          dispatch({ type: 'CLOSE_CASE_MENU' });
+          if (onEditDenialDetails) onEditDenialDetails();
+          else dispatch({ type: useInlineEditPanel ? 'OPEN_INLINE_EDIT_PANEL' : 'NAV_TO_EDIT' });
+        }} sx={{ fontSize: '0.875rem' }}>
           <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Edit denial details</ListItemText>
         </MenuItem>
@@ -3594,7 +3598,7 @@ function VersionHistoryLayout({ selectedVersionId, onSelectVersion, onBack, onRe
 
 // ─── CasePageAiEditing (root) ─────────────────────────────────────────────────
 
-export default function CasePageAiEditing({ onBack = () => {}, initialView = 'case', initialHasAttachments = false, isPaused = false, hideNav = false, caseRecord = null, onStatusAction = null, useInlineEditPanel = false }) {
+export default function CasePageAiEditing({ onBack = () => {}, initialView = 'case', initialHasAttachments = false, isPaused = false, hideNav = false, caseRecord = null, onStatusAction = null, useInlineEditPanel = false, onEditDenialDetails = null }) {
   const [state, dispatch] = useReducer(reducer, null, () => {
     const overrides = buildCaseOverrides(caseRecord);
     const base = {
@@ -3691,7 +3695,7 @@ export default function CasePageAiEditing({ onBack = () => {}, initialView = 'ca
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {!hideNav && <AppNav />}
-      <CaseHeader state={state} dispatch={dispatch} onBack={handleBack} onStatusMenuClick={handleStatusMenuClick} useInlineEditPanel={useInlineEditPanel} />
+      <CaseHeader state={state} dispatch={dispatch} onBack={handleBack} onStatusMenuClick={handleStatusMenuClick} useInlineEditPanel={useInlineEditPanel} onEditDenialDetails={onEditDenialDetails} />
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {(ui.view === 'case' || ui.view === 'version-history') && (

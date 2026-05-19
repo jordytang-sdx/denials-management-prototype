@@ -99,7 +99,7 @@ export function ClaimContextStrip({ claim }: ClaimContextStripProps) {
                     sx={{
                       pt: 1, pr: 2,
                       fontSize: '0.8125rem',
-                      fontFamily: i < 3 ? 'monospace' : undefined,
+                      fontVariantNumeric: i < 3 ? 'tabular-nums' : undefined,
                       color: 'text.primary',
                       whiteSpace: 'nowrap',
                     }}

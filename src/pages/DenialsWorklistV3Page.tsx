@@ -12,7 +12,7 @@ import {
 } from '@mui/icons-material'
 import { type DenialRecord, type DenialState, type TeamMember, TEAM_MEMBERS, KRISTA } from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
-import DenialsWorklistV4Page from './DenialsWorklistV4Page'
+import DenialsAllRecordsView from './DenialsAllRecordsView'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -780,7 +780,7 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
 
   if (viewMode === 'all-records') {
     return (
-      <DenialsWorklistV4Page
+      <DenialsAllRecordsView
         denials={denials}
         onSelectDenial={onSelectDenial}
         reviewCompleteIds={reviewCompleteIds}

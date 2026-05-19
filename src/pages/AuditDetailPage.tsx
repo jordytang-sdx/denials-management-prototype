@@ -607,7 +607,7 @@ export default function AuditDetailPage({ audit, onBack, onNavigateToCase }: Pro
             <ArrowBackOutlined fontSize="small" />
           </IconButton>
           <Chip label="A" size="small" sx={{ height: 20, width: 20, fontSize: '0.625rem', fontWeight: 800, bgcolor: '#EDE9FE', color: '#7C3AED', borderRadius: '4px', '& .MuiChip-label': { px: 0 } }} />
-          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, color: 'text.secondary' }}>{audit.id}</Typography>
+          <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: 'text.secondary' }}>{audit.id}</Typography>
           <Chip label={audit.state.replace(/([A-Z])/g, ' $1').trim()} size="small" sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 600, bgcolor: stateColors.bg, color: stateColors.color, '& .MuiChip-label': { px: 1 } }} />
           <Chip label={audit.status} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.625rem', '& .MuiChip-label': { px: 0.75 } }} />
           <Box sx={{ flex: 1 }} />
