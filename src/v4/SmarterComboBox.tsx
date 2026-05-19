@@ -122,11 +122,12 @@ export default function SmarterComboBox({
         placeholder={placeholder}
         style={{
           width: '100%',
-          height: isInline ? '36px' : '32px',
-          padding: '0 10px',
+          // InputLayout sm: height 32px, font 14px, px 12px
+          height: isInline ? '100%' : '32px',
+          padding: isInline ? '0' : '0 12px',
           border: isInline ? 'none' : '1px solid var(--colors-interactive-input-border)',
-          borderRadius: isInline ? '0' : 'var(--radii-select-trigger-radius)',
-          background: 'transparent',
+          borderRadius: isInline ? '0' : 'var(--radii-sm)',
+          background: isInline ? 'transparent' : 'var(--colors-interactive-input-background)',
           color: 'var(--colors-interactive-input-text)',
           fontSize: 'var(--font-sizes-14)',
           fontFamily: 'inherit',
@@ -143,7 +144,7 @@ export default function SmarterComboBox({
         onKeyDown={handleKeyDown}
         onFocusCapture={e => {
           if (!isInline) {
-            e.currentTarget.style.borderColor = 'var(--colors-select-trigger-focus-border)'
+            e.currentTarget.style.borderColor = 'var(--colors-interactive-focus-input-border)'
             e.currentTarget.style.boxShadow = '0 0 0 2px var(--colors-select-trigger-focus-ring-color)'
           }
         }}

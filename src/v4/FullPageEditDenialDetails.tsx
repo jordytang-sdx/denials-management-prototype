@@ -20,6 +20,7 @@ export interface DenialDraft {
   payer: string | null
   classifiedAs: string | null
   deadline: string | null
+  defaultLevel?: string
   encounter: {
     har?: string | null
     mrn?: string | null
@@ -340,7 +341,7 @@ function FormBody({
     parseDenialTypeFromClassification(draft.classifiedAs)
   )
   const [drgReviewType, setDrgReviewType] = useState('Clinical Validation Review')
-  const [level, setLevel] = useState('Level 2')
+  const [level, setLevel] = useState(draft.defaultLevel ?? 'Level 1')
   const [payer, setPayer] = useState(draft.payer ?? '')
   const [deadlineISO, setDeadlineISO] = useState(draft.deadline ?? '')
   const [reviewEntity, setReviewEntity] = useState('')
@@ -363,7 +364,7 @@ function FormBody({
 
   return (
     <Box sx={{
-      maxWidth: 960, mx: 'auto', py: 2, px: 3,
+      maxWidth: 1100, mx: 'auto', py: 2, px: 2,
       display: 'flex', flexDirection: 'column', gap: 1.5,
     }}>
 

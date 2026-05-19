@@ -692,12 +692,14 @@ export default function App() {
 
   function draftFromDenial(d: DenialRecord, override?: V4Encounter): DenialDraft {
     const isDrg = d.denialType === 'DRG Downgrade'
+    const levelMap: Record<string, string> = { L1: 'Level 1', L2: 'Level 2', L3: 'Level 3' }
     return {
       patientName: override?.patientName ?? d.patient.name,
       patientDob: override?.dob ?? null,
       payer: d.payer,
       classifiedAs: d.denialType,
       deadline: d.deadline,
+      defaultLevel: levelMap[d.appealLevel] ?? 'Level 1',
       encounter: {
         har: override?.har ?? d.claim.har,
         mrn: override?.mrn ?? d.patient.mrn,
@@ -1207,6 +1209,7 @@ export default function App() {
                 onStatusAction={handleV2StatusAction}
                 useInlineEditPanel={denialsView === 'v3'}
                 onEditDenialDetails={denialsView === 'v4' ? () => setV4Screen({ type: 'edit-case', denialId: selectedV2CaseId }) : null}
+                hideCompleteReview={denialsView === 'v4'}
               />
             )}
             {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v3' && !selectedV2CaseId && (

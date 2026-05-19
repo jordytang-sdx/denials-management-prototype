@@ -2,17 +2,18 @@ import { useState, useMemo } from 'react'
 import {
   Box, Typography, Table, TableHead, TableBody, TableRow, TableCell,
   TableContainer, Chip, IconButton, Tooltip, Tabs, Tab,
-  InputAdornment, TextField, Avatar, Checkbox, Popover, List, ListItemButton,
+  InputAdornment, TextField, Checkbox, Popover, List, ListItemButton,
   ListItemText, Divider,
 } from '@mui/material'
 import {
   ArrowUpward, ArrowDownward, SwapVert,
   StickyNote2Outlined, NoteAltOutlined, SearchOutlined,
-  Check, KeyboardArrowDown, FilterAltOutlined, ViewColumnOutlined,
+  KeyboardArrowDown, FilterAltOutlined, ViewColumnOutlined,
 } from '@mui/icons-material'
 import { type DenialRecord, type DenialState, type TeamMember, TEAM_MEMBERS, KRISTA } from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
 import DenialsAllRecordsView from './DenialsAllRecordsView'
+import SmarterSelect from '../v4/SmarterSelect'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ type Sort = { col: SortCol; dir: SortDir } | null
 
 type ColumnKey =
   | 'payer' | 'class' | 'denialType' | 'deniedAmount' | 'appealLevel'
-  | 'assignedTo' | 'reviewComplete'
+  | 'assignedTo'
   | 'dos' | 'createdAt' | 'carc' | 'rarc' | 'claimId' | 'mrn' | 'priorityScore' | 'nextAction'
 
 const ALL_COLUMNS: { key: ColumnKey; label: string; defaultOn: boolean }[] = [
@@ -32,7 +33,6 @@ const ALL_COLUMNS: { key: ColumnKey; label: string; defaultOn: boolean }[] = [
   { key: 'deniedAmount',   label: 'Denied Amount',   defaultOn: true  },
   { key: 'appealLevel',    label: 'Appeal Level',    defaultOn: true  },
   { key: 'assignedTo',     label: 'Assigned To',     defaultOn: true  },
-  { key: 'reviewComplete', label: 'Review Complete', defaultOn: true  },
   { key: 'dos',            label: 'Date of Service', defaultOn: false },
   { key: 'createdAt',      label: 'Ingested Date',   defaultOn: false },
   { key: 'carc',           label: 'CARC Code',       defaultOn: false },
@@ -72,6 +72,8 @@ const APPEAL_LEVEL_COLORS: Record<string, { bg: string; color: string; border: s
   L1: { bg: 'var(--colors-badge-variant-info-background)',    color: 'var(--colors-badge-variant-info-text)',    border: '1px solid var(--colors-badge-variant-info-border)' },
   L2: { bg: 'var(--colors-badge-variant-warning-background)', color: 'var(--colors-badge-variant-warning-text)', border: '1px solid var(--colors-badge-variant-warning-border)' },
   L3: { bg: 'var(--colors-badge-variant-error-background)',   color: 'var(--colors-badge-variant-error-text)',   border: '1px solid var(--colors-badge-variant-error-border)' },
+  L4: { bg: 'var(--colors-badge-variant-error-background)',   color: 'var(--colors-badge-variant-error-text)',   border: '1px solid var(--colors-badge-variant-error-border)' },
+  L5: { bg: 'var(--colors-badge-variant-error-background)',   color: 'var(--colors-badge-variant-error-text)',   border: '1px solid var(--colors-badge-variant-error-border)' },
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -454,7 +456,6 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
   const [assignedToMeLocal, setAssignedToMeLocal] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(DEFAULT_COLUMNS)
   const [closedStatusFilter, setClosedStatusFilter] = useState<string[]>([])
-  const [assignAnchor, setAssignAnchor] = useState<{ el: HTMLElement; denialId: string } | null>(null)
   const [payerFilter, setPayerFilter] = useState<string[]>([])
   const [denialTypeFilter, setDenialTypeFilter] = useState<string[]>([])
   const [appealLevelFilter, setAppealLevelFilter] = useState<string[]>([])
@@ -526,9 +527,7 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
     ).length])),
   [denials, searchMatches, assignedToMe, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
 
-  const closedStatusOptions = OUTCOME_CHIPS
-
-  const displayed = useMemo(() => {
+const displayed = useMemo(() => {
     let rows = denials.filter(d =>
       matchesTab(d, activeTab) &&
       ALLOWED_DENIAL_TYPES.includes(d.denialType) &&
@@ -554,6 +553,16 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
     return rows
   }, [denials, activeTab, searchMatches, sort, assignedToMe, closedStatusFilter, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
 
+  const hasActiveFiltersOrSearch =
+    search.trim() !== '' ||
+    closedStatusFilter.length > 0 ||
+    payerFilter.length > 0 ||
+    denialTypeFilter.length > 0 ||
+    appealLevelFilter.length > 0 ||
+    lobFilter.length > 0 ||
+    assignedToFilter.length > 0 ||
+    assignedToMe
+
   function toggleSort(col: SortCol) {
     setSort(prev =>
       prev?.col === col
@@ -572,37 +581,24 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
 
   const sharedSort = { sort, onSort: toggleSort }
 
+  const assigneeOptions = useMemo(
+    () => [...ASSIGNABLE_MEMBERS.map(m => m.name), 'Unassigned'],
+    []
+  )
+
   function renderAssigneeCell(d: DenialRecord) {
     const assignee = effectiveAssignee(d)
     return (
-      <TableCell sx={{ py: 0.5 }}>
-        <Box
-          component="button"
-          onClick={e => { e.stopPropagation(); setAssignAnchor({ el: e.currentTarget as HTMLElement, denialId: d.id }) }}
-          sx={{
-            display: 'inline-flex', alignItems: 'center', gap: 0.75,
-            background: 'none', border: '1px solid transparent', cursor: 'pointer',
-            borderRadius: 'var(--radii-sm)', px: 0.75, py: 0.375, mx: -0.75,
-            '&:hover': { borderColor: 'var(--colors-grey-4)', bgcolor: 'var(--colors-grey-3)' },
-            transition: 'border-color 0.1s, background-color 0.1s',
+      <TableCell sx={{ py: 0.5, minWidth: 160 }} onClick={e => e.stopPropagation()}>
+        <SmarterSelect
+          value={assignee?.name ?? ''}
+          placeholder="Assign…"
+          options={assigneeOptions}
+          onChange={name => {
+            const member = name === 'Unassigned' ? null : (ASSIGNABLE_MEMBERS.find(m => m.name === name) ?? null)
+            onAssign?.(d.id, member)
           }}
-        >
-          {assignee ? (
-            <>
-              <Avatar sx={{ width: 22, height: 22, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', bgcolor: 'var(--colors-ocean-1)', color: 'var(--colors-ocean-4)' }}>
-                {assignee.initials}
-              </Avatar>
-              <Typography variant="inherit" sx={{ color: 'text.primary' }}>
-                {assignee.name}
-              </Typography>
-            </>
-          ) : (
-            <Typography variant="inherit" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>
-              Assign…
-            </Typography>
-          )}
-          <KeyboardArrowDown sx={{ fontSize: 14, color: 'text.disabled', ml: 0.25 }} />
-        </Box>
+        />
       </TableCell>
     )
   }
@@ -633,10 +629,9 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
     if (activeTab === 'InProgress') return (
       <TableRow>
         {shared}
-        {col('appealLevel')    && <TableCell>Appeal Level</TableCell>}
+        {col('appealLevel') && <TableCell>Appeal Level</TableCell>}
         <SortableHeader col="deadline" label="Deadline" {...sharedSort} />
-        {col('assignedTo')     && <TableCell>Assigned To</TableCell>}
-        {col('reviewComplete') && <TableCell sx={{ width: 120 }}>Review Complete</TableCell>}
+        {col('assignedTo')  && <TableCell>Assigned To</TableCell>}
         <TableCell sx={{ width: 48 }} />
       </TableRow>
     )
@@ -706,18 +701,9 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
     if (activeTab === 'InProgress') return (
       <TableRow {...rowProps}>
         {shared}
-        {col('appealLevel')    && <AppealLevelCell d={d} />}
+        {col('appealLevel') && <AppealLevelCell d={d} />}
         <DeadlineCell d={d} />
-        {col('assignedTo')     && renderAssigneeCell(d)}
-        {col('reviewComplete') && (
-          <TableCell>
-            {reviewCompleteIds?.has(d.id) && (
-              <Tooltip title="Review complete — ready to submit">
-                <Check sx={{ fontSize: 18, color: 'var(--colors-ocean-4)' }} />
-              </Tooltip>
-            )}
-          </TableCell>
-        )}
+        {col('assignedTo')  && renderAssigneeCell(d)}
         <NotesCell d={d} />
       </TableRow>
     )
@@ -815,13 +801,16 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
         <FilterAltOutlined sx={{ fontSize: 16, color: 'text.disabled', flexShrink: 0 }} />
         <FilterButton label="Payer" options={payerOptions} value={payerFilter} onChange={setPayerFilter} />
         <FilterButton label="Denial Type" options={denialTypeOptions} value={denialTypeFilter} onChange={setDenialTypeFilter} />
-        <FilterButton label="Appeal Level" options={['L1', 'L2', 'L3']} value={appealLevelFilter} onChange={setAppealLevelFilter} />
-        <FilterButton label="Line of Business" options={lobOptions} value={lobFilter} onChange={setLobFilter} />
+        <FilterButton label="Appeal Level" options={['L1', 'L2', 'L3', 'L4', 'L5']} value={appealLevelFilter} onChange={setAppealLevelFilter} />
+        <FilterButton label="Class" options={lobOptions} value={lobFilter} onChange={setLobFilter} />
         <FilterButton label="Assigned to" options={assignedToOptions} value={assignedToFilter} onChange={setAssignedToFilter} />
-        {(payerFilter.length > 0 || denialTypeFilter.length > 0 || appealLevelFilter.length > 0 || lobFilter.length > 0 || assignedToFilter.length > 0) && (
+        {activeTab === 'Closed' && (
+          <FilterButton label="Outcome" options={[...OUTCOME_CHIPS]} value={closedStatusFilter} onChange={setClosedStatusFilter} />
+        )}
+        {(payerFilter.length > 0 || denialTypeFilter.length > 0 || appealLevelFilter.length > 0 || lobFilter.length > 0 || assignedToFilter.length > 0 || closedStatusFilter.length > 0) && (
           <Typography
             variant="caption"
-            onClick={() => { setPayerFilter([]); setDenialTypeFilter([]); setAppealLevelFilter([]); setLobFilter([]); setAssignedToFilter([]) }}
+            onClick={() => { setPayerFilter([]); setDenialTypeFilter([]); setAppealLevelFilter([]); setLobFilter([]); setAssignedToFilter([]); setClosedStatusFilter([]) }}
             sx={{ ml: 0.5, color: 'text.disabled', cursor: 'pointer', '&:hover': { color: 'text.secondary' }, whiteSpace: 'nowrap' }}
           >
             Clear all
@@ -846,16 +835,18 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                   {TAB_LABELS[tab]}
-                  <Chip
-                    label={tabCounts[tab] ?? 0}
-                    size="small"
-                    sx={{
-                      height: 18, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number,
-                      bgcolor: activeTab === tab ? 'var(--colors-ocean-1)' : 'var(--colors-grey-3)',
-                      color: activeTab === tab ? 'var(--colors-ocean-4)' : 'var(--colors-text-secondary)',
-                      '& .MuiChip-label': { px: 0.625 },
-                    }}
-                  />
+                  {(tab !== 'Closed' || hasActiveFiltersOrSearch) && (
+                    <Chip
+                      label={tabCounts[tab] ?? 0}
+                      size="small"
+                      sx={{
+                        height: 18, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number,
+                        bgcolor: activeTab === tab ? 'var(--colors-ocean-1)' : 'var(--colors-grey-3)',
+                        color: activeTab === tab ? 'var(--colors-ocean-4)' : 'var(--colors-text-secondary)',
+                        '& .MuiChip-label': { px: 0.625 },
+                      }}
+                    />
+                  )}
                 </Box>
               }
               sx={{ minHeight: 40, py: 0, px: 2 }}
@@ -883,47 +874,10 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
         </Box>
       </Box>
 
-      {/* Closed-tab filters */}
-      {activeTab === 'Closed' && (
-        <Box sx={{ px: 2, py: 0.875, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 'var(--font-weights-medium)', mr: 0.5 }}>
-            Outcome:
-          </Typography>
-          {closedStatusOptions.map(status => {
-            const active = closedStatusFilter.includes(status)
-            return (
-              <Chip
-                key={status}
-                label={status}
-                size="small"
-                onClick={() => setClosedStatusFilter(prev => active ? prev.filter(s => s !== status) : [...prev, status])}
-                sx={{
-                  height: 24, fontSize: 'var(--font-sizes-12)', fontWeight: active ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)', cursor: 'pointer',
-                  bgcolor: active ? 'var(--colors-ocean-1)' : 'transparent',
-                  color: active ? 'var(--colors-ocean-4)' : 'text.secondary',
-                  border: '1px solid',
-                  borderColor: active ? 'var(--colors-ocean-4)' : 'divider',
-                  '& .MuiChip-label': { px: 1 },
-                  '&:hover': { bgcolor: active ? 'var(--colors-ocean-2)' : 'action.hover' },
-                }}
-              />
-            )
-          })}
-          {closedStatusFilter.length > 0 && (
-            <Typography
-              variant="caption"
-              onClick={() => setClosedStatusFilter([])}
-              sx={{ ml: 0.5, color: 'text.disabled', cursor: 'pointer', '&:hover': { color: 'text.secondary' } }}
-            >
-              Clear
-            </Typography>
-          )}
-        </Box>
-      )}
 
       {/* Table */}
-      <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
-        <Table stickyHeader size="small">
+      <TableContainer sx={{ flex: 1, overflow: 'auto', bgcolor: 'background.paper' }}>
+        <Table stickyHeader size="small" sx={{ minWidth: '100%' }}>
           <TableHead>{renderHeaders()}</TableHead>
           <TableBody>
             {displayed.length === 0 ? (
@@ -943,84 +897,6 @@ export default function DenialsWorklistV4Page({ denials, onSelectDenial, reviewC
         </Table>
       </TableContainer>
 
-      {/* Assignee picker */}
-      {(() => {
-        const popoverDenial = assignAnchor ? denials.find(d => d.id === assignAnchor.denialId) ?? null : null
-        const currentAssignee = popoverDenial ? effectiveAssignee(popoverDenial) : null
-        return (
-          <Popover
-            open={!!assignAnchor}
-            anchorEl={assignAnchor?.el ?? null}
-            onClose={() => setAssignAnchor(null)}
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-            PaperProps={{
-              sx: {
-                width: 220, mt: 0.5,
-                boxShadow: 'var(--shadows-medium)',
-                border: '1px solid var(--colors-grey-4)',
-                borderRadius: 'var(--radii-md)',
-              },
-            }}
-          >
-            <List dense disablePadding sx={{ py: 0.5 }}>
-              {ASSIGNABLE_MEMBERS.map(m => {
-                const isMe = m.id === KRISTA.id
-                const isSelected = currentAssignee?.id === m.id
-                return (
-                  <ListItemButton
-                    key={m.id}
-                    selected={isSelected}
-                    onClick={() => {
-                      if (assignAnchor) {
-                        onAssign?.(assignAnchor.denialId, m)
-                        setAssignAnchor(null)
-                      }
-                    }}
-                    sx={{
-                      px: 1.5, py: 0.75,
-                      '&.Mui-selected': { bgcolor: 'var(--colors-ocean-1)' },
-                      '&.Mui-selected:hover': { bgcolor: 'var(--colors-ocean-2)' },
-                    }}
-                  >
-                    <Avatar sx={{
-                      width: 26, height: 26, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', mr: 1.25, flexShrink: 0,
-                      bgcolor: isSelected ? 'var(--colors-ocean-4)' : 'var(--colors-grey-4)',
-                      color: isSelected ? 'var(--colors-grey-1)' : 'var(--colors-text-secondary)',
-                    }}>
-                      {m.initials}
-                    </Avatar>
-                    <ListItemText
-                      primary={isMe ? `${m.name} (me)` : m.name}
-                      primaryTypographyProps={{ fontSize: 'var(--font-sizes-14)', fontWeight: isSelected ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)' }}
-                    />
-                    {isSelected && <Check sx={{ fontSize: 16, color: 'var(--colors-ocean-4)', ml: 0.5 }} />}
-                  </ListItemButton>
-                )
-              })}
-              {currentAssignee && (
-                <>
-                  <Divider sx={{ my: 0.5 }} />
-                  <ListItemButton
-                    onClick={() => {
-                      if (assignAnchor) {
-                        onAssign?.(assignAnchor.denialId, null)
-                        setAssignAnchor(null)
-                      }
-                    }}
-                    sx={{ px: 1.5, py: 0.75 }}
-                  >
-                    <ListItemText
-                      primary="Unassign"
-                      primaryTypographyProps={{ fontSize: 'var(--font-sizes-14)', color: 'text.secondary' }}
-                    />
-                  </ListItemButton>
-                </>
-              )}
-            </List>
-          </Popover>
-        )
-      })()}
     </Box>
   )
 }

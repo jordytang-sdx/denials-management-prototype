@@ -554,6 +554,16 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
     return rows
   }, [denials, activeTab, searchMatches, sort, assignedToMe, closedStatusFilter, payerFilter, denialTypeFilter, appealLevelFilter, lobFilter, assignedToFilter])
 
+  const hasActiveFiltersOrSearch =
+    search.trim() !== '' ||
+    closedStatusFilter.length > 0 ||
+    payerFilter.length > 0 ||
+    denialTypeFilter.length > 0 ||
+    appealLevelFilter.length > 0 ||
+    lobFilter.length > 0 ||
+    assignedToFilter.length > 0 ||
+    assignedToMe
+
   function toggleSort(col: SortCol) {
     setSort(prev =>
       prev?.col === col
@@ -846,16 +856,18 @@ export default function DenialsWorklistV3Page({ denials, onSelectDenial, reviewC
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                   {TAB_LABELS[tab]}
-                  <Chip
-                    label={tabCounts[tab] ?? 0}
-                    size="small"
-                    sx={{
-                      height: 18, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number,
-                      bgcolor: activeTab === tab ? 'var(--colors-ocean-1)' : 'var(--colors-grey-3)',
-                      color: activeTab === tab ? 'var(--colors-ocean-4)' : 'var(--colors-text-secondary)',
-                      '& .MuiChip-label': { px: 0.625 },
-                    }}
-                  />
+                  {(tab !== 'Closed' || hasActiveFiltersOrSearch) && (
+                    <Chip
+                      label={tabCounts[tab] ?? 0}
+                      size="small"
+                      sx={{
+                        height: 18, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number,
+                        bgcolor: activeTab === tab ? 'var(--colors-ocean-1)' : 'var(--colors-grey-3)',
+                        color: activeTab === tab ? 'var(--colors-ocean-4)' : 'var(--colors-text-secondary)',
+                        '& .MuiChip-label': { px: 0.625 },
+                      }}
+                    />
+                  )}
                 </Box>
               }
               sx={{ minHeight: 40, py: 0, px: 2 }}

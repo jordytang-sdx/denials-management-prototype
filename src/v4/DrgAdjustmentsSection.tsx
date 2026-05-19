@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { Box, Typography, Button, Chip, IconButton } from '@mui/material'
+import { Box, Typography, Button, Chip, IconButton, Divider } from '@mui/material'
 import { AddOutlined, CloseOutlined } from '@mui/icons-material'
 import SmarterSelect from './SmarterSelect'
 import SmarterRadioGroup from './SmarterRadio'
 import SmarterComboBox from './SmarterComboBox'
 import {
   type DrgAdjustments, type DiagnosisAdjustment, type DrgSeverity, type DrgBilledLabel,
-  DIAGNOSIS_ADJUSTMENT_OPTIONS, DRG_CODE_OPTIONS, ICD10_CODE_OPTIONS, PROCEDURE_CODE_OPTIONS,
+  DIAGNOSIS_ADJUSTMENT_OPTIONS, DRG_CODE_OPTIONS, APR_DRG_CODE_OPTIONS,
+  ICD10_CODE_OPTIONS, PROCEDURE_CODE_OPTIONS,
   parseDrgSeverity,
+  type GrouperData,
 } from './drgMockData'
 
 // ── Design token shorthand ────────────────────────────────────────────────────
@@ -55,7 +57,14 @@ const ADD_BTN_SX = {
 // ── Severity / Billed-role badges ─────────────────────────────────────────────
 
 function SeverityBadge({ severity, emphasized }: { severity: DrgSeverity; emphasized?: boolean }) {
-  if (!severity) return null
+  if (!severity || severity === 'Base') return null
+
+  // SOI 4 on the payer-adjusted (emphasized) row uses orange; SOI 1 is too minor to badge
+  if (severity === 'SOI 1') return null
+
+  // Orange only on the payer-adjusted row (emphasized), never on the billed row
+  const useOrange = emphasized
+
   return (
     <Chip
       label={severity}
@@ -66,7 +75,7 @@ function SeverityBadge({ severity, emphasized }: { severity: DrgSeverity; emphas
         fontWeight: 'var(--font-weights-medium)',
         borderRadius: 'var(--radii-badge-radius)',
         '& .MuiChip-label': { px: 1 },
-        ...(emphasized
+        ...(useOrange
           ? { bgcolor: 'var(--colors-badge-variant-warning-emphasized-background)', color: 'var(--colors-badge-variant-warning-emphasized-text)' }
           : { bgcolor: 'var(--colors-badge-variant-default-subtle-background)', color: 'var(--colors-badge-variant-default-subtle-text)' }),
       }}
@@ -76,6 +85,7 @@ function SeverityBadge({ severity, emphasized }: { severity: DrgSeverity; emphas
 
 function BilledRoleBadge({ label }: { label: DrgBilledLabel }) {
   if (!label) return null
+  const isAprDrgLabel = label === 'SOI Driver' || label === 'Contributes to SOI'
   return (
     <Chip
       label={label}
@@ -84,10 +94,11 @@ function BilledRoleBadge({ label }: { label: DrgBilledLabel }) {
         height: 22,
         fontSize: 'var(--font-sizes-12)',
         fontWeight: 'var(--font-weights-regular)',
-        bgcolor: 'var(--colors-badge-variant-default-subtle-background)',
-        color: 'var(--colors-badge-variant-default-subtle-text)',
         borderRadius: 'var(--radii-badge-radius)',
         '& .MuiChip-label': { px: 1 },
+        ...(isAprDrgLabel
+          ? { bgcolor: 'var(--colors-badge-variant-info-background)', color: 'var(--colors-badge-variant-info-text)', border: '1px solid var(--colors-badge-variant-info-border)' }
+          : { bgcolor: 'var(--colors-badge-variant-default-subtle-background)', color: 'var(--colors-badge-variant-default-subtle-text)' }),
       }}
     />
   )
@@ -95,88 +106,40 @@ function BilledRoleBadge({ label }: { label: DrgBilledLabel }) {
 
 // ── DRG row — read-only display ───────────────────────────────────────────────
 
-function DrgRowDisplay({ label, code, description, severity, variant = 'default' }: {
-  label: string; code: string; description: string; severity: DrgSeverity
-  variant?: 'default' | 'adjusted'
-}) {
-  const isAdjusted = variant === 'adjusted'
-  return (
-    <Box sx={{
-      display: 'flex', alignItems: 'stretch',
-      border: '1px solid',
-      borderColor: isAdjusted ? 'var(--colors-badge-variant-warning-border)' : 'var(--colors-grey-4)',
-      borderRadius: 'var(--radii-sm)',
-      overflow: 'hidden',
-      bgcolor: isAdjusted ? 'var(--colors-badge-variant-warning-background)' : 'var(--colors-grey-1)',
-    }}>
-      <Box sx={{
-        width: 132, flexShrink: 0, px: 1.5, py: 1,
-        borderRight: '1px solid',
-        borderColor: isAdjusted ? 'var(--colors-orange-3)' : 'var(--colors-grey-4)',
-        display: 'flex', alignItems: 'center',
-      }}>
-        <Typography sx={{
-          fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-medium)',
-          color: isAdjusted ? 'var(--colors-badge-variant-warning-text)' : 'text.primary',
-        }}>
-          {label}
-        </Typography>
-      </Box>
-      <Box sx={{ flex: 1, px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
-        <Typography sx={{ fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)', color: 'text.primary', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-          {code}
-        </Typography>
-        <Typography sx={{ fontSize: 'var(--font-sizes-14)', color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
-          {description}
-        </Typography>
-        <SeverityBadge severity={severity} emphasized={isAdjusted} />
-      </Box>
-    </Box>
-  )
-}
+// ── DRG row — editable input ─────────────────────────────────────────────────
 
-// ── DRG row — editable input (new-entry mode) ─────────────────────────────────
-
-function DrgRowInput({ label, variant = 'default', value, onChange }: {
+function DrgRowInput({ label, variant = 'default', value, onChange, isAprDrg }: {
   label: string
   variant?: 'default' | 'adjusted'
   value: string
   onChange: (v: string) => void
+  isAprDrg?: boolean
 }) {
   const isAdjusted = variant === 'adjusted'
+  const severity = value ? parseDrgSeverity(value) : null
+
   return (
-    <Box sx={{
-      display: 'flex', alignItems: 'stretch',
-      border: '1px solid',
-      borderColor: isAdjusted ? 'var(--colors-badge-variant-warning-border)' : 'var(--colors-grey-4)',
-      borderRadius: 'var(--radii-sm)',
-      overflow: 'hidden',
-      bgcolor: isAdjusted ? 'var(--colors-badge-variant-warning-background)' : 'background.paper',
-    }}>
-      <Box sx={{
-        width: 132, flexShrink: 0, px: 1.5, py: 1,
-        borderRight: '1px solid',
-        borderColor: isAdjusted ? 'var(--colors-orange-3)' : 'var(--colors-grey-4)',
-        display: 'flex', alignItems: 'center',
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+      <Typography sx={{
+        fontSize: 'var(--font-sizes-12)',
+        fontWeight: 'var(--font-weights-medium)',
+        color: isAdjusted ? 'var(--colors-badge-variant-warning-text)' : 'text.secondary',
       }}>
-        <Typography sx={{
-          fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-medium)',
-          color: isAdjusted ? 'var(--colors-badge-variant-warning-text)' : 'text.primary',
-        }}>
-          {label}
-        </Typography>
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1, pr: value ? 1.5 : 0 }}>
+        {label}
+      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <SmarterComboBox
-            variant="inline"
             value={value}
             onChange={onChange}
-            options={DRG_CODE_OPTIONS}
-            placeholder="Search DRG code or description…"
+            options={isAprDrg ? APR_DRG_CODE_OPTIONS : DRG_CODE_OPTIONS}
+            placeholder={isAprDrg ? 'Search APR-DRG code or description…' : 'Search DRG code or description…'}
           />
         </Box>
-        {value && <SeverityBadge severity={parseDrgSeverity(value)} emphasized={isAdjusted} />}
+        {/* Fixed-width slot keeps the input the same width whether or not a badge is shown */}
+        <Box sx={{ width: 52, flexShrink: 0, display: 'flex', justifyContent: 'flex-start' }}>
+          {severity && <SeverityBadge severity={severity} emphasized={isAdjusted} />}
+        </Box>
       </Box>
     </Box>
   )
@@ -214,15 +177,17 @@ function AdjustmentSelect({ value, onChange }: {
 
 // ── Diagnoses table — read-only rows ─────────────────────────────────────────
 
-function DiagnosesTable({ rows, adjustments, onChange }: {
+function DiagnosesTable({ rows, adjustments, onChange, isAprDrg }: {
   rows: DrgAdjustments['diagnoses']
   adjustments: Record<string, DiagnosisAdjustment>
   onChange: (id: string, v: DiagnosisAdjustment) => void
+  isAprDrg?: boolean
 }) {
+  const billedColLabel = isAprDrg ? 'Severity Impact' : 'Billed'
   return (
     <Box sx={TABLE_BORDER_SX}>
       <Box sx={{ ...TABLE_HEADER_SX, display: 'grid', gridTemplateColumns: '1fr 160px 200px' }}>
-        {['Diagnosis Code', 'Billed', 'Payer Adjustment'].map(h => (
+        {['Diagnosis Code', billedColLabel, 'Payer Adjustment'].map(h => (
           <Box key={h} sx={{ px: 1.5, py: 1 }}>
             <Typography sx={TABLE_HEADER_CELL_SX}>{h}</Typography>
           </Box>
@@ -353,12 +318,35 @@ export default function DrgAdjustmentsSection({ adjustments }: Props) {
 
   const [drgSystem, setDrgSystem] = useState<'MS-DRG' | 'APR-DRG'>(adjustments?.drgSystem ?? 'MS-DRG')
 
+  const isAprDrg = drgSystem === 'APR-DRG'
+
+  // For existing denials: select the correct grouper data block
+  const activeGrouperData: GrouperData | null = adjustments
+    ? (isAprDrg && adjustments.aprDrg ? adjustments.aprDrg : { billed: adjustments.billed, payerAdjusted: adjustments.payerAdjusted, diagnoses: adjustments.diagnoses })
+    : null
+
   // Read-only adjustments state (existing denials)
   const [diagAdjustments, setDiagAdjustments] = useState<Record<string, DiagnosisAdjustment>>({})
 
-  // New-entry state (wizard flow) — DRG fields store "CODE – Description" string
-  const [billedDrg, setBilledDrg] = useState('')
-  const [payerDrg, setPayerDrg] = useState('')
+  // DRG input state — initialized from existing data when available, empty for new entries.
+  // Separate MS-DRG and APR-DRG state so toggling the grouper doesn't discard edits.
+  const [msBilledDrg, setMsBilledDrg] = useState(() =>
+    adjustments ? `${adjustments.billed.code} – ${adjustments.billed.description}` : ''
+  )
+  const [msPayerDrg, setMsPayerDrg] = useState(() =>
+    adjustments ? `${adjustments.payerAdjusted.code} – ${adjustments.payerAdjusted.description}` : ''
+  )
+  const [aprBilledDrg, setAprBilledDrg] = useState(() =>
+    adjustments?.aprDrg ? `${adjustments.aprDrg.billed.code} – ${adjustments.aprDrg.billed.description}` : ''
+  )
+  const [aprPayerDrg, setAprPayerDrg] = useState(() =>
+    adjustments?.aprDrg ? `${adjustments.aprDrg.payerAdjusted.code} – ${adjustments.aprDrg.payerAdjusted.description}` : ''
+  )
+
+  const billedDrg    = isAprDrg ? aprBilledDrg    : msBilledDrg
+  const payerDrg     = isAprDrg ? aprPayerDrg     : msPayerDrg
+  const setBilledDrg = isAprDrg ? setAprBilledDrg : setMsBilledDrg
+  const setPayerDrg  = isAprDrg ? setAprPayerDrg  : setMsPayerDrg
   const [editableDx, setEditableDx] = useState<EditableDxRow[]>([])
   const [editablePx, setEditablePx] = useState<EditablePxRow[]>([])
 
@@ -391,19 +379,14 @@ export default function DrgAdjustmentsSection({ adjustments }: Props) {
           />
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-          {isNewEntry ? (
-            <>
-              <DrgRowInput label="Billed DRG"    value={billedDrg} onChange={setBilledDrg} />
-              <DrgRowInput label="Payer-adjusted" variant="adjusted" value={payerDrg} onChange={setPayerDrg} />
-            </>
-          ) : (
-            <>
-              <DrgRowDisplay label="Billed DRG" code={adjustments!.billed.code} description={adjustments!.billed.description} severity={adjustments!.billed.severity} />
-              <DrgRowDisplay label="Payer-adjusted" code={adjustments!.payerAdjusted.code} description={adjustments!.payerAdjusted.description} severity={adjustments!.payerAdjusted.severity} variant="adjusted" />
-            </>
-          )}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <DrgRowInput label="Billed DRG"         value={billedDrg} onChange={setBilledDrg} isAprDrg={isAprDrg} />
+            <DrgRowInput label="Payer-Adjusted DRG"  variant="adjusted" value={payerDrg} onChange={setPayerDrg} isAprDrg={isAprDrg} />
+          </Box>
         </Box>
       </Box>
+
+      <Divider sx={{ borderColor: 'var(--colors-grey-3)' }} />
 
       {/* Adjusted Diagnoses */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -411,7 +394,9 @@ export default function DrgAdjustmentsSection({ adjustments }: Props) {
           <Typography sx={SUBSECTION_TITLE_SX}>Adjusted Diagnoses</Typography>
           <Typography sx={{ ...FIELD_LABEL_SX, mt: 0.25 }}>
             {isNewEntry
-              ? 'Add the diagnoses the payer adjusted, removed, or changed.'
+              ? `Add the diagnoses the payer adjusted, removed, or changed.`
+              : isAprDrg
+              ? 'Review the payer\'s APR-DRG severity impact for each diagnosis.'
               : 'Review the payer\'s adjustment for each diagnosis. Use the dropdown to update any row.'}
           </Typography>
         </Box>
@@ -438,7 +423,12 @@ export default function DrgAdjustmentsSection({ adjustments }: Props) {
           </>
         ) : (
           <>
-            <DiagnosesTable rows={adjustments!.diagnoses} adjustments={diagAdjustments} onChange={(id, v) => setDiagAdjustments(p => ({ ...p, [id]: v }))} />
+            <DiagnosesTable
+              rows={activeGrouperData?.diagnoses ?? []}
+              adjustments={diagAdjustments}
+              onChange={(id, v) => setDiagAdjustments(p => ({ ...p, [id]: v }))}
+              isAprDrg={isAprDrg}
+            />
             <Button size="small" startIcon={<AddOutlined sx={{ fontSize: '16px !important' }} />} sx={ADD_BTN_SX}>
               Add Diagnosis Code
             </Button>

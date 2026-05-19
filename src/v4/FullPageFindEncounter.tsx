@@ -157,7 +157,7 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
       }
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
-        <Box sx={{ maxWidth: 960, mx: 'auto', py: 2, px: 3, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Box sx={{ maxWidth: 1100, mx: 'auto', py: 2, px: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
 
           {/* Search panel */}
           <Box sx={{
@@ -249,25 +249,34 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
               <Box sx={{ overflow: 'auto' }}>
                 <Box component="table" sx={{
                   width: '100%', borderCollapse: 'collapse',
+                  tableLayout: 'fixed',
                   '& th, & td': {
-                    px: 2, py: 1.5,
+                    px: 1.5, py: 1.25,
                     textAlign: 'left',
-                    fontSize: 'var(--font-sizes-12)',
+                    fontSize: 'var(--font-sizes-table-cell-font-size)',  // 12px per design system
                     borderBottom: '1px solid', borderColor: 'divider',
+                    verticalAlign: 'top',
                   },
                   '& th': {
-                    fontWeight: 'var(--font-weights-semibold)',
+                    fontWeight: 'var(--font-weights-table-header-font-weight)',  // 500
                     color: 'text.secondary',
                     textTransform: 'uppercase',
                     letterSpacing: '0.06em',
                     bgcolor: 'var(--colors-grey-1)',
-                    fontSize: 'var(--font-sizes-10)',
-                  },
-                  '& td': {
-                    fontSize: 'var(--font-sizes-14)',
+                    fontSize: 'var(--font-sizes-table-header-font-size)',  // 12px
                   },
                   '& tr:last-of-type td': { borderBottom: 'none' },
                 }}>
+                  <colgroup>
+                    <col style={{ width: '22%' }} />  {/* Patient Name — widest */}
+                    <col style={{ width: '10%' }} />  {/* HAR */}
+                    <col style={{ width: '10%' }} />  {/* MRN */}
+                    <col style={{ width: '9%' }}  />  {/* Visit ID */}
+                    <col style={{ width: '14%' }} />  {/* Admit—Discharge */}
+                    <col style={{ width: '22%' }} />  {/* Principal Dx */}
+                    <col style={{ width: '7%' }}  />  {/* Billed DRG */}
+                    <col style={{ width: '6%' }}  />  {/* Select */}
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>Patient Name</th>
@@ -283,7 +292,7 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
                   <tbody>
                     <tr>
                       <td>
-                        <Typography sx={{ fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-medium)' }}>
+                        <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-medium)' }}>
                           {MOCK_RESULT.patientName}
                         </Typography>
                         <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
@@ -294,13 +303,27 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
                       <td style={{ fontVariantNumeric: 'tabular-nums' }}>{MOCK_RESULT.mrn}</td>
                       <td style={{ fontVariantNumeric: 'tabular-nums' }}>{MOCK_RESULT.visitId}</td>
                       <td>{MOCK_RESULT.admit} — {MOCK_RESULT.discharge}</td>
-                      <td>{MOCK_RESULT.principalDx}</td>
-                      <td>{MOCK_RESULT.billedDrg}</td>
+                      <td>
+                        {/* 2-line clamp with native tooltip for full text */}
+                        <div
+                          title={MOCK_RESULT.principalDx}
+                          style={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            cursor: 'default',
+                          }}
+                        >
+                          {MOCK_RESULT.principalDx}
+                        </div>
+                      </td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{MOCK_RESULT.billedDrg}</td>
                       <td>
                         <Button
                           size="small"
                           onClick={() => onSelect(MOCK_RESULT)}
-                          sx={{ fontSize: 'var(--font-sizes-14)', textTransform: 'none', color: 'var(--colors-ocean-4)' }}
+                          sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-ocean-4)', p: 0, minWidth: 0 }}
                         >
                           Select
                         </Button>
