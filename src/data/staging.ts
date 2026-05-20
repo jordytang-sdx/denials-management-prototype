@@ -22,11 +22,15 @@ export type StagingStatus =
 export type NeedsReviewReason =
   | 'missing_fields'
   | 'low_confidence'
+  | 'low_confidence_patient'
   | 'no_patient_match'
   | 'no_claim_match'
   | 'ambiguous_classification'
   | 'possible_duplicate'
   | 'existing_instance_found'
+  | 'no_clinical_data'
+  | 'letter_generation_failure'
+  | 'extraction_failure'
 
 export interface StagingRecord {
   id: string
@@ -438,11 +442,11 @@ export const SEED_STAGING: StagingRecord[] = [
       claimMatchConfidence: 'high',
       matchedInstance: {
         id: 'D-1090',
-        denialType: 'Denial — Authorization',
-        status: 'In progress',
+        denialType: 'Denial — DRG Downgrade',
+        status: 'Closed',
         owner: 'Sarah K.',
         worklist: 'Denials Worklist',
-        lastUpdated: '2026-04-01T10:00:00',
+        lastUpdated: '2026-02-19T10:00:00',
         deniedAmount: 7800,
       },
       matchFactors: [
@@ -488,11 +492,11 @@ export const SEED_STAGING: StagingRecord[] = [
       claimMatchConfidence: 'high',
       matchedInstance: {
         id: 'D-1042',
-        denialType: 'Denial — Medical Necessity',
-        status: 'In progress',
+        denialType: 'Denial — DRG Downgrade',
+        status: 'Closed',
         owner: 'Marco T.',
         worklist: 'Denials Worklist',
-        lastUpdated: '2026-04-02T14:00:00',
+        lastUpdated: '2026-02-17T14:00:00',
         deniedAmount: 4200,
       },
       matchFactors: [
@@ -512,7 +516,7 @@ export const SEED_STAGING: StagingRecord[] = [
     module: 'audit',
     signalType: 'pdf-adr',
     status: 'needs_review',
-    reviewReasons: ['low_confidence'],
+    reviewReasons: ['low_confidence_patient'],
     patientName: 'Thomas Brennan',
     patientMrn: null,
     payer: 'CMS / Medicare',
@@ -584,6 +588,102 @@ export const SEED_STAGING: StagingRecord[] = [
       missingFields: ['deniedAmount', 'deadline'],
       patientMatchConfidence: 'high',
       claimMatchConfidence: 'high',
+    },
+  },
+
+  // ── Needs Review: No clinical data ──────────────────────────────────────
+  {
+    id: 'stg-013b',
+    module: 'denial',
+    signalType: 'pdf-denial',
+    status: 'needs_review',
+    reviewReasons: ['no_clinical_data'],
+    patientName: 'Elena Vasquez',
+    patientMrn: 'MRN-55201',
+    payer: 'Aetna',
+    amount: 6200,
+    classifiedAs: 'Denial — Medical Necessity',
+    classificationConfidence: 'high',
+    receivedAt: t(12),
+    sourceFile: 'aetna_denial_vasquez_20260403.pdf',
+    connectionId: 'conn-001',
+    autoProcessedAt: null,
+    autoProcessedInstanceId: null,
+    resolvedAt: null,
+    resolvedBy: null,
+    dismissedAt: null,
+    dismissReason: null,
+    extraction: {
+      carc: '97',
+      claimId: 'CLM-20260403-013B',
+      har: '2025-7712',
+      dos: '2026-03-18',
+      deadline: '2026-04-12',
+      deniedAmount: 6200,
+      patientMatchConfidence: 'high',
+      claimMatchConfidence: 'high',
+    },
+  },
+
+  // ── Needs Review: Letter generation failure ─────────────────────────────
+  {
+    id: 'stg-sys-01',
+    module: 'denial',
+    signalType: 'pdf-denial',
+    status: 'needs_review',
+    reviewReasons: ['letter_generation_failure'],
+    patientName: 'Rachel Wong',
+    patientMrn: 'MRN-88201',
+    payer: 'Humana',
+    amount: 5400,
+    classifiedAs: 'Denial — Medical Necessity',
+    classificationConfidence: 'high',
+    receivedAt: t(7),
+    sourceFile: 'humana_denial_wong_20260403.pdf',
+    connectionId: 'conn-002',
+    autoProcessedAt: null,
+    autoProcessedInstanceId: null,
+    resolvedAt: null,
+    resolvedBy: null,
+    dismissedAt: null,
+    dismissReason: null,
+    extraction: {
+      carc: '97',
+      claimId: 'CLM-20260403-SYS1',
+      har: '2025-8821',
+      dos: '2026-03-14',
+      deadline: '2026-04-18',
+      deniedAmount: 5400,
+      patientMatchConfidence: 'high',
+      claimMatchConfidence: 'high',
+      systemError: { code: 'LETTER_GEN_TIMEOUT', message: 'Letter generation timed out after 30s' },
+    },
+  },
+
+  // ── Needs Review: Extraction failure ────────────────────────────────────
+  {
+    id: 'stg-sys-02',
+    module: 'denial',
+    signalType: 'pdf-denial',
+    status: 'needs_review',
+    reviewReasons: ['extraction_failure'],
+    patientName: null,
+    patientMrn: null,
+    payer: null,
+    amount: null,
+    classifiedAs: null,
+    classificationConfidence: null,
+    receivedAt: t(11),
+    sourceFile: 'unknown_denial_20260403.pdf',
+    connectionId: 'conn-001',
+    autoProcessedAt: null,
+    autoProcessedInstanceId: null,
+    resolvedAt: null,
+    resolvedBy: null,
+    dismissedAt: null,
+    dismissReason: null,
+    extraction: {
+      systemError: { code: 'EXTRACTION_FAILED', message: 'Failed to parse PDF content — file may be corrupted or encrypted' },
     },
   },
 

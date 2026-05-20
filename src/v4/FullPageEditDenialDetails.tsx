@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import {
   Box, Typography, Button, TextField, Divider,
   IconButton, Chip,
@@ -6,13 +6,55 @@ import {
 import SmarterRadioGroup from './SmarterRadio'
 import {
   ArrowBackOutlined, ChevronLeft, ChevronRight,
-  EditOutlined,
+  EditOutlined, ArrowForwardOutlined, CheckCircleOutlined, WarningAmberOutlined, InfoOutlined,
+  SearchOutlined, AddOutlined, OpenInNewOutlined, ErrorOutlineOutlined,
 } from '@mui/icons-material'
 import SmarterSelect from './SmarterSelect'
 import DrgAdjustmentsSection from './DrgAdjustmentsSection'
 import { type DrgAdjustments } from './drgMockData'
 
 // ── Shared types ──────────────────────────────────────────────────────────────
+
+function formatPatientName(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length < 2) return name
+  return `${parts[parts.length - 1]}, ${parts.slice(0, -1).join(' ')}`
+}
+
+/** Normalises any date string to MM/DD/YYYY. Handles YYYY-MM-DD (ISO) and pass-through for already-formatted dates. */
+function formatDate(date: string | null | undefined): string | null {
+  if (!date) return null
+  const iso = date.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (iso) return `${iso[2]}/${iso[3]}/${iso[1]}`
+  return date
+}
+
+/** Formats an ISO datetime string as a natural-language relative date. */
+function formatRelatedDate(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000)
+  if (diffDays === 0) return 'Updated today'
+  if (diffDays === 1) return 'Updated yesterday'
+  if (diffDays < 14) return `Updated ${diffDays} days ago`
+  const diffWeeks = Math.round(diffDays / 7)
+  if (diffDays < 60) return `Updated ${diffWeeks} week${diffWeeks > 1 ? 's' : ''} ago`
+  const diffMonths = Math.round(diffDays / 30)
+  return `Updated ${diffMonths} month${diffMonths > 1 ? 's' : ''} ago`
+}
+
+/** Issue type that drives which inline alert is shown on the edit page. */
+export type ExceptionIssue =
+  | 'encounter_not_found'
+  | 'missing_patient_info'
+  | 'missing_icd10'
+  | 'classification_unclear'
+  | 'related_instance'
+  | 'visit_unavailable'
+  | 'clinical_data_unavailable'
+  | 'letter_generation_failure'
+  | 'extraction_failure'
 
 export interface DenialDraft {
   patientName: string | null
@@ -21,6 +63,16 @@ export interface DenialDraft {
   classifiedAs: string | null
   deadline: string | null
   defaultLevel?: string
+  claimId?: string | null
+  /** Drives which inline resolution alert to show on the page. */
+  exceptionIssue?: ExceptionIssue
+  /** True when the user explicitly marked the encounter as not available via Find Encounter.
+   *  Drives DOS-specific vs. generic copy in the visit_unavailable alert. */
+  encounterMarkedUnavailable?: boolean
+  /** True only after the user has explicitly selected an encounter via Find Encounter.
+   *  Separate from encounter.har because har may be extracted from the letter
+   *  even when the system could not match it. */
+  encounterConfirmed?: boolean
   encounter: {
     har?: string | null
     mrn?: string | null
@@ -29,11 +81,20 @@ export interface DenialDraft {
     discharged?: string | null
   }
   drgAdjustments?: DrgAdjustments
+  relatedDenial?: {
+    instanceId: string
+    denialType: string
+    level: string
+    status: string
+    owner: string
+    worklist: string
+    lastUpdated: string
+  }
 }
 
 export type EditChrome =
   | { kind: 'wizard'; onCancel: () => void; onBackToFindEncounter: () => void }
-  | { kind: 'queue'; position: number; total: number; deadlineLabel: string; patientName?: string | null; exceptionLabel?: string | null; onBackToList: () => void; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean }
+  | { kind: 'queue'; position: number; total: number; deadlineLabel: string; patientName?: string | null; payer?: string | null; claimId?: string | null; exceptionLabel?: string | null; onBackToList: () => void; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean }
   | { kind: 'case'; patientName: string; deadlineLabel: string; level: string; status: string; onBackToList: () => void }
 
 interface Props {
@@ -41,6 +102,22 @@ interface Props {
   chrome: EditChrome
   onChangeEncounter: () => void
   onSave: () => void
+  onArchive?: () => void
+  onRetry?: () => void
+}
+
+// ── Exception category chip styles ───────────────────────────────────────────
+
+function exceptionChipSx(label: string) {
+  const styles: Record<string, { bgcolor: string; color: string; border: string }> = {
+    'Data needs review':           { bgcolor: 'var(--colors-badge-variant-warning-background)',  color: 'var(--colors-badge-variant-warning-text)',  border: '1px solid var(--colors-badge-variant-warning-border)'  },
+    'Classification needs review': { bgcolor: 'var(--colors-badge-variant-info-background)',     color: 'var(--colors-badge-variant-info-text)',     border: '1px solid var(--colors-badge-variant-info-border)'     },
+    'Related denial needs review':            { bgcolor: 'var(--colors-badge-variant-info-background)',     color: 'var(--colors-badge-variant-info-text)',     border: '1px solid var(--colors-badge-variant-info-border)'     },
+    'Missing Data':                { bgcolor: 'var(--colors-badge-variant-default-background)',  color: 'var(--colors-badge-variant-default-text)',  border: '1px solid var(--colors-badge-variant-default-border)'  },
+    'System error':                { bgcolor: 'var(--colors-badge-variant-error-background)',    color: 'var(--colors-badge-variant-error-text)',    border: '1px solid var(--colors-badge-variant-error-border)'    },
+  }
+  const s = styles[label] ?? styles['Missing Data']
+  return { height: 20, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)', borderRadius: 'var(--radii-badge-radius)', '& .MuiChip-label': { px: 0.875 }, flexShrink: 0, ...s }
 }
 
 // ── Ghost nav button style — maps to design system "ghost" button variant ─────
@@ -134,20 +211,22 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 }) {
 }
 
 function QueueChrome({
-  position, total, deadlineLabel, patientName, exceptionLabel,
+  position, total, deadlineLabel, patientName, payer, claimId, exceptionLabel,
   onBackToList, onPrev, onNext, canPrev, canNext,
 }: {
   position: number; total: number; deadlineLabel: string
-  patientName?: string | null; exceptionLabel?: string | null
+  patientName?: string | null; payer?: string | null; claimId?: string | null; exceptionLabel?: string | null
   onBackToList: () => void; onPrev: () => void; onNext: () => void
   canPrev: boolean; canNext: boolean
 }) {
+  const contextParts = [payer, claimId].filter(Boolean) as string[]
+
   return (
     <Box sx={{
       bgcolor: 'background.paper',
       borderBottom: '1px solid', borderColor: 'divider',
       flexShrink: 0,
-      px: 3, py: 1.25,
+      px: 3, py: 1,
       display: 'flex', alignItems: 'center', gap: 2,
     }}>
       {/* Left: back nav */}
@@ -160,34 +239,50 @@ function QueueChrome({
         Back to Exceptions
       </Button>
 
-      {/* Center: patient + exception context */}
-      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+      {/* Divider — separates nav from identity context */}
+      <Box sx={{ width: '1px', height: 28, bgcolor: 'var(--colors-grey-3)', flexShrink: 0 }} />
+
+      {/* Identity block — left-anchored after divider */}
+      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.25 }}>
         {patientName && (
-          <Typography sx={{ fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)', color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {patientName}
+          <Typography sx={{
+            fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)',
+            color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {formatPatientName(patientName)}
           </Typography>
         )}
-        {exceptionLabel && (
-          <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', whiteSpace: 'nowrap' }}>
-            {exceptionLabel}
-          </Typography>
+        {(payer || claimId || exceptionLabel || deadlineLabel) && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'nowrap', minWidth: 0 }}>
+            {(payer || claimId) && (
+              <Typography sx={{
+                fontSize: 'var(--font-sizes-12)', color: 'text.secondary',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1,
+              }}>
+                {[payer, claimId].filter(Boolean).join(' · ')}
+              </Typography>
+            )}
+            {exceptionLabel && (
+              <Chip label={exceptionLabel} size="small" sx={exceptionChipSx(exceptionLabel)} />
+            )}
+            <Chip
+              label={deadlineLabel}
+              size="small"
+              sx={{
+                fontSize: 'var(--font-sizes-12)',
+                bgcolor: 'var(--colors-badge-variant-warning-background)',
+                color: 'var(--colors-badge-variant-warning-text)',
+                border: '1px solid var(--colors-badge-variant-warning-border)',
+                borderRadius: 'var(--radii-badge-radius)',
+                height: 20,
+                flexShrink: 0,
+              }}
+            />
+          </Box>
         )}
-        <Chip
-          label={deadlineLabel}
-          size="small"
-          sx={{
-            fontSize: 'var(--font-sizes-12)',
-            bgcolor: 'var(--colors-badge-variant-warning-background)',
-            color: 'var(--colors-badge-variant-warning-text)',
-            border: '1px solid var(--colors-badge-variant-warning-border)',
-            borderRadius: 'var(--radii-badge-radius)',
-            height: 22,
-            flexShrink: 0,
-          }}
-        />
       </Box>
 
-      {/* Right: position counter + prev/next — integrated as one unit */}
+      {/* Right: position counter + prev/next */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
         <IconButton
           size="small"
@@ -333,13 +428,24 @@ function SectionCard({
 function FormBody({
   draft,
   onChangeEncounter,
+  onArchive,
+  onRetry,
 }: {
   draft: DenialDraft
   onChangeEncounter: () => void
+  onArchive?: () => void
+  onRetry?: () => void
 }) {
   const [denialType, setDenialType] = useState<'drg_downgrade' | 'medical_necessity' | 'other'>(
     parseDenialTypeFromClassification(draft.classifiedAs)
   )
+  const [classificationConfirmed, setClassificationConfirmed] = useState(false)
+  const [otherExplicitlySelected, setOtherExplicitlySelected] = useState(false)
+  const [otherSubtype, setOtherSubtype] = useState<'outpatient' | 'readmission' | 'prior_auth' | null>(null)
+  const [icd10Confirmed, setIcd10Confirmed] = useState(false)
+  const [patientInfoConfirmed, setPatientInfoConfirmed] = useState(false)
+  const [relatedPendingChoice, setRelatedPendingChoice] = useState<'escalation' | 'duplicate' | 'unrelated' | null>(null)
+  const [relatedConfirmedAction, setRelatedConfirmedAction] = useState<'escalation' | 'unrelated' | null>(null)
   const [drgReviewType, setDrgReviewType] = useState('Clinical Validation Review')
   const [level, setLevel] = useState(draft.defaultLevel ?? 'Level 1')
   const [payer, setPayer] = useState(draft.payer ?? '')
@@ -353,13 +459,20 @@ function FormBody({
     mb: 0.5,
   }
 
+  const admitDischarge = (() => {
+    const admit = formatDate(draft.encounter.dos)
+    const discharge = formatDate(draft.encounter.discharged)
+    if (admit && discharge) return `${admit} — ${discharge}`
+    return admit ?? null
+  })()
+
   const encFields: { label: string; value: string | null | undefined; mono?: boolean }[] = [
-    { label: 'Name',          value: draft.patientName },
-    { label: 'HAR',           value: draft.encounter.har,        mono: true },
-    { label: 'MRN',           value: draft.encounter.mrn,        mono: true },
-    { label: 'DOS',           value: draft.encounter.dos },
-    { label: 'Date of Birth', value: draft.patientDob ?? null },
-    { label: 'Visit ID',      value: draft.encounter.visitId,    mono: true },
+    { label: 'Name',              value: draft.patientName ? formatPatientName(draft.patientName) : null },
+    { label: 'HAR',               value: draft.encounter.har,    mono: true },
+    { label: 'MRN',               value: draft.encounter.mrn,    mono: true },
+    { label: 'Date of Birth',     value: formatDate(draft.patientDob ?? null) },
+    { label: 'Admit — Discharge', value: admitDischarge },
+    { label: 'Visit ID',          value: draft.encounter.visitId, mono: true },
   ]
 
   return (
@@ -368,20 +481,210 @@ function FormBody({
       display: 'flex', flexDirection: 'column', gap: 1.5,
     }}>
 
+      <Box sx={{ pb: 0.5 }}>
+        <Typography sx={{ fontSize: 'var(--font-sizes-16)', fontWeight: 'var(--font-weights-semibold)', color: 'text.primary' }}>
+          Denial Details
+        </Typography>
+        {draft.patientName && (
+          <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', mt: 0.25 }}>
+            {formatPatientName(draft.patientName)}
+            {draft.payer ? ` · ${draft.payer}` : ''}
+            {draft.claimId ? ` · ${draft.claimId}` : ''}
+          </Typography>
+        )}
+      </Box>
+
+      {/* Visit unavailable — page-level notice; no resolution path */}
+      {draft.exceptionIssue === 'visit_unavailable' && (
+        <Box sx={{
+          p: 1.5,
+          bgcolor: 'var(--colors-badge-variant-info-background)',
+          border: '1px solid var(--colors-badge-variant-info-border)',
+          borderRadius: 'var(--radii-sm)',
+          display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
+        }}>
+          <InfoOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-info-text)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+          <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-info-text)', lineHeight: 1.4 }}>
+            Visit data is not available for this denial.
+          </Typography>
+          <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-info-text)', lineHeight: 1.5, mt: 0.25 }}>
+            {draft.encounterMarkedUnavailable
+              ? 'This can happen if the denial date falls outside your supported data range or the encounter is not in the system. Archive this instance if no further action is needed.'
+              : <>Denial date{draft.encounter.dos ? ` ${formatDate(draft.encounter.dos)}` : ''} falls within a known data gap for this facility. If you think this is incorrect, contact support to report an issue.</>
+            }
+          </Typography>
+          <Box sx={{ gridColumn: 2, display: 'flex', justifyContent: 'flex-end', mt: 0.75 }}>
+            <Button size="small" sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-badge-variant-info-text)', p: 0, fontWeight: 'var(--font-weights-medium)', '&:hover': { opacity: 0.75 } }}>
+              Contact Support
+            </Button>
+          </Box>
+        </Box>
+      )}
+
+      {/* Clinical data unavailable — page-level notice; no resolution path */}
+      {draft.exceptionIssue === 'clinical_data_unavailable' && (
+        <Box sx={{
+          p: 1.5,
+          bgcolor: 'var(--colors-badge-variant-warning-background)',
+          border: '1px solid var(--colors-badge-variant-warning-border)',
+          borderRadius: 'var(--radii-sm)',
+          display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
+        }}>
+          <WarningAmberOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-warning-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+          <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
+            Clinical Data Not Available
+          </Typography>
+          <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.5, mt: 0.25 }}>
+            No clinical notes found for this encounter.
+          </Typography>
+        </Box>
+      )}
+
+      {/* System error alerts — letter generation failure and extraction failure */}
+      {(draft.exceptionIssue === 'letter_generation_failure' || draft.exceptionIssue === 'extraction_failure') && (
+        <Box sx={{
+          p: 1.5,
+          bgcolor: 'var(--colors-badge-variant-error-background)',
+          border: '1px solid var(--colors-badge-variant-error-border)',
+          borderRadius: 'var(--radii-sm)',
+          display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
+        }}>
+          <ErrorOutlineOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-error-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+          <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-error-text)', lineHeight: 1.4 }}>
+            {draft.exceptionIssue === 'letter_generation_failure' ? 'Letter generation failed.' : 'Data extraction failed.'}
+          </Typography>
+          <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-error-text)', lineHeight: 1.5, mt: 0.25 }}>
+            {draft.exceptionIssue === 'letter_generation_failure'
+              ? 'The system was unable to generate an appeal letter for this denial. Retry to attempt again, or contact support if the issue persists.'
+              : 'The system was unable to extract data from the denial letter. Retry to attempt again, or contact support if the issue persists.'}
+          </Typography>
+          <Box sx={{ gridColumn: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, mt: 0.75 }}>
+            <Button size="small"
+              sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-badge-variant-error-text)', p: 0, fontWeight: 'var(--font-weights-medium)', '&:hover': { opacity: 0.75 } }}>
+              Contact Support
+            </Button>
+            <Button variant="outlined" size="small" onClick={onRetry}
+              sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', borderColor: 'var(--colors-badge-variant-error-border)', color: 'var(--colors-badge-variant-error-text)', '&:hover': { borderColor: 'var(--colors-badge-variant-error-text)', bgcolor: 'transparent' } }}>
+              Retry
+            </Button>
+          </Box>
+        </Box>
+      )}
+
         <SectionCard
           id="encounter"
           title="Encounter"
-          action={(
-            <Button
-              size="small"
-              startIcon={<EditOutlined sx={{ fontSize: '14px !important' }} />}
-              onClick={onChangeEncounter}
-              sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-ocean-4)' }}
-            >
-              Change encounter
-            </Button>
-          )}
+          action={
+            // Hide "Change encounter" when encounter is unresolved — the alert CTA takes over
+            draft.exceptionIssue === 'encounter_not_found' && !draft.encounterConfirmed ? null : (
+              <Button
+                size="small"
+                startIcon={<EditOutlined sx={{ fontSize: '14px !important' }} />}
+                onClick={onChangeEncounter}
+                sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-ocean-4)' }}
+              >
+                Change encounter
+              </Button>
+            )
+          }
         >
+          {/* Encounter not found — unresolved */}
+          {draft.exceptionIssue === 'encounter_not_found' && !draft.encounterConfirmed && (
+            <Box sx={{
+              mb: 2, p: 1.5,
+              bgcolor: 'var(--colors-badge-variant-warning-background)',
+              border: '1px solid var(--colors-badge-variant-warning-border)',
+              borderRadius: 'var(--radii-sm)',
+              display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
+            }}>
+              <WarningAmberOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-warning-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+              <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
+                Encounter could not be automatically matched
+              </Typography>
+              <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.5, mt: 0.25 }}>
+                The extracted identifiers did not return a result. Search and select the correct encounter to proceed.
+              </Typography>
+              <Box sx={{ gridColumn: 2, display: 'flex', justifyContent: 'flex-end', mt: 0.75 }}>
+                <Button
+                  size="small"
+                  endIcon={<ArrowForwardOutlined sx={{ fontSize: '14px !important' }} />}
+                  onClick={onChangeEncounter}
+                  sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-badge-variant-warning-text)', p: 0, '&:hover': { opacity: 0.75 } }}
+                >
+                  Search for Encounter
+                </Button>
+              </Box>
+            </Box>
+          )}
+
+          {/* Encounter not found — resolved: show green confirmation above the matched fields */}
+          {draft.exceptionIssue === 'encounter_not_found' && !!draft.encounterConfirmed && (
+            <Box sx={{
+              mb: 2, px: 1.5, py: 1,
+              bgcolor: 'var(--colors-badge-variant-success-background)',
+              border: '1px solid var(--colors-badge-variant-success-border)',
+              borderRadius: 'var(--radii-sm)',
+              display: 'flex', alignItems: 'center', gap: 1,
+            }}>
+              <CheckCircleOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-success-icon)', flexShrink: 0 }} />
+              <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-success-text)', flex: 1 }}>
+                Encounter matched
+              </Typography>
+              <Button
+                size="small"
+                onClick={onChangeEncounter}
+                sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-interactive-ghost-text)', p: 0 }}
+              >
+                Change
+              </Button>
+            </Box>
+          )}
+
+          {/* Missing patient info — unresolved */}
+          {draft.exceptionIssue === 'missing_patient_info' && !patientInfoConfirmed && (
+            <Box sx={{
+              mb: 2, p: 1.5,
+              bgcolor: 'var(--colors-badge-variant-warning-background)',
+              border: '1px solid var(--colors-badge-variant-warning-border)',
+              borderRadius: 'var(--radii-sm)',
+              display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
+            }}>
+              <WarningAmberOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-warning-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+              <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
+                Additional patient info needed.
+              </Typography>
+              <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.5, mt: 0.25 }}>
+                Patient information could not be fully confirmed from this denial. Review the fields below and confirm before saving.
+              </Typography>
+              <Box sx={{ gridColumn: 2, display: 'flex', justifyContent: 'flex-end', mt: 0.75 }}>
+                <Button size="small" onClick={() => setPatientInfoConfirmed(true)}
+                  sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-badge-variant-warning-text)', p: 0, fontWeight: 'var(--font-weights-medium)', '&:hover': { opacity: 0.75 } }}>
+                  Confirm patient info
+                </Button>
+              </Box>
+            </Box>
+          )}
+
+          {/* Missing patient info — resolved */}
+          {draft.exceptionIssue === 'missing_patient_info' && patientInfoConfirmed && (
+            <Box sx={{
+              mb: 2, px: 1.5, py: 1,
+              bgcolor: 'var(--colors-badge-variant-success-background)',
+              border: '1px solid var(--colors-badge-variant-success-border)',
+              borderRadius: 'var(--radii-sm)',
+              display: 'flex', alignItems: 'center', gap: 1,
+            }}>
+              <CheckCircleOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-success-icon)', flexShrink: 0 }} />
+              <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-success-text)', flex: 1 }}>
+                Patient info confirmed
+              </Typography>
+              <Button size="small" onClick={() => setPatientInfoConfirmed(false)}
+                sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-interactive-ghost-text)', p: 0 }}>
+                Change
+              </Button>
+            </Box>
+          )}
+
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px 20px' }}>
             {encFields.map(({ label, value, mono }) => (
               <Box key={label}>
@@ -401,9 +704,84 @@ function FormBody({
         </SectionCard>
 
         <SectionCard id="denial-type" title="Denial Type">
+          {/* Classification unclear — unresolved (hidden when an unsupported sub-type is selected) */}
+          {draft.exceptionIssue === 'classification_unclear' && !classificationConfirmed && !(denialType === 'other' && !!otherSubtype) && (
+            <Box sx={{
+              mb: 2, p: 1.5,
+              bgcolor: 'var(--colors-badge-variant-warning-background)',
+              border: '1px solid var(--colors-badge-variant-warning-border)',
+              borderRadius: 'var(--radii-sm)',
+              display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
+            }}>
+              <WarningAmberOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-warning-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+              <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
+                Denial type could not be automatically determined
+              </Typography>
+              <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.5, mt: 0.25 }}>
+                Review the denial letter and select the appropriate denial type below.
+              </Typography>
+            </Box>
+          )}
+
+          {/* Unsupported denial type — replaces the classification alert once an Other sub-type is chosen */}
+          {draft.exceptionIssue === 'classification_unclear' && !classificationConfirmed && denialType === 'other' && !!otherSubtype && (
+            <Box sx={{
+              mb: 2, p: 1.5,
+              bgcolor: 'var(--colors-badge-variant-warning-background)',
+              border: '1px solid var(--colors-badge-variant-warning-border)',
+              borderRadius: 'var(--radii-sm)',
+              display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
+            }}>
+              <WarningAmberOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-warning-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+              <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
+                This denial type is not currently supported.
+              </Typography>
+              <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.5, mt: 0.25 }}>
+                The system will use a Medical Necessity framework to generate the appeal letter.
+              </Typography>
+              <Box sx={{ gridColumn: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, mt: 0.75 }}>
+                <Button size="small" onClick={onArchive}
+                  sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-badge-variant-warning-text)', p: 0, fontWeight: 'var(--font-weights-medium)', '&:hover': { opacity: 0.75 } }}>
+                  Archive
+                </Button>
+                <Button variant="outlined" size="small" onClick={() => setClassificationConfirmed(true)}
+                  sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', borderColor: 'var(--colors-badge-variant-warning-border)', color: 'var(--colors-badge-variant-warning-text)', '&:hover': { borderColor: 'var(--colors-badge-variant-warning-text)', bgcolor: 'transparent' } }}>
+                  Proceed anyway
+                </Button>
+              </Box>
+            </Box>
+          )}
+
+          {/* Classification unclear — resolved */}
+          {draft.exceptionIssue === 'classification_unclear' && classificationConfirmed && (
+            <Box sx={{
+              mb: 2, px: 1.5, py: 1,
+              bgcolor: 'var(--colors-badge-variant-success-background)',
+              border: '1px solid var(--colors-badge-variant-success-border)',
+              borderRadius: 'var(--radii-sm)',
+              display: 'flex', alignItems: 'center', gap: 1,
+            }}>
+              <CheckCircleOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-success-icon)', flexShrink: 0 }} />
+              <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-success-text)', flex: 1 }}>
+                Denial type confirmed
+              </Typography>
+            </Box>
+          )}
+
           <SmarterRadioGroup
             value={denialType}
-            onChange={v => setDenialType(v as typeof denialType)}
+            onChange={v => {
+              const t = v as typeof denialType
+              setDenialType(t)
+              if (t === 'other') {
+                setOtherExplicitlySelected(true)
+                // Don't confirm yet — user must pick a sub-type and proceed
+              } else {
+                setOtherExplicitlySelected(false)
+                setOtherSubtype(null)
+                setClassificationConfirmed(true)
+              }
+            }}
             options={[
               {
                 value: 'drg_downgrade',
@@ -420,7 +798,24 @@ function FormBody({
                 ),
               },
               { value: 'medical_necessity', label: 'Medical Necessity' },
-              { value: 'other',             label: 'Other' },
+              {
+                value: 'other',
+                label: 'Other',
+                children: (otherExplicitlySelected && draft.exceptionIssue === 'classification_unclear') ? (
+                  <Box>
+                    <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', mb: 0.75 }}>Denial type</Typography>
+                    <SmarterRadioGroup
+                      value={otherSubtype ?? ''}
+                      onChange={v => setOtherSubtype(v as typeof otherSubtype)}
+                      options={[
+                        { value: 'outpatient',  label: 'Outpatient denial' },
+                        { value: 'readmission', label: 'Readmission denial' },
+                        { value: 'prior_auth',  label: 'Prior authorization denial' },
+                      ]}
+                    />
+                  </Box>
+                ) : undefined,
+              },
             ]}
           />
         </SectionCard>
@@ -474,11 +869,241 @@ function FormBody({
           </Box>
         </SectionCard>
 
-        {denialType === 'drg_downgrade' && (
+        {(denialType === 'drg_downgrade' || draft.exceptionIssue === 'missing_icd10') && (
           <SectionCard id="payer-adj" title="Payer Adjustments">
-            <DrgAdjustmentsSection adjustments={draft.drgAdjustments} />
+            {/* Missing ICD-10 — unresolved: prompt user to add codes */}
+            {draft.exceptionIssue === 'missing_icd10' && !icd10Confirmed && (
+              <Box sx={{
+                mb: 2, p: 1.5,
+                bgcolor: 'var(--colors-badge-variant-warning-background)',
+                border: '1px solid var(--colors-badge-variant-warning-border)',
+                borderRadius: 'var(--radii-sm)',
+                display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
+              }}>
+                <WarningAmberOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-warning-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+                <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
+                  ICD-10 diagnosis codes are missing
+                </Typography>
+                <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.5, mt: 0.25 }}>
+                  Codes could not be extracted from the denial letter. Add the applicable diagnosis codes below.
+                </Typography>
+              </Box>
+            )}
+
+            {/* Missing ICD-10 — resolved: green confirmation */}
+            {draft.exceptionIssue === 'missing_icd10' && icd10Confirmed && (
+              <Box sx={{
+                mb: 2, px: 1.5, py: 1,
+                bgcolor: 'var(--colors-badge-variant-success-background)',
+                border: '1px solid var(--colors-badge-variant-success-border)',
+                borderRadius: 'var(--radii-sm)',
+                display: 'flex', alignItems: 'center', gap: 1,
+              }}>
+                <CheckCircleOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-success-icon)', flexShrink: 0 }} />
+                <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-success-text)' }}>
+                  ICD-10 codes added
+                </Typography>
+              </Box>
+            )}
+
+            <DrgAdjustmentsSection
+              adjustments={draft.drgAdjustments}
+              onDxCodesChanged={count => { if (count > 0) setIcd10Confirmed(true) }}
+            />
           </SectionCard>
         )}
+
+        {/* Related Denials — always visible in worklist context; shown in exception context when a match exists */}
+        {(draft.relatedDenial || !draft.exceptionIssue) && (() => {
+          const rd = draft.relatedDenial ?? null
+          const isException = draft.exceptionIssue === 'related_instance'
+
+          const RELATIONSHIP_OPTIONS: { value: 'escalation' | 'duplicate' | 'unrelated'; label: string; description: string; confirmLabel: string }[] = [
+            { value: 'escalation', label: 'An escalation',  description: 'This is the same claim at the next appeal level',          confirmLabel: 'Link as Escalation'  },
+            { value: 'duplicate',  label: 'A duplicate',    description: 'Identical signal; this incoming instance will be archived', confirmLabel: 'Archive as Duplicate' },
+            { value: 'unrelated',  label: 'Not related',    description: 'Unrelated; create a new separate denial instance',          confirmLabel: 'Create New Denial'    },
+          ]
+
+          const selectedOption = RELATIONSHIP_OPTIONS.find(o => o.value === relatedPendingChoice)
+          const confirmLabel = selectedOption?.confirmLabel ?? 'Confirm'
+
+          const handleConfirm = () => {
+            if (relatedPendingChoice === 'duplicate') {
+              onArchive?.()
+            } else if (relatedPendingChoice === 'escalation' || relatedPendingChoice === 'unrelated') {
+              setRelatedConfirmedAction(relatedPendingChoice)
+            }
+          }
+
+          const statusChipSx = (status: string) => {
+            if (status === 'Overturned' || status === 'Closed') return { bgcolor: 'var(--colors-badge-variant-success-background)', color: 'var(--colors-badge-variant-success-text)', border: '1px solid var(--colors-badge-variant-success-border)' }
+            if (status === 'Upheld') return { bgcolor: 'var(--colors-badge-variant-error-background)', color: 'var(--colors-badge-variant-error-text)', border: '1px solid var(--colors-badge-variant-error-border)' }
+            if (status === 'Needs review') return { bgcolor: 'var(--colors-badge-variant-warning-background)', color: 'var(--colors-badge-variant-warning-text)', border: '1px solid var(--colors-badge-variant-warning-border)' }
+            return { bgcolor: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
+          }
+
+          return (
+            <SectionCard
+              id="related-denials"
+              title="Related Denials"
+              action={
+                !isException ? (
+                  <Button size="small" startIcon={<AddOutlined sx={{ fontSize: '14px !important' }} />}
+                    sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-ocean-4)' }}>
+                    Add related denial
+                  </Button>
+                ) : null
+              }
+            >
+              {/* Exception alert — unresolved: radio group asking the relationship */}
+              {isException && !relatedConfirmedAction && (
+                <Box sx={{
+                  mb: 2, p: 1.5,
+                  bgcolor: 'var(--colors-badge-variant-warning-background)',
+                  border: '1px solid var(--colors-badge-variant-warning-border)',
+                  borderRadius: 'var(--radii-sm)',
+                  display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
+                }}>
+                  <WarningAmberOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-warning-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+                  <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
+                    This denial closely matches one already in the system.
+                  </Typography>
+                  <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.5, mt: 0.25 }}>
+                    Review the existing denial below and specify the relationship.
+                  </Typography>
+
+                  {/* Radio options */}
+                  <Box sx={{ gridColumn: 2, mt: 1.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                    {RELATIONSHIP_OPTIONS.map(opt => (
+                      <Box
+                        key={opt.value}
+                        onClick={() => setRelatedPendingChoice(opt.value)}
+                        sx={{
+                          display: 'flex', alignItems: 'flex-start', gap: 1.25, px: 1, py: 0.75,
+                          borderRadius: 'var(--radii-sm)', cursor: 'pointer',
+                          bgcolor: relatedPendingChoice === opt.value ? 'rgba(0,0,0,0.04)' : 'transparent',
+                          '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
+                        }}
+                      >
+                        {/* Radio circle */}
+                        <Box sx={{
+                          width: 16, height: 16, borderRadius: '50%', flexShrink: 0, mt: '1px',
+                          border: relatedPendingChoice === opt.value
+                            ? '1px solid var(--colors-badge-variant-warning-text)'
+                            : '1px solid var(--colors-badge-variant-warning-border)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {relatedPendingChoice === opt.value && (
+                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'var(--colors-badge-variant-warning-text)' }} />
+                          )}
+                        </Box>
+                        <Box>
+                          <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
+                            {opt.label}
+                          </Typography>
+                          <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', opacity: 0.8, lineHeight: 1.5 }}>
+                            {opt.description}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Box>
+
+                  {/* Confirm action */}
+                  <Box sx={{ gridColumn: 2, display: 'flex', justifyContent: 'flex-end', mt: 1.25 }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      disabled={!relatedPendingChoice}
+                      onClick={handleConfirm}
+                      sx={{
+                        fontSize: 'var(--font-sizes-12)', textTransform: 'none',
+                        borderColor: 'var(--colors-badge-variant-warning-text)',
+                        color: 'var(--colors-badge-variant-warning-text)',
+                        '&:hover': { borderColor: 'var(--colors-badge-variant-warning-text)', bgcolor: 'rgba(0,0,0,0.04)' },
+                        '&.Mui-disabled': { opacity: 0.4, borderColor: 'var(--colors-badge-variant-warning-border)', color: 'var(--colors-badge-variant-warning-text)' },
+                      }}
+                    >
+                      {confirmLabel}
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Exception alert — resolved */}
+              {isException && !!relatedConfirmedAction && (
+                <Box sx={{
+                  mb: 2, px: 1.5, py: 1,
+                  bgcolor: 'var(--colors-badge-variant-success-background)',
+                  border: '1px solid var(--colors-badge-variant-success-border)',
+                  borderRadius: 'var(--radii-sm)',
+                  display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
+                }}>
+                  <CheckCircleOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-success-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+                  <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-success-text)', lineHeight: 1.4 }}>
+                    {relatedConfirmedAction === 'escalation'
+                      ? `Linked as an escalation of ${rd.instanceId}.`
+                      : 'A new separate denial instance will be created from this signal.'}
+                  </Typography>
+                  <Box sx={{ gridColumn: 2, display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
+                    <Button size="small" onClick={() => { setRelatedConfirmedAction(null); setRelatedPendingChoice(null) }}
+                      sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-badge-variant-success-text)', p: 0 }}>
+                      Change
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Empty state — worklist context with no related denials yet */}
+              {!rd && (
+                <Box sx={{ py: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.disabled' }}>
+                    No related denials have been linked.
+                  </Typography>
+                </Box>
+              )}
+
+              {/* Timeline — confirmed existing instances only; incoming signal not pre-placed */}
+              {rd && <Box>
+                <Box sx={{ display: 'flex', gap: 1.5 }}>
+                  {/* Rail dot — no connector since there's only one confirmed item */}
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, pt: 0.5 }}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, bgcolor: 'var(--colors-grey-4)' }} />
+                  </Box>
+                  {/* Content */}
+                  <Box sx={{ flex: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      <Typography sx={{ fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)', color: 'text.primary' }}>
+                        {rd.denialType.replace('Denial — ', '')}
+                      </Typography>
+                      <Typography sx={{ fontSize: 'var(--font-sizes-14)', color: 'text.secondary', fontWeight: 'var(--font-weights-regular)' }}>
+                        · {rd.level}
+                      </Typography>
+                      <Chip label={rd.status} size="small" sx={{
+                        height: 20, fontSize: 'var(--font-sizes-12)',
+                        fontWeight: 'var(--font-weights-regular)' as unknown as number,
+                        borderRadius: 'var(--radii-badge-radius)',
+                        '& .MuiChip-label': { px: 0.875 },
+                        ...statusChipSx(rd.status),
+                      }} />
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+                      <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
+                        {rd.owner} · {rd.worklist}
+                      </Typography>
+                      <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.disabled' }}>
+                        · {formatRelatedDate(rd.lastUpdated)}
+                      </Typography>
+                      <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.disabled', fontVariantNumeric: 'tabular-nums' }}>
+                        · {rd.instanceId}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              </Box>}
+            </SectionCard>
+          )
+        })()}
 
     </Box>
   )
@@ -486,16 +1111,46 @@ function FormBody({
 
 // ── Footer variants ───────────────────────────────────────────────────────────
 
-function FooterBar({ chrome, onSave }: { chrome: EditChrome; onSave: () => void }) {
+const FOOTER_SX = {
+  borderTop: '1px solid', borderColor: 'divider',
+  bgcolor: 'background.paper',
+  px: 3, py: 1.25,
+  display: 'flex', alignItems: 'center', gap: 1.5,
+  flexShrink: 0,
+} as const
+
+function FooterBar({ chrome, draft, onSave, onArchive }: { chrome: EditChrome; draft: DenialDraft; onSave: () => void; onArchive?: () => void }) {
+  const isUnavailable = draft.exceptionIssue === 'visit_unavailable'
+    || draft.exceptionIssue === 'clinical_data_unavailable'
+    || draft.exceptionIssue === 'letter_generation_failure'
+    || draft.exceptionIssue === 'extraction_failure'
+
+  // visit_unavailable / clinical_data_unavailable: Cancel + Skip + Archive
+  if (isUnavailable && onArchive && chrome.kind === 'queue') {
+    return (
+      <Box sx={{ ...FOOTER_SX, justifyContent: 'flex-end' }}>
+        <Button variant="outlined" size="small" onClick={chrome.onBackToList} sx={{ fontSize: 'var(--font-sizes-14)' }}>
+          Cancel
+        </Button>
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={chrome.onNext}
+          disabled={!chrome.canNext}
+          sx={{ fontSize: 'var(--font-sizes-14)' }}
+        >
+          Skip
+        </Button>
+        <Button variant="contained" size="small" onClick={onArchive} sx={{ fontSize: 'var(--font-sizes-14)' }}>
+          {chrome.canNext ? 'Archive & Next' : 'Archive'}
+        </Button>
+      </Box>
+    )
+  }
+
   if (chrome.kind === 'wizard') {
     return (
-      <Box sx={{
-        borderTop: '1px solid', borderColor: 'divider',
-        bgcolor: 'background.paper',
-        px: 3, py: 1.25,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5,
-        flexShrink: 0,
-      }}>
+      <Box sx={{ ...FOOTER_SX, justifyContent: 'space-between' }}>
         <Button
           variant="text"
           size="small"
@@ -519,13 +1174,7 @@ function FooterBar({ chrome, onSave }: { chrome: EditChrome; onSave: () => void 
 
   if (chrome.kind === 'queue') {
     return (
-      <Box sx={{
-        borderTop: '1px solid', borderColor: 'divider',
-        bgcolor: 'background.paper',
-        px: 3, py: 1.25,
-        display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1.5,
-        flexShrink: 0,
-      }}>
+      <Box sx={{ ...FOOTER_SX, justifyContent: 'flex-end' }}>
         <Button variant="outlined" size="small" onClick={chrome.onBackToList} sx={{ fontSize: 'var(--font-sizes-14)' }}>
           Cancel
         </Button>
@@ -539,20 +1188,14 @@ function FooterBar({ chrome, onSave }: { chrome: EditChrome; onSave: () => void 
           Skip
         </Button>
         <Button variant="contained" size="small" onClick={onSave} sx={{ fontSize: 'var(--font-sizes-14)' }}>
-          Save & Next
+          Resolve & Next
         </Button>
       </Box>
     )
   }
 
   return (
-    <Box sx={{
-      borderTop: '1px solid', borderColor: 'divider',
-      bgcolor: 'background.paper',
-      px: 3, py: 1.25,
-      display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1.5,
-      flexShrink: 0,
-    }}>
+    <Box sx={{ ...FOOTER_SX, justifyContent: 'flex-end' }}>
       <Button variant="outlined" size="small" onClick={chrome.onBackToList} sx={{ fontSize: 'var(--font-sizes-14)' }}>
         Cancel
       </Button>
@@ -563,9 +1206,42 @@ function FooterBar({ chrome, onSave }: { chrome: EditChrome; onSave: () => void 
   )
 }
 
+// ── Exception → section id mapping ───────────────────────────────────────────
+
+const EXCEPTION_SECTION_MAP: Partial<Record<ExceptionIssue, string>> = {
+  encounter_not_found:    'encounter',
+  missing_patient_info:   'encounter',
+  missing_icd10:          'payer-adj',
+  classification_unclear: 'denial-type',
+  related_instance:       'related-denials',
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncounter, onSave }: Props) {
+export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncounter, onSave, onArchive, onRetry }: Props) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // When the draft changes (user navigates prev/next), reset to top then
+  // smooth-scroll to the relevant section so the user sees where they are.
+  const draftKey = `${draft.patientName ?? ''}-${draft.encounter.har ?? ''}-${draft.exceptionIssue ?? ''}`
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    // Snap to top immediately
+    container.scrollTop = 0
+
+    const sectionId = draft.exceptionIssue ? EXCEPTION_SECTION_MAP[draft.exceptionIssue] : undefined
+    if (!sectionId) return
+
+    const timer = setTimeout(() => {
+      const section = document.getElementById(sectionId)
+      section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 320)
+
+    return () => clearTimeout(timer)
+  }, [draftKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <Box sx={{
       display: 'flex', flexDirection: 'column',
@@ -578,6 +1254,7 @@ export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncou
           position={chrome.position} total={chrome.total} deadlineLabel={chrome.deadlineLabel}
           onBackToList={chrome.onBackToList} onPrev={chrome.onPrev} onNext={chrome.onNext}
           canPrev={chrome.canPrev} canNext={chrome.canNext}
+          patientName={chrome.patientName} payer={chrome.payer} claimId={chrome.claimId} exceptionLabel={chrome.exceptionLabel}
         />
       )}
       {chrome.kind === 'case' && (
@@ -588,11 +1265,11 @@ export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncou
         />
       )}
 
-      <Box sx={{ flex: 1, overflow: 'auto' }}>
-        <FormBody draft={draft} onChangeEncounter={onChangeEncounter} />
+      <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto' }}>
+        <FormBody draft={draft} onChangeEncounter={onChangeEncounter} onArchive={onArchive} onRetry={onRetry} />
       </Box>
 
-      <FooterBar chrome={chrome} onSave={onSave} />
+      <FooterBar chrome={chrome} draft={draft} onSave={onSave} onArchive={onArchive} />
     </Box>
   )
 }

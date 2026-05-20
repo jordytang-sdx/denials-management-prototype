@@ -433,6 +433,8 @@ function getNow() {
 function statusFromAction(action, current) {
   switch (action) {
     case 'Submit':                   return 'Submitted';
+    case 'Send to SFTP':             return 'Submitted';
+    case 'Mark as Submitted':        return 'Submitted';
     case 'Will Not Submit':          return 'Will Not Submit';
     case 'Archive':                  return 'Archived';
     case 'Complete Review':          return 'Ready to Submit';
@@ -961,7 +963,17 @@ function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = nu
           ? ['Overturned', 'Upheld - Will Appeal', 'Upheld - Will Not Appeal', 'Will Not Submit', 'Return to Review']
           : caseData.status === 'Overturned'
           ? ['Upheld - Will Not Appeal', 'Upheld - Will Appeal', 'Remove Outcome', 'Return to Review']
-          : STATUS_WORKFLOW_ACTIONS.filter(a => !(a === 'Retry Letter' && caseData.status === 'Ready for Review') && !(a === 'Complete Review' && hideCompleteReview))
+          : [
+              ...(hideCompleteReview && caseData.status === 'Ready for Review' ? ['Send to SFTP'] : []),
+              ...STATUS_WORKFLOW_ACTIONS.filter(a =>
+                !(a === 'Retry Letter' && caseData.status === 'Ready for Review') &&
+                !(a === 'Complete Review' && hideCompleteReview)
+              ).map(a =>
+                a === 'Submit' && hideCompleteReview && caseData.status === 'Ready for Review'
+                  ? 'Mark as Submitted'
+                  : a
+              ),
+            ]
         ).map((a) => (
             <MenuItem
               key={a}
@@ -3649,6 +3661,8 @@ export default function CasePageAiEditing({ onBack = () => {}, initialView = 'ca
     }
     dispatch({ type: 'SET_STATUS', payload: actionLabel });
     if (actionLabel === 'Submit')                   onStatusAction?.('submit');
+    else if (actionLabel === 'Send to SFTP')        onStatusAction?.('send-to-sftp');
+    else if (actionLabel === 'Mark as Submitted')   onStatusAction?.('submit');
     else if (actionLabel === 'Archive')             onStatusAction?.('archive');
     else if (actionLabel === 'Complete Review')     onStatusAction?.('complete-review');
     else if (actionLabel === 'Overturned')          onStatusAction?.('overturned');

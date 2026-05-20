@@ -169,6 +169,8 @@ const theme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
+          // sm input size = rounded: "sm" = 4px per design system InputLayout spec
+          borderRadius: 'var(--radii-sm)',
           '& .MuiOutlinedInput-notchedOutline': {
             borderColor: 'var(--colors-interactive-default-border)',
           },

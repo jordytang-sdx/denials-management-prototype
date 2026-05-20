@@ -35,6 +35,8 @@ interface IngestPageProps {
   onNewDenialPanelClose?: () => void
   /** V4 only: intercept exception-review clicks to open a full-page editor instead of the side panel. */
   onReviewExceptionFullPage?: (records: StagingRecord[], currentIndex: number) => void
+  /** V4 only: set of staging record IDs the user has archived — filtered out of the exceptions queue. */
+  archivedStagingIds?: Set<string>
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -78,66 +80,93 @@ const ATTENTION_LABELS: Record<NeedsReviewReason, string> = {
   no_patient_match:         'Patient not matched',
   no_claim_match:           'Claim not found',
   ambiguous_classification: 'Ambiguous classification',
-  possible_duplicate:       'Related instance',
-  existing_instance_found:  'Related instance',
+  possible_duplicate:       'Related denial needs review',
+  existing_instance_found:  'Related denial needs review',
 }
 
 const REASON_TAGS: Record<NeedsReviewReason, string> = {
-  missing_fields:           'Missing fields',
-  low_confidence:           'Low confidence',
-  no_patient_match:         'No patient match',
-  no_claim_match:           'No claim found',
-  ambiguous_classification: 'Needs classification',
-  possible_duplicate:       'Related instance',
-  existing_instance_found:  'Related instance',
+  missing_fields:            'Missing fields',
+  low_confidence:            'Low confidence',
+  low_confidence_patient:    'Missing patient info',
+  no_patient_match:          'No patient match',
+  no_claim_match:            'No claim found',
+  ambiguous_classification:  'Needs classification',
+  possible_duplicate:        'Related denial needs review',
+  existing_instance_found:   'Related denial needs review',
+  no_clinical_data:          'Clinical data not available',
+  letter_generation_failure: 'Letter generation failed',
+  extraction_failure:        'Extraction failed',
 }
 
 const REVIEW_CATEGORY: Record<NeedsReviewReason, string> = {
-  missing_fields:           'Data needs review',
-  low_confidence:           'Data needs review',
-  no_patient_match:         'Data needs review',
-  no_claim_match:           'Data needs review',
-  ambiguous_classification: 'Classification needs review',
-  possible_duplicate:       'Related instance',
-  existing_instance_found:  'Related instance',
+  missing_fields:            'Data needs review',
+  low_confidence:            'Data needs review',
+  low_confidence_patient:    'Data needs review',
+  no_patient_match:          'Data needs review',
+  no_claim_match:            'Data needs review',
+  ambiguous_classification:  'Classification needs review',
+  possible_duplicate:        'Related denial needs review',
+  existing_instance_found:   'Related denial needs review',
+  no_clinical_data:          'Missing Data',
+  letter_generation_failure: 'System error',
+  extraction_failure:        'System error',
 }
 
 const REVIEW_SECONDARY: Record<NeedsReviewReason, string> = {
-  missing_fields:           'Missing required fields',
-  low_confidence:           'Low confidence fields',
-  no_patient_match:         'No patient match',
-  no_claim_match:           'No claim match',
-  ambiguous_classification: 'Denial category unclear',
-  possible_duplicate:       'Possible existing denial',
-  existing_instance_found:  'Possible existing denial',
+  missing_fields:            'Missing required fields',
+  low_confidence:            'Low confidence fields',
+  low_confidence_patient:    'Missing patient info',
+  no_patient_match:          'No patient match',
+  no_claim_match:            'No claim match',
+  ambiguous_classification:  'Denial category unclear',
+  possible_duplicate:        'Possible existing denial',
+  existing_instance_found:   'Possible existing denial',
+  no_clinical_data:          'Clinical data not available',
+  letter_generation_failure: 'Letter generation failed',
+  extraction_failure:        'Data extraction failed',
 }
 
+// Categories where only the chip is shown — no secondary detail text
+const CHIP_ONLY_CATEGORIES = new Set(['Classification needs review', 'Related denial needs review'])
+
 const REVIEW_CATEGORY_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  'Data needs review':           { bg: 'var(--colors-badge-variant-warning-background)',        color: 'var(--colors-badge-variant-warning-text)',        border: '1px solid var(--colors-badge-variant-warning-border)' },
-  'Classification needs review': { bg: 'var(--colors-badge-variant-info-background)',           color: 'var(--colors-badge-variant-info-text)',           border: '1px solid var(--colors-badge-variant-info-border)' },
-  'Related instance':            { bg: 'var(--colors-badge-variant-info-background)',           color: 'var(--colors-badge-variant-info-text)',           border: '1px solid var(--colors-badge-variant-info-border)' },
-  'Missing Data':                { bg: 'var(--colors-badge-variant-default-background)',        color: 'var(--colors-badge-variant-default-text)',        border: '1px solid var(--colors-badge-variant-default-border)' },
+  'Data needs review':           { bg: 'var(--colors-badge-variant-warning-background)',  color: 'var(--colors-badge-variant-warning-text)',  border: '1px solid var(--colors-badge-variant-warning-border)'  },
+  'Classification needs review': { bg: 'var(--colors-badge-variant-info-background)',     color: 'var(--colors-badge-variant-info-text)',     border: '1px solid var(--colors-badge-variant-info-border)'     },
+  'Related denial needs review': { bg: 'var(--colors-badge-variant-info-background)',     color: 'var(--colors-badge-variant-info-text)',     border: '1px solid var(--colors-badge-variant-info-border)'     },
+  'Missing Data':                { bg: 'var(--colors-badge-variant-default-background)',  color: 'var(--colors-badge-variant-default-text)',  border: '1px solid var(--colors-badge-variant-default-border)'  },
+  'System error':                { bg: 'var(--colors-badge-variant-error-background)',    color: 'var(--colors-badge-variant-error-text)',    border: '1px solid var(--colors-badge-variant-error-border)'    },
 }
 
 const EXISTING_REVIEW_CATEGORY: Partial<Record<NeedsReviewReason, string>> = {
-  missing_fields: 'Missing Data',
+  missing_fields:            'Missing Data',
+  no_clinical_data:          'Missing Data',
+  letter_generation_failure: 'System error',
+  extraction_failure:        'System error',
 }
 
 const EXISTING_REVIEW_SECONDARY: Partial<Record<NeedsReviewReason, string>> = {
-  low_confidence:   'Encounter not found',
-  no_patient_match: 'Encounter not found',
-  no_claim_match:   'Missing ICD-10 codes',
-  missing_fields:   'Visit not available',
+  low_confidence:            'Encounter not found',
+  low_confidence_patient:    'Missing patient info',
+  no_patient_match:          'Encounter not found',
+  no_claim_match:            'Missing ICD-10 codes',
+  missing_fields:            'Visit not available',
+  no_clinical_data:          'Clinical data not available',
+  letter_generation_failure: 'Letter generation failed',
+  extraction_failure:        'Data extraction failed',
 }
 
 const SECTION_TITLE: Record<NeedsReviewReason, string> = {
-  missing_fields:           'Missing fields',
-  low_confidence:           'Low confidence extraction',
-  no_patient_match:         'Patient match',
-  no_claim_match:           'Claim match',
-  ambiguous_classification: 'Classification',
-  possible_duplicate:       'Related instance',
-  existing_instance_found:  'Related instance',
+  missing_fields:            'Missing fields',
+  low_confidence:            'Low confidence extraction',
+  low_confidence_patient:    'Patient info',
+  no_patient_match:          'Patient match',
+  no_claim_match:            'Claim match',
+  ambiguous_classification:  'Classification',
+  possible_duplicate:        'Related denial needs review',
+  existing_instance_found:   'Related denial needs review',
+  no_clinical_data:          'Clinical data',
+  letter_generation_failure: 'Letter generation',
+  extraction_failure:        'Data extraction',
 }
 
 const MODULE_WORKLIST: Record<StagingModule, string> = {
@@ -1849,7 +1878,7 @@ function InlineEditDenialDetailsPanel({
 
 function ExceptionsTab({
   records, onUpdate, onNavigate, onSwitchToHistory, mode, initialDrawerRecordId, inlinePanels,
-  newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage,
+  newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, archivedStagingIds,
 }: {
   records: StagingRecord[]
   onUpdate: (updated: StagingRecord[]) => void
@@ -1861,6 +1890,7 @@ function ExceptionsTab({
   newDenialPanelOpen?: boolean
   onNewDenialPanelClose?: () => void
   onReviewExceptionFullPage?: (records: StagingRecord[], currentIndex: number) => void
+  archivedStagingIds?: Set<string>
 }) {
   type ToastState =
     | { kind: 'created'; instanceId: string; worklist: string }
@@ -1877,7 +1907,8 @@ function ExceptionsTab({
 
   const exceptions = sortByUrgency(records.filter(r =>
     r.status === 'needs_review' &&
-    (mode !== 'existing' || !r.reviewReasons.includes('possible_duplicate'))
+    (mode !== 'existing' || !r.reviewReasons.includes('possible_duplicate')) &&
+    !(archivedStagingIds?.has(r.id))
   ))
   const drawerRecord = drawerRecordId ? exceptions.find(r => r.id === drawerRecordId) ?? null : null
   const drawerIndex = drawerRecord ? exceptions.findIndex(r => r.id === drawerRecordId) : -1
@@ -2045,7 +2076,44 @@ function ExceptionsTab({
 
       {/* Exception list */}
       <Box sx={{ flex: 1, overflow: 'auto' }}>
-        {exceptions.map(record => {
+        {(() => {
+          const CATEGORY_ORDER = [
+            'Data needs review',
+            'Classification needs review',
+            'Related denial needs review',
+            'Missing Data',
+            'System error',
+          ]
+          const getCategory = (r: StagingRecord) => {
+            const firstReason = r.reviewReasons[0]
+            if (!firstReason) return null
+            return (mode === 'existing' ? EXISTING_REVIEW_CATEGORY[firstReason] : undefined) ?? REVIEW_CATEGORY[firstReason]
+          }
+          const grouped = CATEGORY_ORDER
+            .map(cat => ({ category: cat, records: exceptions.filter(r => getCategory(r) === cat) }))
+            .filter(g => g.records.length > 0)
+
+          return grouped.flatMap(({ category, records: groupRecords }, gIdx) => {
+            const catStyle = REVIEW_CATEGORY_STYLE[category] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
+            return [
+              // Category group header
+              <Box key={`header-${category}`} sx={{
+                px: 3, py: 0.875,
+                display: 'flex', alignItems: 'center', gap: 1,
+                bgcolor: 'var(--colors-grey-2)',
+                borderBottom: '1px solid', borderColor: 'divider',
+                borderTop: gIdx > 0 ? '1px solid' : 'none', borderTopColor: 'divider',
+              }}>
+                <Box sx={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, bgcolor: catStyle.color, opacity: 0.6 }} />
+                <Typography sx={{ fontSize: 'var(--font-sizes-10)', fontWeight: 'var(--font-weights-bold)', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                  {category}
+                </Typography>
+                <Typography sx={{ fontSize: 'var(--font-sizes-10)', color: 'text.disabled' }}>
+                  ({groupRecords.length})
+                </Typography>
+              </Box>,
+              // Records in this group
+              ...groupRecords.map(record => {
           const deadline = getDeadline(record)
           const refDate = new Date('2026-04-03T00:00:00')
           const daysUntil = deadline
@@ -2089,9 +2157,11 @@ function ExceptionsTab({
                           size="small"
                           sx={{ height: 20, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number, bgcolor: catStyle.bg, color: catStyle.color, border: catStyle.border, '& .MuiChip-label': { px: 0.875 }, flexShrink: 0 }}
                         />
-                        <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: catStyle.color, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                          {secondary}
-                        </Typography>
+                        {!CHIP_ONLY_CATEGORIES.has(category) && (
+                          <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: catStyle.color, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                            {secondary}
+                          </Typography>
+                        )}
                       </>
                     )
                   })()}
@@ -2177,7 +2247,10 @@ function ExceptionsTab({
               </Button>
             </Box>
           )
-        })}
+              }), // end groupRecords.map
+            ] // end group array
+          }) // end grouped.flatMap
+        })()} {/* end IIFE */}
       </Box>
 
       </Box>
@@ -2502,7 +2575,7 @@ function HistoryTab({ records, mode, inlinePanels }: { records: StagingRecord[];
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage }: IngestPageProps) {
+export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, archivedStagingIds }: IngestPageProps) {
   const [activeTab, setActiveTab] = useState(initialOpenDrawer?.tab === 'in-progress' ? 1 : 0)
   const [records, setRecords] = useState<StagingRecord[]>(SEED_STAGING)
   const [showUploadInternal, setShowUploadInternal] = useState(false)
@@ -2631,6 +2704,7 @@ export default function IngestPage({ features: _features, onNavigate, mode, init
               newDenialPanelOpen={newDenialPanelOpen}
               onNewDenialPanelClose={onNewDenialPanelClose}
               onReviewExceptionFullPage={onReviewExceptionFullPage}
+              archivedStagingIds={archivedStagingIds}
             />
           )}
           {mode === 'existing' && activeTab === 1 && (

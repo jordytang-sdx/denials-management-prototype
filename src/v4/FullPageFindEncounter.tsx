@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { Box, Typography, Button, TextField, Alert } from '@mui/material'
-import { ArrowBackOutlined, AddOutlined, InfoOutlined } from '@mui/icons-material'
+import { useState, useRef } from 'react'
+import { Box, Typography, Button, TextField, Alert, CircularProgress } from '@mui/material'
+import { ArrowBackOutlined, AddOutlined, InfoOutlined, ManageSearchOutlined, ExpandLessOutlined, ExpandMoreOutlined } from '@mui/icons-material'
 import SmarterSelect from './SmarterSelect'
 
 const GHOST_BTN_SX = {
@@ -33,18 +33,87 @@ interface Props {
   chrome: FindEncounterChrome
   initialIdentifierValue?: string
   onSelect: (result: EncounterResult) => void
+  onMarkUnavailable?: () => void
 }
 
-const MOCK_RESULT: EncounterResult = {
-  patientName: 'Susan Smith',
-  dob: '08/14/1955',
-  har: '5291037',
-  mrn: '3921847',
-  visitId: '8847201',
-  admit: '05/28/2024',
-  discharge: '06/05/2024',
-  principalDx: 'A41.9 — Sepsis, unspecified organism',
-  billedDrg: '871',
+// ── Mock patient pool ─────────────────────────────────────────────────────────
+// Covers both encounter_not_found exception cases plus a general-use record.
+// Search is cross-field so typing any fragment (name, HAR, MRN, etc.) returns
+// relevant results. Falls back to the full list if nothing matches.
+
+const MOCK_PATIENTS: EncounterResult[] = [
+  // stg-007 candidates — extracted as "J. Smith", no_patient_match
+  {
+    patientName: 'James Smith',
+    dob: '04/12/1968',
+    har: '2025-5502',
+    mrn: 'MRN-77001',
+    visitId: '7721445',
+    admit: '03/22/2026',
+    discharge: '03/28/2026',
+    principalDx: 'J18.9 — Pneumonia, unspecified organism',
+    billedDrg: '193',
+  },
+  {
+    patientName: 'Jonathan Smith',
+    dob: '04/15/1968',
+    har: '2025-5503',
+    mrn: 'MRN-77002',
+    visitId: '7721446',
+    admit: '03/20/2026',
+    discharge: '03/25/2026',
+    principalDx: 'J18.9 — Pneumonia, unspecified organism',
+    billedDrg: '194',
+  },
+  // stg-012 candidates — extracted as "T. Brennan", low_confidence
+  {
+    patientName: 'Thomas Brennan',
+    dob: '09/08/1952',
+    har: '2025-8803',
+    mrn: 'MRN-99881',
+    visitId: '9901337',
+    admit: '03/01/2026',
+    discharge: '03/07/2026',
+    principalDx: 'I50.9 — Heart failure, unspecified',
+    billedDrg: '293',
+  },
+  {
+    patientName: 'Thomas E. Brennan',
+    dob: '09/08/1952',
+    har: '2025-8804',
+    mrn: 'MRN-99882',
+    visitId: '9901338',
+    admit: '03/01/2026',
+    discharge: '03/06/2026',
+    principalDx: 'I50.9 — Heart failure, unspecified',
+    billedDrg: '291',
+  },
+  // General — wizard "Start New Denial" flow
+  {
+    patientName: 'Susan Smith',
+    dob: '08/14/1955',
+    har: '5291037',
+    mrn: '3921847',
+    visitId: '8847201',
+    admit: '05/28/2024',
+    discharge: '06/05/2024',
+    principalDx: 'A41.9 — Sepsis, unspecified organism',
+    billedDrg: '871',
+  },
+]
+
+function searchPatients(query: string): EncounterResult[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+  const matches = MOCK_PATIENTS.filter(p =>
+    p.patientName.toLowerCase().includes(q) ||
+    p.har.toLowerCase().includes(q) ||
+    p.mrn.toLowerCase().includes(q) ||
+    p.visitId.toLowerCase().includes(q) ||
+    p.dob.includes(q)
+  )
+  // Never dead-end: if nothing matches, show everyone
+  return matches.length > 0 ? matches : MOCK_PATIENTS
 }
 
 // ── Chrome variants ───────────────────────────────────────────────────────────
@@ -138,12 +207,25 @@ function ChangeEncounterChrome({ onBack }: { onBack: () => void }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function FullPageFindEncounter({ chrome, initialIdentifierValue = '', onSelect }: Props) {
+export default function FullPageFindEncounter({ chrome, initialIdentifierValue = '', onSelect, onMarkUnavailable }: Props) {
   const [identifier, setIdentifier] = useState('HAR')
   const [value, setValue] = useState(initialIdentifierValue)
+  const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const handleSearch = () => setSearched(true)
+  const results = searched ? searchPatients(value) : []
+
+  const handleSearch = () => {
+    setSearched(false)
+    setSearching(true)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      setSearching(false)
+      setSearched(true)
+    }, 900)
+  }
 
   return (
     <Box sx={{
@@ -213,7 +295,7 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
               Add identifier
             </Button>
 
-            {!searched && (
+            {!searched && !searching && (
               <Alert
                 icon={<InfoOutlined fontSize="small" />}
                 severity="info"
@@ -233,8 +315,15 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
             )}
           </Box>
 
+          {/* Loading state */}
+          {searching && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
+              <CircularProgress size={24} thickness={4} sx={{ color: 'var(--colors-ocean-4)' }} />
+            </Box>
+          )}
+
           {/* Results table */}
-          {searched && (
+          {searched && !searching && (
             <Box sx={{
               bgcolor: 'background.paper',
               border: '1px solid', borderColor: 'var(--colors-grey-3)',
@@ -243,7 +332,7 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
             }}>
               <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid', borderColor: 'var(--colors-grey-3)' }}>
                 <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
-                  Displaying 1 result
+                  Displaying {results.length} {results.length === 1 ? 'result' : 'results'}
                 </Typography>
               </Box>
               <Box sx={{ overflow: 'auto' }}>
@@ -253,29 +342,29 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
                   '& th, & td': {
                     px: 1.5, py: 1.25,
                     textAlign: 'left',
-                    fontSize: 'var(--font-sizes-table-cell-font-size)',  // 12px per design system
+                    fontSize: 'var(--font-sizes-table-cell-font-size)',
                     borderBottom: '1px solid', borderColor: 'divider',
                     verticalAlign: 'top',
                   },
                   '& th': {
-                    fontWeight: 'var(--font-weights-table-header-font-weight)',  // 500
+                    fontWeight: 'var(--font-weights-table-header-font-weight)',
                     color: 'text.secondary',
                     textTransform: 'uppercase',
                     letterSpacing: '0.06em',
                     bgcolor: 'var(--colors-grey-1)',
-                    fontSize: 'var(--font-sizes-table-header-font-size)',  // 12px
+                    fontSize: 'var(--font-sizes-table-header-font-size)',
                   },
                   '& tr:last-of-type td': { borderBottom: 'none' },
                 }}>
                   <colgroup>
-                    <col style={{ width: '22%' }} />  {/* Patient Name — widest */}
-                    <col style={{ width: '10%' }} />  {/* HAR */}
-                    <col style={{ width: '10%' }} />  {/* MRN */}
-                    <col style={{ width: '9%' }}  />  {/* Visit ID */}
-                    <col style={{ width: '14%' }} />  {/* Admit—Discharge */}
-                    <col style={{ width: '22%' }} />  {/* Principal Dx */}
-                    <col style={{ width: '7%' }}  />  {/* Billed DRG */}
-                    <col style={{ width: '6%' }}  />  {/* Select */}
+                    <col style={{ width: '22%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '9%' }}  />
+                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '22%' }} />
+                    <col style={{ width: '7%' }}  />
+                    <col style={{ width: '6%' }}  />
                   </colgroup>
                   <thead>
                     <tr>
@@ -290,48 +379,103 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td>
-                        <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-medium)' }}>
-                          {MOCK_RESULT.patientName}
-                        </Typography>
-                        <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
-                          {MOCK_RESULT.dob}
-                        </Typography>
-                      </td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{MOCK_RESULT.har}</td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{MOCK_RESULT.mrn}</td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{MOCK_RESULT.visitId}</td>
-                      <td>{MOCK_RESULT.admit} — {MOCK_RESULT.discharge}</td>
-                      <td>
-                        {/* 2-line clamp with native tooltip for full text */}
-                        <div
-                          title={MOCK_RESULT.principalDx}
-                          style={{
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                            cursor: 'default',
-                          }}
-                        >
-                          {MOCK_RESULT.principalDx}
-                        </div>
-                      </td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{MOCK_RESULT.billedDrg}</td>
-                      <td>
-                        <Button
-                          size="small"
-                          onClick={() => onSelect(MOCK_RESULT)}
-                          sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-ocean-4)', p: 0, minWidth: 0 }}
-                        >
-                          Select
-                        </Button>
-                      </td>
-                    </tr>
+                    {results.map(p => (
+                      <tr key={p.har}>
+                        <td>
+                          <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-medium)' }}>
+                            {p.patientName}
+                          </Typography>
+                          <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
+                            {p.dob}
+                          </Typography>
+                        </td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{p.har}</td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{p.mrn}</td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{p.visitId}</td>
+                        <td>{p.admit} — {p.discharge}</td>
+                        <td>
+                          <div
+                            title={p.principalDx}
+                            style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', cursor: 'default' }}
+                          >
+                            {p.principalDx}
+                          </div>
+                        </td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{p.billedDrg}</td>
+                        <td>
+                          <Button
+                            size="small"
+                            onClick={() => onSelect(p)}
+                            sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-ocean-4)', p: 0, minWidth: 0 }}
+                          >
+                            Select
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </Box>
               </Box>
+            </Box>
+          )}
+
+          {/* Can't find the encounter? — shown after first search */}
+          {(searched || searching) && (
+            <Box sx={{
+              bgcolor: 'background.paper',
+              border: '1px solid', borderColor: 'var(--colors-grey-3)',
+              borderRadius: 'var(--radii-card-radius)',
+            }}>
+              {/* Accordion header */}
+              <Box
+                onClick={() => setHelpOpen(o => !o)}
+                sx={{
+                  px: 2, py: 1.5,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  '&:hover': { bgcolor: 'background.paper' },
+                  borderRadius: helpOpen ? 'var(--radii-card-radius) var(--radii-card-radius) 0 0' : 'var(--radii-card-radius)',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ManageSearchOutlined sx={{ fontSize: 20, color: 'var(--colors-ocean-4)' }} />
+                  <Typography sx={{ fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)', color: 'text.primary' }}>
+                    Can't find the encounter?
+                  </Typography>
+                </Box>
+                {helpOpen
+                  ? <ExpandLessOutlined sx={{ fontSize: 20, color: 'var(--colors-text-secondary)' }} />
+                  : <ExpandMoreOutlined sx={{ fontSize: 20, color: 'var(--colors-text-secondary)' }} />
+                }
+              </Box>
+
+              {/* Accordion body */}
+              {helpOpen && (
+                <Box sx={{ px: 2, pb: 2, borderTop: '1px solid', borderColor: 'var(--colors-grey-3)' }}>
+                  <Typography sx={{ fontSize: 'var(--font-sizes-14)', color: 'text.secondary', lineHeight: 1.6, pt: 1.5, pb: 2 }}>
+                    This can happen if the denial date is outside your supported start date, or the encounter isn't in the system. Contact support if you believe this is an error.
+                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1.5 }}>
+                    <Button
+                      size="small"
+                      sx={{ fontSize: 'var(--font-sizes-14)', textTransform: 'none', color: 'var(--colors-ocean-4)', p: 0 }}
+                    >
+                      Contact Support
+                    </Button>
+                    {onMarkUnavailable && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={onMarkUnavailable}
+                        sx={{ fontSize: 'var(--font-sizes-14)', textTransform: 'none' }}
+                      >
+                        Mark This Encounter As Not Available
+                      </Button>
+                    )}
+                  </Box>
+                </Box>
+              )}
             </Box>
           )}
 

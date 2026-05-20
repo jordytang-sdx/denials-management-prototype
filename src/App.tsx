@@ -54,7 +54,7 @@ import DenialsWorklistV4Page from './pages/DenialsWorklistV4Page'
 import DenialsWorklistFutureScopePage from './pages/DenialsWorklistFutureScopePage'
 import NewDenialFlow from './pages/NewDenialFlow'
 import CasePageAiEditing from './case-page/CasePageAiEditing'
-import FullPageEditDenialDetails, { type DenialDraft } from './v4/FullPageEditDenialDetails'
+import FullPageEditDenialDetails, { type DenialDraft, type ExceptionIssue } from './v4/FullPageEditDenialDetails'
 import FullPageFindEncounter from './v4/FullPageFindEncounter'
 import { getDrgAdjustmentsForSubtype } from './v4/drgMockData'
 
@@ -637,11 +637,14 @@ export default function App() {
   type V4Screen =
     | null
     | { type: 'edit-case';  denialId: string;  encounterOverride?: V4Encounter }
-    | { type: 'edit-queue'; records: StagingRecord[]; index: number; encounterOverride?: V4Encounter }
+    | { type: 'edit-queue'; records: StagingRecord[]; index: number; encounterOverride?: V4Encounter; encounterConfirmed?: boolean }
     | { type: 'wizard-find' }
     | { type: 'wizard-edit'; encounterFromWizard: V4Encounter }
     | { type: 'change-encounter'; parent: V4ChangeParent; parentOverride?: V4Encounter }
   const [v4Screen, setV4Screen] = useState<V4Screen>(null)
+  const [archivedStagingIds, setArchivedStagingIds] = useState<Set<string>>(new Set())
+  // Persists user-applied exception overrides by record ID across queue navigation
+  const [exceptionIssueOverrides, setExceptionIssueOverrides] = useState<Record<string, ExceptionIssue>>({})
 
   // Filter out misclassified ADR and Underpayment denial records — these now live in SEED_AUDITS
   const visibleDenials = denials.filter(d => d.denialType !== 'ADR' && d.denialType !== 'Underpayment')
@@ -698,6 +701,7 @@ export default function App() {
       patientDob: override?.dob ?? null,
       payer: d.payer,
       classifiedAs: d.denialType,
+      claimId: d.claim.claimId ?? d.claim.har ?? null,
       deadline: d.deadline,
       defaultLevel: levelMap[d.appealLevel] ?? 'Level 1',
       encounter: {
@@ -708,18 +712,56 @@ export default function App() {
         discharged: override?.dischargeDate ?? null,
       },
       drgAdjustments: isDrg ? getDrgAdjustmentsForSubtype(d.denialSubtype) : undefined,
+      relatedDenial: (() => {
+        const ri = d.relatedInstances?.find(r =>
+          r.relationship === 'escalated_from' || r.relationship === 'escalated_to'
+        )
+        if (!ri) return undefined
+        const prevLevel = d.appealLevel === 'L3' ? 'Level 2' : 'Level 1'
+        // Approximate "closed a month and a half ago" relative to current date
+        const closedAt = new Date(Date.now() - 46 * 24 * 60 * 60 * 1000).toISOString()
+        return {
+          instanceId: ri.denialId,
+          denialType: d.denialType,
+          level: prevLevel,
+          status: 'Closed',
+          owner: d.assignedTo?.name ?? 'Sarah K.',
+          worklist: 'Denials Worklist',
+          lastUpdated: closedAt,
+        }
+      })(),
     }
   }
 
-  function draftFromStaging(r: StagingRecord, override?: V4Encounter): DenialDraft {
+  // Maps staging review reasons to the ExceptionIssue that drives inline alerts on the edit page
+  const EXCEPTION_ISSUE_MAP: Record<string, ExceptionIssue> = {
+    low_confidence:            'encounter_not_found',
+    low_confidence_patient:    'missing_patient_info',
+    no_patient_match:         'encounter_not_found',
+    no_claim_match:           'missing_icd10',
+    missing_fields:           'visit_unavailable',
+    ambiguous_classification: 'classification_unclear',
+    possible_duplicate:       'related_instance',
+    existing_instance_found:  'related_instance',
+    no_clinical_data:          'clinical_data_unavailable',
+    letter_generation_failure: 'letter_generation_failure',
+    extraction_failure:        'extraction_failure',
+  }
+
+  function draftFromStaging(r: StagingRecord, override?: V4Encounter, exceptionIssueOverride?: ExceptionIssue): DenialDraft {
     const ext = r.extraction as Record<string, unknown>
     const isDrg = (r.classifiedAs ?? '').toLowerCase().includes('drg')
+    const firstReason = r.reviewReasons[0]
     return {
       patientName: override?.patientName ?? r.patientName,
       patientDob: override?.dob ?? null,
       payer: r.payer,
       classifiedAs: r.classifiedAs,
+      claimId: (ext.har as string) ?? null,
       deadline: (ext.deadline as string) ?? null,
+      exceptionIssue: exceptionIssueOverride ?? (firstReason ? (EXCEPTION_ISSUE_MAP[firstReason] ?? undefined) : undefined),
+      encounterMarkedUnavailable: !!exceptionIssueOverride,
+      encounterConfirmed: false,  // only set to true after user explicitly selects via Find Encounter
       encounter: {
         har: override?.har ?? ((ext.har as string) ?? null),
         mrn: override?.mrn ?? r.patientMrn,
@@ -728,6 +770,19 @@ export default function App() {
         discharged: override?.dischargeDate ?? null,
       },
       drgAdjustments: isDrg ? getDrgAdjustmentsForSubtype((ext.drgSubtype as string) ?? null) : undefined,
+      relatedDenial: (() => {
+        const m = ext.matchedInstance as Record<string, unknown> | undefined
+        if (!m) return undefined
+        return {
+          instanceId: (m.id as string) ?? '',
+          denialType: (m.denialType as string) ?? '',
+          level: 'Level 1',
+          status: (m.status as string) ?? 'In progress',
+          owner: (m.owner as string) ?? '',
+          worklist: (m.worklist as string) ?? '',
+          lastUpdated: (m.lastUpdated as string) ?? '',
+        }
+      })(),
     }
   }
 
@@ -745,7 +800,7 @@ export default function App() {
   function handleV2StatusAction(action: string) {
     if (!selectedV2CaseId) return
     const id = selectedV2CaseId
-    if (action === 'submit') {
+    if (action === 'submit' || action === 'send-to-sftp') {
       setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Submitted' as DenialState, status: 'Awaiting Payer Decision' as const, submissionDate: todayISO() } : d))
       setV2ReturnTab('Submitted')
       setSelectedV2CaseId(null)
@@ -1272,26 +1327,33 @@ export default function App() {
               const ext = record.extraction as Record<string, unknown>
               return (
                 <FullPageEditDenialDetails
-                  draft={draftFromStaging(record, screen.encounterOverride)}
+                  draft={{ ...draftFromStaging(record, screen.encounterOverride, exceptionIssueOverrides[record.id]), encounterConfirmed: screen.encounterConfirmed ?? false }}
                   chrome={{
                     kind: 'queue',
                     position: index + 1,
                     total: records.length,
                     deadlineLabel: formatDeadlineLabel((ext.deadline as string) ?? null),
                     patientName: record.patientName,
+                    payer: record.payer,
+                    claimId: (ext.har as string) ?? null,
                     exceptionLabel: (() => {
+                      if (exceptionIssueOverrides[record.id] === 'visit_unavailable') return 'Missing Data'
                       const reason = record.reviewReasons[0]
                       if (!reason) return null
-                      const secondary: Record<string, string> = {
-                        low_confidence: 'Encounter not found',
-                        no_patient_match: 'Encounter not found',
-                        no_claim_match: 'Missing ICD-10 codes',
-                        missing_fields: 'Visit not available',
-                        ambiguous_classification: 'Needs classification',
-                        possible_duplicate: 'Related instance',
-                        existing_instance_found: 'Related instance',
+                      const categories: Record<string, string> = {
+                        low_confidence:            'Data needs review',
+                        low_confidence_patient:    'Data needs review',
+                        no_patient_match:         'Data needs review',
+                        no_claim_match:           'Data needs review',
+                        missing_fields:           'Missing Data',
+                        ambiguous_classification: 'Classification needs review',
+                        possible_duplicate:       'Related denial needs review',
+                        existing_instance_found:  'Related denial needs review',
+                        no_clinical_data:          'Missing Data',
+                        letter_generation_failure: 'System error',
+                        extraction_failure:        'System error',
                       }
-                      return secondary[reason] ?? 'Needs review'
+                      return categories[reason] ?? 'Needs review'
                     })(),
                     onBackToList: () => { setV4Screen(null); setExistingNav('ingest') },
                     onPrev: () => index > 0 && setV4Screen({ type: 'edit-queue', records, index: index - 1 }),
@@ -1311,6 +1373,24 @@ export default function App() {
                       setV4Screen(null); setExistingNav('ingest')
                     }
                   }}
+                  onArchive={() => {
+                    setArchivedStagingIds(prev => new Set([...prev, record.id]))
+                    if (index < records.length - 1) {
+                      setV4Screen({ type: 'edit-queue', records, index: index + 1 })
+                    } else if (index > 0) {
+                      setV4Screen({ type: 'edit-queue', records, index: index - 1 })
+                    } else {
+                      setV4Screen(null); setExistingNav('ingest')
+                    }
+                  }}
+                  onRetry={() => {
+                    // Retry moves the record to in-progress; navigate to next exception
+                    if (index < records.length - 1) {
+                      setV4Screen({ type: 'edit-queue', records, index: index + 1 })
+                    } else {
+                      setV4Screen(null); setExistingNav('ingest')
+                    }
+                  }}
                 />
               )
             })()}
@@ -1318,11 +1398,11 @@ export default function App() {
             {/* V4 — Change Encounter (opened from Edit Denial Details "Change encounter") */}
             {systemMode === 'existing' && denialsView === 'v4' && v4Screen?.type === 'change-encounter' && (() => {
               const screen = v4Screen
-              const restoreParent = (override?: V4Encounter) => {
+              const restoreParent = (override?: V4Encounter, userSelected = false) => {
                 if (screen.parent.type === 'edit-case') {
                   setV4Screen({ type: 'edit-case', denialId: screen.parent.denialId, encounterOverride: override })
                 } else {
-                  setV4Screen({ type: 'edit-queue', records: screen.parent.records, index: screen.parent.index, encounterOverride: override })
+                  setV4Screen({ type: 'edit-queue', records: screen.parent.records, index: screen.parent.index, encounterOverride: override, encounterConfirmed: userSelected })
                 }
               }
               return (
@@ -1332,7 +1412,24 @@ export default function App() {
                     har: r.har, mrn: r.mrn, visitId: r.visitId,
                     patientName: r.patientName, dob: r.dob,
                     dischargeDate: r.discharge,
-                  })}
+                  }, true)}
+                  onMarkUnavailable={() => {
+                    if (screen.parent.type === 'edit-queue') {
+                      const parentRecord = screen.parent.records[screen.parent.index]
+                      if (parentRecord) {
+                        setExceptionIssueOverrides(prev => ({ ...prev, [parentRecord.id]: 'visit_unavailable' }))
+                      }
+                      setV4Screen({
+                        type: 'edit-queue',
+                        records: screen.parent.records,
+                        index: screen.parent.index,
+                        encounterOverride: screen.parentOverride,
+                        encounterConfirmed: false,
+                      })
+                    } else {
+                      setV4Screen(null); setExistingNav('ingest')
+                    }
+                  }}
                 />
               )
             })()}
@@ -1431,6 +1528,7 @@ export default function App() {
               }} mode="existing" initialOpenDrawer={returnContext} inlinePanels showUpload={v3ShowUpload} onShowUploadChange={setV3ShowUpload}
               newDenialPanelOpen={v3NewDenialPanelOpen} onNewDenialPanelClose={() => setV3NewDenialPanelOpen(false)}
               onReviewExceptionFullPage={denialsView === 'v4' ? (records, index) => setV4Screen({ type: 'edit-queue', records, index }) : undefined}
+              archivedStagingIds={archivedStagingIds}
               />
             )}
             {systemMode === 'new' && showingWorklist && (

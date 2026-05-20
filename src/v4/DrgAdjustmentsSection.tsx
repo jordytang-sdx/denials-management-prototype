@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Box, Typography, Button, Chip, IconButton, Divider } from '@mui/material'
 import { AddOutlined, CloseOutlined } from '@mui/icons-material'
 import SmarterSelect from './SmarterSelect'
@@ -308,12 +308,14 @@ function EditableProcedureRow({ row, onUpdate, onRemove }: {
 interface Props {
   /** When provided, displays pre-filled read-only data with editable adjustments. When absent, shows the new-entry empty state. */
   adjustments?: DrgAdjustments
+  /** Called whenever the editable diagnosis rows change — count is the number of rows with a non-empty code. */
+  onDxCodesChanged?: (count: number) => void
 }
 
 let rowCounter = 0
 function nextId() { return `row-${++rowCounter}` }
 
-export default function DrgAdjustmentsSection({ adjustments }: Props) {
+export default function DrgAdjustmentsSection({ adjustments, onDxCodesChanged }: Props) {
   const isNewEntry = !adjustments
 
   const [drgSystem, setDrgSystem] = useState<'MS-DRG' | 'APR-DRG'>(adjustments?.drgSystem ?? 'MS-DRG')
@@ -349,6 +351,10 @@ export default function DrgAdjustmentsSection({ adjustments }: Props) {
   const setPayerDrg  = isAprDrg ? setAprPayerDrg  : setMsPayerDrg
   const [editableDx, setEditableDx] = useState<EditableDxRow[]>([])
   const [editablePx, setEditablePx] = useState<EditablePxRow[]>([])
+
+  useEffect(() => {
+    onDxCodesChanged?.(editableDx.filter(r => r.code.trim()).length)
+  }, [editableDx]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const addDx = () => setEditableDx(prev => [...prev, { id: nextId(), code: '', name: '', adjustment: 'Removed' }])
   const updateDx = (id: string, field: 'code' | 'name' | 'adjustment', value: string) =>
