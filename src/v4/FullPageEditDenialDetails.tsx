@@ -8,6 +8,7 @@ import {
   ArrowBackOutlined, ChevronLeft, ChevronRight,
   EditOutlined, ArrowForwardOutlined, CheckCircleOutlined, WarningAmberOutlined, InfoOutlined,
   SearchOutlined, AddOutlined, OpenInNewOutlined, ErrorOutlineOutlined,
+  DescriptionOutlined, CloseOutlined,
 } from '@mui/icons-material'
 import SmarterSelect from './SmarterSelect'
 import DrgAdjustmentsSection from './DrgAdjustmentsSection'
@@ -92,6 +93,11 @@ export interface DenialDraft {
   }
 }
 
+export interface SourceData {
+  sourceFile: string | null
+  extraction: Record<string, unknown>
+}
+
 export type EditChrome =
   | { kind: 'wizard'; onCancel: () => void; onBackToFindEncounter: () => void }
   | { kind: 'queue'; position: number; total: number; deadlineLabel: string; patientName?: string | null; payer?: string | null; claimId?: string | null; exceptionLabel?: string | null; onBackToList: () => void; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean }
@@ -104,6 +110,7 @@ interface Props {
   onSave: () => void
   onArchive?: () => void
   onRetry?: () => void
+  sourceData?: SourceData
 }
 
 // ── Exception category chip styles ───────────────────────────────────────────
@@ -212,12 +219,13 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 }) {
 
 function QueueChrome({
   position, total, deadlineLabel, patientName, payer, claimId, exceptionLabel,
-  onBackToList, onPrev, onNext, canPrev, canNext,
+  onBackToList, onPrev, onNext, canPrev, canNext, onToggleSource, sourcePanelOpen,
 }: {
   position: number; total: number; deadlineLabel: string
   patientName?: string | null; payer?: string | null; claimId?: string | null; exceptionLabel?: string | null
   onBackToList: () => void; onPrev: () => void; onNext: () => void
   canPrev: boolean; canNext: boolean
+  onToggleSource?: () => void; sourcePanelOpen?: boolean
 }) {
   const contextParts = [payer, claimId].filter(Boolean) as string[]
 
@@ -245,12 +253,29 @@ function QueueChrome({
       {/* Identity block — left-anchored after divider */}
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.25 }}>
         {patientName && (
-          <Typography sx={{
-            fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)',
-            color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>
-            {formatPatientName(patientName)}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+            <Typography sx={{
+              fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)',
+              color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {formatPatientName(patientName)}
+            </Typography>
+            {onToggleSource && (
+              <IconButton
+                size="small"
+                onClick={onToggleSource}
+                title="View source data"
+                sx={{
+                  p: 0.375, flexShrink: 0,
+                  color: sourcePanelOpen ? 'var(--colors-ocean-4)' : 'var(--colors-grey-5)',
+                  bgcolor: sourcePanelOpen ? 'var(--colors-ocean-1)' : 'transparent',
+                  '&:hover': { bgcolor: sourcePanelOpen ? 'var(--colors-ocean-2)' : 'var(--colors-interactive-hover-ghost-background)', color: 'var(--colors-interactive-ghost-text)' },
+                }}
+              >
+                <DescriptionOutlined sx={{ fontSize: 14 }} />
+              </IconButton>
+            )}
+          </Box>
         )}
         {(payer || claimId || exceptionLabel || deadlineLabel) && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'nowrap', minWidth: 0 }}>
@@ -311,6 +336,7 @@ function QueueChrome({
         >
           <ChevronRight sx={{ fontSize: 16 }} />
         </IconButton>
+
       </Box>
     </Box>
   )
@@ -436,14 +462,15 @@ function FormBody({
   onArchive?: () => void
   onRetry?: () => void
 }) {
-  const [denialType, setDenialType] = useState<'drg_downgrade' | 'medical_necessity' | 'other'>(
-    parseDenialTypeFromClassification(draft.classifiedAs)
+  const [denialType, setDenialType] = useState<'drg_downgrade' | 'medical_necessity' | 'other' | ''>(
+    draft.exceptionIssue === 'classification_unclear'
+      ? ''
+      : parseDenialTypeFromClassification(draft.classifiedAs)
   )
   const [classificationConfirmed, setClassificationConfirmed] = useState(false)
   const [otherExplicitlySelected, setOtherExplicitlySelected] = useState(false)
   const [otherSubtype, setOtherSubtype] = useState<'outpatient' | 'readmission' | 'prior_auth' | null>(null)
   const [icd10Confirmed, setIcd10Confirmed] = useState(false)
-  const [patientInfoConfirmed, setPatientInfoConfirmed] = useState(false)
   const [relatedPendingChoice, setRelatedPendingChoice] = useState<'escalation' | 'duplicate' | 'unrelated' | null>(null)
   const [relatedConfirmedAction, setRelatedConfirmedAction] = useState<'escalation' | 'unrelated' | null>(null)
   const [drgReviewType, setDrgReviewType] = useState('Clinical Validation Review')
@@ -521,22 +548,28 @@ function FormBody({
         </Box>
       )}
 
-      {/* Clinical data unavailable — page-level notice; no resolution path */}
+      {/* Clinical data unavailable — hard stop, no resolution path */}
       {draft.exceptionIssue === 'clinical_data_unavailable' && (
         <Box sx={{
           p: 1.5,
-          bgcolor: 'var(--colors-badge-variant-warning-background)',
-          border: '1px solid var(--colors-badge-variant-warning-border)',
+          bgcolor: 'var(--colors-badge-variant-error-background)',
+          border: '1px solid var(--colors-badge-variant-error-border)',
           borderRadius: 'var(--radii-sm)',
           display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
         }}>
-          <WarningAmberOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-warning-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
-          <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
+          <ErrorOutlineOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-error-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
+          <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-error-text)', lineHeight: 1.4 }}>
             Clinical Data Not Available
           </Typography>
-          <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.5, mt: 0.25 }}>
+          <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-error-text)', lineHeight: 1.5, mt: 0.25 }}>
             No clinical notes found for this encounter.
           </Typography>
+          <Box sx={{ gridColumn: 2, display: 'flex', justifyContent: 'flex-end', mt: 0.75 }}>
+            <Button size="small"
+              sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-badge-variant-error-text)', p: 0, fontWeight: 'var(--font-weights-medium)', '&:hover': { opacity: 0.75 } }}>
+              Contact Support
+            </Button>
+          </Box>
         </Box>
       )}
 
@@ -576,7 +609,7 @@ function FormBody({
           title="Encounter"
           action={
             // Hide "Change encounter" when encounter is unresolved — the alert CTA takes over
-            draft.exceptionIssue === 'encounter_not_found' && !draft.encounterConfirmed ? null : (
+            (draft.exceptionIssue === 'encounter_not_found' || draft.exceptionIssue === 'missing_patient_info') && !draft.encounterConfirmed ? null : (
               <Button
                 size="small"
                 startIcon={<EditOutlined sx={{ fontSize: '14px !important' }} />}
@@ -588,8 +621,8 @@ function FormBody({
             )
           }
         >
-          {/* Encounter not found — unresolved */}
-          {draft.exceptionIssue === 'encounter_not_found' && !draft.encounterConfirmed && (
+          {/* Encounter not found / missing patient info — unresolved */}
+          {(draft.exceptionIssue === 'encounter_not_found' || draft.exceptionIssue === 'missing_patient_info') && !draft.encounterConfirmed && (
             <Box sx={{
               mb: 2, p: 1.5,
               bgcolor: 'var(--colors-badge-variant-warning-background)',
@@ -599,10 +632,14 @@ function FormBody({
             }}>
               <WarningAmberOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-warning-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
               <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
-                Encounter could not be automatically matched
+                {draft.exceptionIssue === 'missing_patient_info'
+                  ? 'Additional patient info needed to find encounter.'
+                  : 'Encounter could not be automatically matched'}
               </Typography>
               <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.5, mt: 0.25 }}>
-                The extracted identifiers did not return a result. Search and select the correct encounter to proceed.
+                {draft.exceptionIssue === 'missing_patient_info'
+                  ? 'Patient identifiers were incomplete or unclear. Search for the encounter using additional identifiers to confirm the patient and proceed.'
+                  : 'The extracted identifiers did not return a result. Search and select the correct encounter to proceed.'}
               </Typography>
               <Box sx={{ gridColumn: 2, display: 'flex', justifyContent: 'flex-end', mt: 0.75 }}>
                 <Button
@@ -617,8 +654,8 @@ function FormBody({
             </Box>
           )}
 
-          {/* Encounter not found — resolved: show green confirmation above the matched fields */}
-          {draft.exceptionIssue === 'encounter_not_found' && !!draft.encounterConfirmed && (
+          {/* Encounter resolved — shared by encounter_not_found and missing_patient_info */}
+          {(draft.exceptionIssue === 'encounter_not_found' || draft.exceptionIssue === 'missing_patient_info') && !!draft.encounterConfirmed && (
             <Box sx={{
               mb: 2, px: 1.5, py: 1,
               bgcolor: 'var(--colors-badge-variant-success-background)',
@@ -635,51 +672,6 @@ function FormBody({
                 onClick={onChangeEncounter}
                 sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-interactive-ghost-text)', p: 0 }}
               >
-                Change
-              </Button>
-            </Box>
-          )}
-
-          {/* Missing patient info — unresolved */}
-          {draft.exceptionIssue === 'missing_patient_info' && !patientInfoConfirmed && (
-            <Box sx={{
-              mb: 2, p: 1.5,
-              bgcolor: 'var(--colors-badge-variant-warning-background)',
-              border: '1px solid var(--colors-badge-variant-warning-border)',
-              borderRadius: 'var(--radii-sm)',
-              display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'start', columnGap: 1,
-            }}>
-              <WarningAmberOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-warning-icon)', gridRow: 1, alignSelf: 'start', mt: '2px' }} />
-              <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.4 }}>
-                Additional patient info needed.
-              </Typography>
-              <Typography sx={{ gridColumn: 2, fontSize: 'var(--font-sizes-12)', color: 'var(--colors-badge-variant-warning-text)', lineHeight: 1.5, mt: 0.25 }}>
-                Patient information could not be fully confirmed from this denial. Review the fields below and confirm before saving.
-              </Typography>
-              <Box sx={{ gridColumn: 2, display: 'flex', justifyContent: 'flex-end', mt: 0.75 }}>
-                <Button size="small" onClick={() => setPatientInfoConfirmed(true)}
-                  sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-badge-variant-warning-text)', p: 0, fontWeight: 'var(--font-weights-medium)', '&:hover': { opacity: 0.75 } }}>
-                  Confirm patient info
-                </Button>
-              </Box>
-            </Box>
-          )}
-
-          {/* Missing patient info — resolved */}
-          {draft.exceptionIssue === 'missing_patient_info' && patientInfoConfirmed && (
-            <Box sx={{
-              mb: 2, px: 1.5, py: 1,
-              bgcolor: 'var(--colors-badge-variant-success-background)',
-              border: '1px solid var(--colors-badge-variant-success-border)',
-              borderRadius: 'var(--radii-sm)',
-              display: 'flex', alignItems: 'center', gap: 1,
-            }}>
-              <CheckCircleOutlined sx={{ fontSize: 16, color: 'var(--colors-badge-variant-success-icon)', flexShrink: 0 }} />
-              <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'var(--colors-badge-variant-success-text)', flex: 1 }}>
-                Patient info confirmed
-              </Typography>
-              <Button size="small" onClick={() => setPatientInfoConfirmed(false)}
-                sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-interactive-ghost-text)', p: 0 }}>
                 Change
               </Button>
             </Box>
@@ -771,7 +763,7 @@ function FormBody({
           <SmarterRadioGroup
             value={denialType}
             onChange={v => {
-              const t = v as typeof denialType
+              const t = v as 'drg_downgrade' | 'medical_necessity' | 'other'
               setDenialType(t)
               if (t === 'other') {
                 setOtherExplicitlySelected(true)
@@ -1109,6 +1101,186 @@ function FormBody({
   )
 }
 
+// ── Source panel ─────────────────────────────────────────────────────────────
+
+const LABEL_SX = {
+  fontSize: 'var(--font-sizes-10)' as const,
+  fontWeight: 'var(--font-weights-medium)' as const,
+  color: 'text.disabled' as const,
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.06em',
+  mb: 1,
+}
+
+function ConfidenceDot({ score }: { score: number }) {
+  const color = score >= 0.85 ? 'var(--colors-badge-variant-success-text)'
+    : score >= 0.70 ? 'var(--colors-badge-variant-warning-text)'
+    : 'var(--colors-badge-variant-error-text)'
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+      <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: color }} />
+      <Typography sx={{ fontSize: 'var(--font-sizes-10)', color, fontVariantNumeric: 'tabular-nums' }}>
+        {Math.round(score * 100)}%
+      </Typography>
+    </Box>
+  )
+}
+
+function SourcePanel({ sourceData, onClose, exceptionIssue }: {
+  sourceData: SourceData
+  onClose: () => void
+  exceptionIssue?: ExceptionIssue
+}) {
+  const { sourceFile, extraction } = sourceData
+  const ocrConf = extraction.ocrConfidence as Record<string, number> | undefined
+  const uncertainFields = (extraction.uncertainFields as string[]) ?? []
+  const patientCandidates = extraction.patientCandidates as Array<{ mrn: string; name: string; dob: string; matchSignals: string[] }> | undefined
+
+  const coreFields: { label: string; value: string | null; mono?: boolean; confKey?: string }[] = [
+    { label: 'HAR',               value: (extraction.har as string) ?? null,     mono: true },
+    { label: 'Claim ID',          value: (extraction.claimId as string) ?? null, mono: true, confKey: 'claimId' },
+    { label: 'Date of Service',   value: formatDate((extraction.dos as string) ?? null) },
+    { label: 'Appeal Deadline',   value: formatDate((extraction.deadline as string) ?? null) },
+    { label: 'CARC',              value: (extraction.carc as string) ?? null,     mono: true },
+    { label: 'Denied Amount',     value: extraction.deniedAmount != null ? `$${(extraction.deniedAmount as number).toLocaleString()}` : null },
+    { label: 'Amount at Risk',    value: extraction.amountAtRisk != null ? `$${(extraction.amountAtRisk as number).toLocaleString()}` : null, confKey: 'amountAtRisk' },
+    { label: 'Audit Type',        value: (extraction.auditType as string) ?? null },
+  ].filter(f => f.value)
+
+  const extractedName = (extraction.extractedPatientName as string) ?? null
+  const extractedDob = (extraction.extractedDob as string) ?? null
+
+  return (
+    <Box sx={{
+      width: 340, flexShrink: 0,
+      borderLeft: '1px solid', borderColor: 'divider',
+      display: 'flex', flexDirection: 'column',
+      bgcolor: 'background.paper',
+      overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <Box sx={{
+        px: 2, py: 1.25, flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        borderBottom: '1px solid', borderColor: 'divider',
+      }}>
+        <Typography sx={{ fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)', color: 'text.primary' }}>
+          Source Data
+        </Typography>
+        <IconButton size="small" onClick={onClose} sx={{ p: 0.5, color: 'text.secondary' }}>
+          <CloseOutlined sx={{ fontSize: 16 }} />
+        </IconButton>
+      </Box>
+
+      {/* Scrollable content */}
+      <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+
+        {/* Source file */}
+        {sourceFile && (
+          <Box>
+            <Typography sx={LABEL_SX}>Source File</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.25, bgcolor: 'var(--colors-grey-2)', borderRadius: 'var(--radii-sm)', border: '1px solid var(--colors-grey-3)' }}>
+              <DescriptionOutlined sx={{ fontSize: 18, color: 'var(--colors-ocean-4)', flexShrink: 0 }} />
+              <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', flex: 1, wordBreak: 'break-all', lineHeight: 1.4 }}>
+                {sourceFile}
+              </Typography>
+              <Button size="small" endIcon={<OpenInNewOutlined sx={{ fontSize: '12px !important' }} />}
+                sx={{ fontSize: 'var(--font-sizes-12)', textTransform: 'none', color: 'var(--colors-ocean-4)', p: 0, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                View full
+              </Button>
+            </Box>
+          </Box>
+        )}
+
+        {/* Extracted fields */}
+        {coreFields.length > 0 && (
+          <Box>
+            <Typography sx={LABEL_SX}>Extracted Data</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {coreFields.map(({ label, value, mono, confKey }) => {
+                const conf = confKey && ocrConf ? ocrConf[confKey] : undefined
+                const isUncertain = confKey ? uncertainFields.includes(confKey) : false
+                return (
+                  <Box key={label} sx={{
+                    display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 1,
+                    py: 0.75, borderBottom: '1px solid var(--colors-grey-3)',
+                    '&:last-of-type': { borderBottom: 'none' },
+                  }}>
+                    <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', flexShrink: 0, minWidth: 110 }}>
+                      {label}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                      <Typography sx={{
+                        fontSize: 'var(--font-sizes-12)', color: isUncertain ? 'var(--colors-badge-variant-warning-text)' : 'text.primary',
+                        fontVariantNumeric: mono ? 'tabular-nums' : undefined,
+                        fontWeight: 'var(--font-weights-medium)',
+                      }}>
+                        {value}
+                      </Typography>
+                      {conf !== undefined && <ConfidenceDot score={conf} />}
+                    </Box>
+                  </Box>
+                )
+              })}
+            </Box>
+          </Box>
+        )}
+
+        {/* Extracted patient info (when different from matched) */}
+        {(extractedName || extractedDob) && (
+          <Box>
+            <Typography sx={LABEL_SX}>Extracted Patient</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {extractedName && (
+                <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 1, py: 0.75, borderBottom: '1px solid var(--colors-grey-3)' }}>
+                  <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', minWidth: 110 }}>Name</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-medium)', color: ocrConf?.patientName && ocrConf.patientName < 0.80 ? 'var(--colors-badge-variant-warning-text)' : 'text.primary' }}>
+                      {extractedName}
+                    </Typography>
+                    {ocrConf?.patientName !== undefined && <ConfidenceDot score={ocrConf.patientName} />}
+                  </Box>
+                </Box>
+              )}
+              {extractedDob && (
+                <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 1, py: 0.75 }}>
+                  <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', minWidth: 110 }}>Date of Birth</Typography>
+                  <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-medium)' }}>{formatDate(extractedDob)}</Typography>
+                </Box>
+              )}
+            </Box>
+          </Box>
+        )}
+
+        {/* Patient candidates */}
+        {patientCandidates && patientCandidates.length > 0 && (
+          <Box>
+            <Typography sx={LABEL_SX}>Patient Candidates</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+              {patientCandidates.map(c => (
+                <Box key={c.mrn} sx={{ p: 1, bgcolor: 'var(--colors-grey-2)', borderRadius: 'var(--radii-sm)', border: '1px solid var(--colors-grey-3)' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 0.25 }}>
+                    <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', color: 'text.primary' }}>
+                      {c.name}
+                    </Typography>
+                    <Typography sx={{ fontSize: 'var(--font-sizes-10)', color: 'text.disabled', fontVariantNumeric: 'tabular-nums' }}>
+                      {c.mrn}
+                    </Typography>
+                  </Box>
+                  <Typography sx={{ fontSize: 'var(--font-sizes-10)', color: 'text.secondary' }}>
+                    {c.matchSignals.join(' · ')}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        )}
+
+      </Box>
+    </Box>
+  )
+}
+
 // ── Footer variants ───────────────────────────────────────────────────────────
 
 const FOOTER_SX = {
@@ -1209,8 +1381,6 @@ function FooterBar({ chrome, draft, onSave, onArchive }: { chrome: EditChrome; d
 // ── Exception → section id mapping ───────────────────────────────────────────
 
 const EXCEPTION_SECTION_MAP: Partial<Record<ExceptionIssue, string>> = {
-  encounter_not_found:    'encounter',
-  missing_patient_info:   'encounter',
   missing_icd10:          'payer-adj',
   classification_unclear: 'denial-type',
   related_instance:       'related-denials',
@@ -1218,8 +1388,9 @@ const EXCEPTION_SECTION_MAP: Partial<Record<ExceptionIssue, string>> = {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncounter, onSave, onArchive, onRetry }: Props) {
+export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncounter, onSave, onArchive, onRetry, sourceData }: Props) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [sourcePanelOpen, setSourcePanelOpen] = useState(false)
 
   // When the draft changes (user navigates prev/next), reset to top then
   // smooth-scroll to the relevant section so the user sees where they are.
@@ -1255,6 +1426,8 @@ export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncou
           onBackToList={chrome.onBackToList} onPrev={chrome.onPrev} onNext={chrome.onNext}
           canPrev={chrome.canPrev} canNext={chrome.canNext}
           patientName={chrome.patientName} payer={chrome.payer} claimId={chrome.claimId} exceptionLabel={chrome.exceptionLabel}
+          onToggleSource={sourceData ? () => setSourcePanelOpen(o => !o) : undefined}
+          sourcePanelOpen={sourcePanelOpen}
         />
       )}
       {chrome.kind === 'case' && (
@@ -1265,8 +1438,17 @@ export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncou
         />
       )}
 
-      <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto' }}>
-        <FormBody draft={draft} onChangeEncounter={onChangeEncounter} onArchive={onArchive} onRetry={onRetry} />
+      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+        <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto' }}>
+          <FormBody draft={draft} onChangeEncounter={onChangeEncounter} onArchive={onArchive} onRetry={onRetry} />
+        </Box>
+        {sourcePanelOpen && sourceData && (
+          <SourcePanel
+            sourceData={sourceData}
+            onClose={() => setSourcePanelOpen(false)}
+            exceptionIssue={draft.exceptionIssue}
+          />
+        )}
       </Box>
 
       <FooterBar chrome={chrome} draft={draft} onSave={onSave} onArchive={onArchive} />

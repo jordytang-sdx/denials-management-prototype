@@ -1391,6 +1391,7 @@ export default function App() {
                       setV4Screen(null); setExistingNav('ingest')
                     }
                   }}
+                  sourceData={{ sourceFile: record.sourceFile, extraction: record.extraction }}
                 />
               )
             })()}
