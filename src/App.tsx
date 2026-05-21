@@ -48,7 +48,6 @@ import { DEFAULT_FLAGS, type FeatureFlags } from './data/featureFlags'
 import AuditWorklistPage from './pages/AuditWorklistPage'
 import AuditDetailPage from './pages/AuditDetailPage'
 import DenialListStyleEPage from './pages/DenialListStyleEPage'
-import DenialsWorklistV2Page from './pages/DenialsWorklistV2Page'
 import DenialsWorklistV3Page from './pages/DenialsWorklistV3Page'
 import DenialsWorklistV4Page from './pages/DenialsWorklistV4Page'
 import DenialsWorklistFutureScopePage from './pages/DenialsWorklistFutureScopePage'
@@ -375,7 +374,7 @@ function ExistingSystemSidebar({
 
 // ── Prototype Controls ────────────────────────────────────────────────────────
 
-type DenialsViewId = 'v1' | 'v2' | 'v3' | 'v4' | 'future-scope'
+type DenialsViewId = 'v1' | 'v2' | 'future-scope'
 
 interface ScenarioConfig {
   label: string
@@ -393,9 +392,7 @@ interface VersionConfig {
 
 const VERSIONS: VersionConfig[] = [
   { id: 'v1',           label: 'V1',           hasPause: false, scenarios: [] },
-  { id: 'v2',           label: 'V2',           hasPause: false, scenarios: [] },
-  { id: 'v3',           label: 'V3',           hasPause: false, scenarios: [] },
-  { id: 'v4',           label: 'V4',           description: 'Full-page Edit Denial Details', hasPause: false, scenarios: [] },
+  { id: 'v2',           label: 'V2',           description: 'Full-page Edit Denial Details', hasPause: false, scenarios: [] },
   { id: 'future-scope', label: 'Future scope', hasPause: false, scenarios: [] },
 ]
 
@@ -618,11 +615,11 @@ export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('FrontlineWorker')
   const [features, setFeatures] = useState<FeatureFlags>(DEFAULT_FLAGS)
   const [systemMode, setSystemMode] = useState<'new' | 'existing'>('existing')
-  const [denialsView, setDenialsView] = useState<DenialsViewId>('v4')
+  const [denialsView, setDenialsView] = useState<DenialsViewId>('v2')
   const [existingNav, setExistingNav] = useState<'worklist' | 'ingest' | 'new-denial' | 'new-denial-details'>('worklist')
   const [transitionDir, setTransitionDir] = useState<'forward' | 'back'>('forward')
   const [transitionKey, setTransitionKey] = useState(0)
-  const [returnContext, setReturnContext] = useState<{ tab: 'exceptions' | 'in-progress'; recordId: string } | null>(null)
+  const [returnContext, setReturnContext] = useState<{ tab: 'exceptions' | 'in-progress' | 'processing-failures'; recordId: string } | null>(null)
   const [pageKey, setPageKey] = useState(0)
   const [v3ShowUpload, setV3ShowUpload] = useState(false)
   const [v3NewDenialAnchor, setV3NewDenialAnchor] = useState<HTMLElement | null>(null)
@@ -633,11 +630,11 @@ export default function App() {
   type V4Encounter = { har: string; mrn: string; visitId: string; patientName: string; dob: string; dischargeDate: string }
   type V4ChangeParent =
     | { type: 'edit-case';  denialId: string }
-    | { type: 'edit-queue'; records: StagingRecord[]; index: number }
+    | { type: 'edit-queue'; records: StagingRecord[]; index: number; backLabel?: string }
   type V4Screen =
     | null
     | { type: 'edit-case';  denialId: string;  encounterOverride?: V4Encounter }
-    | { type: 'edit-queue'; records: StagingRecord[]; index: number; encounterOverride?: V4Encounter; encounterConfirmed?: boolean }
+    | { type: 'edit-queue'; records: StagingRecord[]; index: number; encounterOverride?: V4Encounter; encounterConfirmed?: boolean; backLabel?: string }
     | { type: 'wizard-find' }
     | { type: 'wizard-edit'; encounterFromWizard: V4Encounter }
     | { type: 'change-encounter'; parent: V4ChangeParent; parentOverride?: V4Encounter }
@@ -1118,16 +1115,16 @@ export default function App() {
           )}
 
           {/* Existing system page sub-header */}
-          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && !v4Screen && !((denialsView === 'v4' || denialsView === 'v3' || denialsView === 'v2') && existingNav === 'ingest' && v3ShowUpload) && (
+          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && !v4Screen && !(denialsView === 'v2' && existingNav === 'ingest' && v3ShowUpload) && (
             <Box sx={{ px: 3, height: 56, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
               <Box sx={{ flex: 1 }}>
                 <Typography sx={{ fontSize: '1.125rem', fontWeight: 600, lineHeight: 1.2, color: 'text.primary' }}>
                   {existingNav === 'worklist'
-                    ? (((denialsView === 'v3' || denialsView === 'v4') && v3ViewMode === 'all-records') ? 'All Denials' : 'Denials Worklist')
+                    ? (((denialsView === 'v1' || denialsView === 'v2') && v3ViewMode === 'all-records') ? 'All Denials' : 'Denials Worklist')
                     : 'Denials Intake'}
                 </Typography>
               </Box>
-              {existingNav === 'worklist' && (denialsView === 'v3' || denialsView === 'v4') && (
+              {existingNav === 'worklist' && (denialsView === 'v1' || denialsView === 'v2') && (
                 <Box sx={{ display: 'inline-flex', border: '1px solid var(--colors-grey-4)', borderRadius: 'var(--radii-sm)', bgcolor: 'var(--colors-grey-1)', overflow: 'hidden' }}>
                   {(['worklist', 'all-records'] as const).map((mode, idx) => {
                     const active = v3ViewMode === mode
@@ -1161,7 +1158,7 @@ export default function App() {
                   })}
                 </Box>
               )}
-              {existingNav === 'ingest' && denialsView !== 'v4' && denialsView !== 'v3' && denialsView !== 'v2' && (
+              {existingNav === 'ingest' && denialsView !== 'v2' && denialsView !== 'v1' && (
                 <Button
                   variant="contained"
                   onClick={() => { setReturnContext(null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }}
@@ -1170,7 +1167,7 @@ export default function App() {
                   New Denial
                 </Button>
               )}
-              {existingNav === 'ingest' && (denialsView === 'v4' || denialsView === 'v3' || denialsView === 'v2') && (
+              {existingNav === 'ingest' && (denialsView === 'v2' || denialsView === 'v1') && (
                 <>
                   <ButtonGroup
                     variant="contained"
@@ -1202,9 +1199,9 @@ export default function App() {
                       dense
                       onClick={() => {
                         setV3NewDenialAnchor(null)
-                        if (denialsView === 'v4') {
+                        if (denialsView === 'v2') {
                           setV4Screen({ type: 'wizard-find' })
-                        } else if (denialsView === 'v3') {
+                        } else if (denialsView === 'v1') {
                           setV3NewDenialPanelOpen(true)
                         } else {
                           setV3ShowUpload(false)
@@ -1244,30 +1241,18 @@ export default function App() {
                 }),
               }}
             >
-            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v1' && <DenialListStyleEPage />}
-            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v2' && !selectedV2CaseId && (
-              <DenialsWorklistV2Page
-                denials={visibleDenials}
-                onSelectDenial={handleV2SelectDenial}
-                reviewCompleteIds={v2ReviewCompleteIds}
-                initialTab={v2ReturnTab}
-                assignedToMe={v2AssignedToMe}
-                onAssignedToMeChange={setV2AssignedToMe}
-                onAssign={(denialId: string, member: TeamMember | null) => setDenials(prev => prev.map(d => d.id === denialId ? { ...d, assignedTo: member } : d))}
-              />
-            )}
-            {systemMode === 'existing' && existingNav === 'worklist' && (denialsView === 'v2' || denialsView === 'v3' || denialsView === 'v4') && selectedV2CaseId && v4Screen === null && (
+            {systemMode === 'existing' && existingNav === 'worklist' && (denialsView === 'v1' || denialsView === 'v2') && selectedV2CaseId && v4Screen === null && (
               <CasePageAiEditing
                 hideNav
                 onBack={() => setSelectedV2CaseId(null)}
                 caseRecord={visibleDenials.find(d => d.id === selectedV2CaseId) ?? undefined}
                 onStatusAction={handleV2StatusAction}
-                useInlineEditPanel={denialsView === 'v3'}
-                onEditDenialDetails={denialsView === 'v4' ? () => setV4Screen({ type: 'edit-case', denialId: selectedV2CaseId }) : null}
-                hideCompleteReview={denialsView === 'v4'}
+                useInlineEditPanel={denialsView === 'v1'}
+                onEditDenialDetails={denialsView === 'v2' ? () => setV4Screen({ type: 'edit-case', denialId: selectedV2CaseId }) : null}
+                hideCompleteReview={denialsView === 'v2'}
               />
             )}
-            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v3' && !selectedV2CaseId && (
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v1' && !selectedV2CaseId && (
               <DenialsWorklistV3Page
                 denials={visibleDenials}
                 onSelectDenial={handleV2SelectDenial}
@@ -1279,7 +1264,7 @@ export default function App() {
                 viewMode={v3ViewMode}
               />
             )}
-            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v4' && v4Screen === null && !selectedV2CaseId && (
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v2' && v4Screen === null && !selectedV2CaseId && (
               <DenialsWorklistV4Page
                 denials={visibleDenials}
                 onSelectDenial={handleV4SelectDenial}
@@ -1292,8 +1277,8 @@ export default function App() {
               />
             )}
 
-            {/* V4 — Full-page Edit Denial Details, case-header chrome (opened via case-page kebab) */}
-            {systemMode === 'existing' && denialsView === 'v4' && v4Screen?.type === 'edit-case' && (() => {
+            {/* V2 — Full-page Edit Denial Details, case-header chrome (opened via case-page kebab) */}
+            {systemMode === 'existing' && denialsView === 'v2' && v4Screen?.type === 'edit-case' && (() => {
               const screen = v4Screen
               const denial = visibleDenials.find(d => d.id === screen.denialId)
               if (!denial) { setV4Screen(null); return null }
@@ -1319,7 +1304,7 @@ export default function App() {
             })()}
 
             {/* V4 — Full-page Edit Denial Details, queue-nav chrome (ingest exception entry) */}
-            {systemMode === 'existing' && denialsView === 'v4' && v4Screen?.type === 'edit-queue' && (() => {
+            {systemMode === 'existing' && denialsView === 'v2' && v4Screen?.type === 'edit-queue' && (() => {
               const screen = v4Screen
               const { records, index } = screen
               const record = records[index]
@@ -1355,40 +1340,40 @@ export default function App() {
                       }
                       return categories[reason] ?? 'Needs review'
                     })(),
-                    onBackToList: () => { setV4Screen(null); setExistingNav('ingest') },
-                    onPrev: () => index > 0 && setV4Screen({ type: 'edit-queue', records, index: index - 1 }),
-                    onNext: () => index < records.length - 1 && setV4Screen({ type: 'edit-queue', records, index: index + 1 }),
+                    backLabel: screen.backLabel,
+                    onBackToList: () => { setReturnContext(screen.backLabel === 'Back to Processing Failures' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest') },
+                    onPrev: () => index > 0 && setV4Screen({ type: 'edit-queue', records, index: index - 1, backLabel: screen.backLabel }),
+                    onNext: () => index < records.length - 1 && setV4Screen({ type: 'edit-queue', records, index: index + 1, backLabel: screen.backLabel }),
                     canPrev: index > 0,
                     canNext: index < records.length - 1,
                   }}
                   onChangeEncounter={() => setV4Screen({
                     type: 'change-encounter',
-                    parent: { type: 'edit-queue', records, index },
+                    parent: { type: 'edit-queue', records, index, backLabel: screen.backLabel },
                     parentOverride: screen.encounterOverride,
                   })}
                   onSave={() => {
                     if (index < records.length - 1) {
-                      setV4Screen({ type: 'edit-queue', records, index: index + 1 })
+                      setV4Screen({ type: 'edit-queue', records, index: index + 1, backLabel: screen.backLabel })
                     } else {
-                      setV4Screen(null); setExistingNav('ingest')
+                      setReturnContext(screen.backLabel === 'Back to Processing Failures' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest')
                     }
                   }}
                   onArchive={() => {
                     setArchivedStagingIds(prev => new Set([...prev, record.id]))
                     if (index < records.length - 1) {
-                      setV4Screen({ type: 'edit-queue', records, index: index + 1 })
+                      setV4Screen({ type: 'edit-queue', records, index: index + 1, backLabel: screen.backLabel })
                     } else if (index > 0) {
-                      setV4Screen({ type: 'edit-queue', records, index: index - 1 })
+                      setV4Screen({ type: 'edit-queue', records, index: index - 1, backLabel: screen.backLabel })
                     } else {
-                      setV4Screen(null); setExistingNav('ingest')
+                      setReturnContext(screen.backLabel === 'Back to Processing Failures' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest')
                     }
                   }}
                   onRetry={() => {
-                    // Retry moves the record to in-progress; navigate to next exception
                     if (index < records.length - 1) {
-                      setV4Screen({ type: 'edit-queue', records, index: index + 1 })
+                      setV4Screen({ type: 'edit-queue', records, index: index + 1, backLabel: screen.backLabel })
                     } else {
-                      setV4Screen(null); setExistingNav('ingest')
+                      setReturnContext(screen.backLabel === 'Back to Processing Failures' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest')
                     }
                   }}
                   sourceData={{ sourceFile: record.sourceFile, extraction: record.extraction }}
@@ -1396,19 +1381,23 @@ export default function App() {
               )
             })()}
 
-            {/* V4 — Change Encounter (opened from Edit Denial Details "Change encounter") */}
-            {systemMode === 'existing' && denialsView === 'v4' && v4Screen?.type === 'change-encounter' && (() => {
+            {/* V2 — Change Encounter (opened from Edit Denial Details "Change encounter") */}
+            {systemMode === 'existing' && denialsView === 'v2' && v4Screen?.type === 'change-encounter' && (() => {
               const screen = v4Screen
               const restoreParent = (override?: V4Encounter, userSelected = false) => {
                 if (screen.parent.type === 'edit-case') {
                   setV4Screen({ type: 'edit-case', denialId: screen.parent.denialId, encounterOverride: override })
                 } else {
-                  setV4Screen({ type: 'edit-queue', records: screen.parent.records, index: screen.parent.index, encounterOverride: override, encounterConfirmed: userSelected })
+                  setV4Screen({ type: 'edit-queue', records: screen.parent.records, index: screen.parent.index, encounterOverride: override, encounterConfirmed: userSelected, backLabel: screen.parent.backLabel })
                 }
               }
+              const parentRecord = screen.parent.type === 'edit-queue'
+                ? screen.parent.records[screen.parent.index]
+                : null
               return (
                 <FullPageFindEncounter
                   chrome={{ kind: 'change', onBack: () => restoreParent(screen.parentOverride) }}
+                  sourceData={parentRecord ? { sourceFile: parentRecord.sourceFile, extraction: parentRecord.extraction } : undefined}
                   onSelect={(r) => restoreParent({
                     har: r.har, mrn: r.mrn, visitId: r.visitId,
                     patientName: r.patientName, dob: r.dob,
@@ -1435,8 +1424,8 @@ export default function App() {
               )
             })()}
 
-            {/* V4 — Wizard step 1: Find Encounter */}
-            {systemMode === 'existing' && denialsView === 'v4' && v4Screen?.type === 'wizard-find' && (
+            {/* V2 — Wizard step 1: Find Encounter */}
+            {systemMode === 'existing' && denialsView === 'v2' && v4Screen?.type === 'wizard-find' && (
               <FullPageFindEncounter
                 chrome={{
                   kind: 'wizard',
@@ -1454,8 +1443,8 @@ export default function App() {
               />
             )}
 
-            {/* V4 — Wizard step 2: Edit Denial Details */}
-            {systemMode === 'existing' && denialsView === 'v4' && v4Screen?.type === 'wizard-edit' && (
+            {/* V2 — Wizard step 2: Edit Denial Details */}
+            {systemMode === 'existing' && denialsView === 'v2' && v4Screen?.type === 'wizard-edit' && (
               <FullPageEditDenialDetails
                 draft={{
                   patientName: v4Screen.encounterFromWizard.patientName,
@@ -1489,46 +1478,25 @@ export default function App() {
             {systemMode === 'existing' && existingNav === 'new-denial-details' && (
               <NewDenialFlow initialStep="details" fromDrawer={returnContext !== null} recordId={returnContext?.recordId} onDone={() => { setTransitionDir('back'); setTransitionKey(k => k + 1); setExistingNav('ingest') }} />
             )}
-            {systemMode === 'existing' && existingNav === 'ingest' && denialsView === 'v1' && (
-              <>
-                <Box
-                  sx={{
-                    mx: 3, my: 2, flexShrink: 0,
-                    border: '2px dashed #e2e6e9', borderRadius: 2,
-                    p: 3, display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center', gap: 0.75,
-                    cursor: 'pointer', bgcolor: '#fafafa',
-                    '&:hover': { bgcolor: '#f0f4f6', borderColor: '#b6d7e1' },
-                  }}
-                >
-                  <UploadFileOutlined sx={{ fontSize: 32, color: '#939a9f' }} />
-                  <Typography sx={{ fontWeight: 600, fontSize: '0.875rem', color: '#4a5154' }}>
-                    Drop files here or click to browse
-                  </Typography>
-                  <Typography sx={{ fontSize: '0.75rem', color: '#939a9f', textAlign: 'center' }}>
-                    Appeal letters are created using patient data. Data availability varies per location.
-                  </Typography>
-                  <Typography sx={{ fontSize: '0.75rem', color: '#939a9f', textAlign: 'center' }}>
-                    Accepted formats: <strong>.pdf</strong> and <strong>.docx</strong>
-                  </Typography>
-                </Box>
-                <Box sx={{ mx: 3, mb: 2, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e6e9', borderRadius: 2, bgcolor: '#fff' }}>
-                  <IngestPage features={features} onNavigate={(nav, returnCtx) => {
-                    if (nav === 'Denials') { setReturnContext(null); setExistingNav('worklist') }
-                    else if (nav === 'new-denial') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }
-                    else if (nav === 'new-denial-details') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial-details') }
-                  }} mode="existing" initialOpenDrawer={returnContext} />
-                </Box>
-              </>
+            {systemMode === 'existing' && existingNav === 'ingest' && denialsView === 'v1' && v4Screen === null && (
+              <IngestPage features={features} onNavigate={(nav, returnCtx) => {
+                if (nav === 'Denials') { setReturnContext(null); setExistingNav('worklist') }
+                else if (nav === 'new-denial') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }
+                else if (nav === 'new-denial-details') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial-details') }
+              }} mode="existing" initialOpenDrawer={returnContext} inlinePanels
+              newDenialPanelOpen={v3NewDenialPanelOpen} onNewDenialPanelClose={() => setV3NewDenialPanelOpen(false)}
+              showDropZoneAbove hideProcessingFailures flatExceptions
+              />
             )}
-            {systemMode === 'existing' && existingNav === 'ingest' && (denialsView === 'v4' || denialsView === 'v3' || denialsView === 'v2') && v4Screen === null && (
+            {systemMode === 'existing' && existingNav === 'ingest' && denialsView === 'v2' && v4Screen === null && (
               <IngestPage features={features} onNavigate={(nav, returnCtx) => {
                 if (nav === 'Denials') { setReturnContext(null); setExistingNav('worklist') }
                 else if (nav === 'new-denial') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial') }
                 else if (nav === 'new-denial-details') { setReturnContext(returnCtx ?? null); setTransitionDir('forward'); setTransitionKey(k => k + 1); setExistingNav('new-denial-details') }
               }} mode="existing" initialOpenDrawer={returnContext} inlinePanels showUpload={v3ShowUpload} onShowUploadChange={setV3ShowUpload}
               newDenialPanelOpen={v3NewDenialPanelOpen} onNewDenialPanelClose={() => setV3NewDenialPanelOpen(false)}
-              onReviewExceptionFullPage={denialsView === 'v4' ? (records, index) => setV4Screen({ type: 'edit-queue', records, index }) : undefined}
+              onReviewExceptionFullPage={(records, index) => setV4Screen({ type: 'edit-queue', records, index })}
+              onReviewFailuresFullPage={(records, index) => setV4Screen({ type: 'edit-queue', records, index, backLabel: 'Back to Processing Failures' })}
               archivedStagingIds={archivedStagingIds}
               />
             )}

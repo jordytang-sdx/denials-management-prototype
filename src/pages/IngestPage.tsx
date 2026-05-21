@@ -4,7 +4,7 @@ import {
   Drawer, Tooltip, Tabs, Tab, Alert, AlertTitle, Snackbar,
   Radio, RadioGroup, FormControlLabel, TextField, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Select, MenuItem, FormControl, Autocomplete,
+  Select, MenuItem, FormControl, Autocomplete, Checkbox,
 } from '@mui/material'
 import {
   UploadFileOutlined, CloseOutlined, WarningAmberOutlined,
@@ -21,7 +21,7 @@ import DenialDetailsPanel from '../components/DenialDetailsPanel'
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
-type ReturnContext = { tab: 'exceptions' | 'in-progress'; recordId: string }
+type ReturnContext = { tab: 'exceptions' | 'in-progress' | 'processing-failures'; recordId: string }
 
 interface IngestPageProps {
   features: FeatureFlags
@@ -35,8 +35,15 @@ interface IngestPageProps {
   onNewDenialPanelClose?: () => void
   /** V4 only: intercept exception-review clicks to open a full-page editor instead of the side panel. */
   onReviewExceptionFullPage?: (records: StagingRecord[], currentIndex: number) => void
+  onReviewFailuresFullPage?: (records: StagingRecord[], currentIndex: number) => void
   /** V4 only: set of staging record IDs the user has archived — filtered out of the exceptions queue. */
   archivedStagingIds?: Set<string>
+  /** V1: show a persistent PDF drop zone above the tab bar. */
+  showDropZoneAbove?: boolean
+  /** V1: hide the Processing Failures tab (3-tab layout: Exceptions, In Progress, History). */
+  hideProcessingFailures?: boolean
+  /** V1: render the Exceptions list as a flat list instead of grouped by category. */
+  flatExceptions?: boolean
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -128,6 +135,19 @@ const REVIEW_SECONDARY: Record<NeedsReviewReason, string> = {
 
 // Categories where only the chip is shown — no secondary detail text
 const CHIP_ONLY_CATEGORIES = new Set(['Classification needs review', 'Related denial needs review'])
+
+// Records whose category is "Missing Data" or "System error" are terminal — moved to Processing Failures tab
+const TERMINAL_CATEGORIES = new Set(['Missing Data', 'System error'])
+
+function getRecordCategory(record: StagingRecord, mode?: 'existing'): string | null {
+  const firstReason = record.reviewReasons[0]
+  if (!firstReason) return null
+  return (mode === 'existing' ? EXISTING_REVIEW_CATEGORY[firstReason] : undefined) ?? REVIEW_CATEGORY[firstReason]
+}
+
+function isTerminalRecord(record: StagingRecord, mode?: 'existing'): boolean {
+  return TERMINAL_CATEGORIES.has(getRecordCategory(record, mode) ?? '')
+}
 
 const REVIEW_CATEGORY_STYLE: Record<string, { bg: string; color: string; border: string }> = {
   'Data needs review':           { bg: 'var(--colors-badge-variant-warning-background)',  color: 'var(--colors-badge-variant-warning-text)',  border: '1px solid var(--colors-badge-variant-warning-border)'  },
@@ -1512,8 +1532,8 @@ function InProgressTab({ records, mode, onNavigate, initialDrawerRecordId, inlin
       {/* Column headers */}
       <Box sx={{ px: 3, py: 0.75, display: 'flex', alignItems: 'center', gap: 2, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'var(--colors-grey-2)', flexShrink: 0 }}>
         <Typography sx={{ flex: 1, ...COL_HEADER_SX }}>Patient</Typography>
-        <Typography sx={{ width: 150, flexShrink: 0, ...COL_HEADER_SX }}>Payer</Typography>
-        <Typography sx={{ width: 140, flexShrink: 0, ...COL_HEADER_SX }}>Type</Typography>
+        {!inlinePanels && <Typography sx={{ width: 150, flexShrink: 0, ...COL_HEADER_SX }}>Payer</Typography>}
+        {!inlinePanels && <Typography sx={{ width: 140, flexShrink: 0, ...COL_HEADER_SX }}>Type</Typography>}
         <Typography sx={{ width: 100, flexShrink: 0, ...COL_HEADER_SX }}>Status</Typography>
         <Typography sx={{ width: 72, flexShrink: 0, textAlign: 'right', ...COL_HEADER_SX }}>Received</Typography>
       </Box>
@@ -1543,16 +1563,20 @@ function InProgressTab({ records, mode, onNavigate, initialDrawerRecordId, inlin
                   <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.disabled' }}>{record.sourceFile}</Typography>
                 )}
               </Box>
-              <Typography sx={{ width: 150, flexShrink: 0, fontSize: 'var(--font-sizes-12)', color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {record.payer ?? '—'}
-              </Typography>
-              <Box sx={{ width: 140, flexShrink: 0 }}>
-                {typeDisplay && !typeDisplay.isUnknown ? (
-                  <Chip label={typeDisplay.label} size="small" sx={{ height: 18, fontSize: 'var(--font-sizes-10)', fontWeight: 'var(--font-weights-regular)' as unknown as number, '& .MuiChip-label': { px: 0.75 }, bgcolor: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }} />
-                ) : (
-                  <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.disabled' }}>—</Typography>
-                )}
-              </Box>
+              {!inlinePanels && (
+                <Typography sx={{ width: 150, flexShrink: 0, fontSize: 'var(--font-sizes-12)', color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {record.payer ?? '—'}
+                </Typography>
+              )}
+              {!inlinePanels && (
+                <Box sx={{ width: 140, flexShrink: 0 }}>
+                  {typeDisplay && !typeDisplay.isUnknown ? (
+                    <Chip label={typeDisplay.label} size="small" sx={{ height: 18, fontSize: 'var(--font-sizes-10)', fontWeight: 'var(--font-weights-regular)' as unknown as number, '& .MuiChip-label': { px: 0.75 }, bgcolor: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }} />
+                  ) : (
+                    <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.disabled' }}>—</Typography>
+                  )}
+                </Box>
+              )}
               <Box sx={{ width: 100, flexShrink: 0 }}>
                 <StatusChip status="processing" />
               </Box>
@@ -1878,7 +1902,7 @@ function InlineEditDenialDetailsPanel({
 
 function ExceptionsTab({
   records, onUpdate, onNavigate, onSwitchToHistory, mode, initialDrawerRecordId, inlinePanels,
-  newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, archivedStagingIds,
+  newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, archivedStagingIds, flatList,
 }: {
   records: StagingRecord[]
   onUpdate: (updated: StagingRecord[]) => void
@@ -1891,6 +1915,7 @@ function ExceptionsTab({
   onNewDenialPanelClose?: () => void
   onReviewExceptionFullPage?: (records: StagingRecord[], currentIndex: number) => void
   archivedStagingIds?: Set<string>
+  flatList?: boolean
 }) {
   type ToastState =
     | { kind: 'created'; instanceId: string; worklist: string }
@@ -1907,6 +1932,7 @@ function ExceptionsTab({
 
   const exceptions = sortByUrgency(records.filter(r =>
     r.status === 'needs_review' &&
+    !isTerminalRecord(r, mode) &&
     (mode !== 'existing' || !r.reviewReasons.includes('possible_duplicate')) &&
     !(archivedStagingIds?.has(r.id))
   ))
@@ -2089,29 +2115,31 @@ function ExceptionsTab({
             if (!firstReason) return null
             return (mode === 'existing' ? EXISTING_REVIEW_CATEGORY[firstReason] : undefined) ?? REVIEW_CATEGORY[firstReason]
           }
-          const grouped = CATEGORY_ORDER
-            .map(cat => ({ category: cat, records: exceptions.filter(r => getCategory(r) === cat) }))
-            .filter(g => g.records.length > 0)
+          const grouped = flatList
+            ? [{ category: null as string | null, records: exceptions }]
+            : CATEGORY_ORDER
+                .map(cat => ({ category: cat as string | null, records: exceptions.filter(r => getCategory(r) === cat) }))
+                .filter(g => g.records.length > 0)
 
           return grouped.flatMap(({ category, records: groupRecords }, gIdx) => {
-            const catStyle = REVIEW_CATEGORY_STYLE[category] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
             return [
-              // Category group header
-              <Box key={`header-${category}`} sx={{
-                px: 3, py: 0.875,
-                display: 'flex', alignItems: 'center', gap: 1,
+              // Category group header (skipped in flat mode)
+              ...(category ? [<Box key={`header-${category}`} sx={{
+                px: 3, py: 0.5,
+                display: 'flex', alignItems: 'center', gap: 2,
                 bgcolor: 'var(--colors-grey-2)',
                 borderBottom: '1px solid', borderColor: 'divider',
                 borderTop: gIdx > 0 ? '1px solid' : 'none', borderTopColor: 'divider',
               }}>
-                <Box sx={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, bgcolor: catStyle.color, opacity: 0.6 }} />
-                <Typography sx={{ fontSize: 'var(--font-sizes-10)', fontWeight: 'var(--font-weights-bold)', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                  {category}
-                </Typography>
-                <Typography sx={{ fontSize: 'var(--font-sizes-10)', color: 'text.disabled' }}>
-                  ({groupRecords.length})
-                </Typography>
-              </Box>,
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                  <Typography sx={{ fontSize: 'var(--font-sizes-10)', fontWeight: 'var(--font-weights-bold)', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                    {category}
+                  </Typography>
+                  <Typography sx={{ fontSize: 'var(--font-sizes-10)', color: 'text.disabled' }}>
+                    ({groupRecords.length})
+                  </Typography>
+                </Box>
+              </Box>] : []),
               // Records in this group
               ...groupRecords.map(record => {
           const deadline = getDeadline(record)
@@ -2131,14 +2159,19 @@ function ExceptionsTab({
               onClick={() => openReview(record.id)}
               sx={{
                 px: 3, py: 1.25,
+                position: 'relative',
                 display: 'flex', alignItems: 'center', gap: 2,
                 borderBottom: '1px solid', borderColor: 'divider',
-                borderLeft: `3px solid ${isOverdue ? 'var(--colors-badge-variant-error-icon)' : isUrgent ? 'var(--colors-badge-variant-warning-icon)' : isSoon ? 'var(--colors-badge-variant-warning-border)' : 'var(--colors-grey-5)'}`,
                 cursor: 'pointer',
                 bgcolor: drawerRecordId === record.id ? 'var(--colors-ocean-1)' : 'var(--colors-grey-1)',
                 '&:hover': { bgcolor: drawerRecordId === record.id ? 'var(--colors-ocean-2)' : 'var(--colors-grey-2)' },
               }}
             >
+              {/* Urgency bar — absolutely positioned so it doesn't shift flex content */}
+              <Box sx={{
+                position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
+                bgcolor: isOverdue ? 'var(--colors-badge-variant-error-icon)' : isUrgent ? 'var(--colors-badge-variant-warning-icon)' : isSoon ? 'var(--colors-badge-variant-warning-border)' : 'var(--colors-grey-5)',
+              }} />
               {/* ISSUE column — 2 lines: chip row / patient · classification · payer · MRN */}
               <Box sx={{ flex: 1, minWidth: 0 }}>
 
@@ -2252,6 +2285,7 @@ function ExceptionsTab({
           }) // end grouped.flatMap
         })()} {/* end IIFE */}
       </Box>
+
 
       </Box>
 
@@ -2573,10 +2607,279 @@ function HistoryTab({ records, mode, inlinePanels }: { records: StagingRecord[];
   )
 }
 
+// ── ProcessingFailuresTab ──────────────────────────────────────────────────────
+
+function ProcessingFailuresTab({ records, onUpdate, mode, inlinePanels, onReviewFailuresFullPage }: {
+  records: StagingRecord[]
+  onUpdate: (updated: StagingRecord[]) => void
+  mode?: 'existing'
+  inlinePanels?: boolean
+  onReviewFailuresFullPage?: (records: StagingRecord[], currentIndex: number) => void
+}) {
+  type ToastState = { kind: 'archived' } | { kind: 'retrying' } | null
+  const [toast, setToast] = useState<ToastState>(null)
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set<string>())
+
+  const blocked = sortByUrgency(records.filter(r =>
+    r.status === 'needs_review' && isTerminalRecord(r, mode)
+  ))
+
+  const grouped = ['Missing Data', 'System error']
+    .map(cat => ({ category: cat, records: blocked.filter(r => getRecordCategory(r, mode) === cat) }))
+    .filter(g => g.records.length > 0)
+
+  const openReview = (id: string) => {
+    const index = blocked.findIndex(r => r.id === id)
+    if (index >= 0) onReviewFailuresFullPage?.(blocked, index)
+  }
+
+  const handleGroupHeaderCheck = (groupIds: string[]) => {
+    const allSelected = groupIds.every(id => selectedRowIds.has(id))
+    setSelectedRowIds(prev => {
+      const next = new Set(prev)
+      if (allSelected) groupIds.forEach(id => next.delete(id))
+      else groupIds.forEach(id => next.add(id))
+      return next
+    })
+  }
+
+  const handleRowCheck = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    setSelectedRowIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleArchive = (ids: string[]) => {
+    setSelectedRowIds(prev => { const next = new Set(prev); ids.forEach(id => next.delete(id)); return next })
+    onUpdate(records.map(r =>
+      ids.includes(r.id) ? { ...r, status: 'dismissed' as const, dismissedAt: new Date().toISOString(), dismissReason: 'Archived from Processing Failures' } : r
+    ))
+    setToast({ kind: 'archived' })
+  }
+
+  const handleRetry = (ids: string[]) => {
+    setSelectedRowIds(prev => { const next = new Set(prev); ids.forEach(id => next.delete(id)); return next })
+    onUpdate(records.map(r => ids.includes(r.id) ? { ...r, status: 'processing' as const } : r))
+    setToast({ kind: 'retrying' })
+  }
+
+  if (blocked.length === 0) {
+    return (
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, py: 8 }}>
+        <CheckCircleOutlined sx={{ fontSize: 40, color: 'var(--colors-badge-variant-success-icon)' }} />
+        <Box sx={{ textAlign: 'center', maxWidth: 320 }}>
+          <Typography sx={{ fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-bold)', color: 'var(--colors-grey-10)', mb: 0.5 }}>No processing failures</Typography>
+          <Typography sx={{ fontSize: 'var(--font-sizes-14)', color: 'text.secondary', lineHeight: 1.5 }}>
+            Records blocked by missing data or system errors will appear here.
+          </Typography>
+        </Box>
+      </Box>
+    )
+  }
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      {/* Column headers */}
+      <Box sx={{ px: 3, py: 0.75, display: 'flex', alignItems: 'center', gap: 2, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'var(--colors-grey-2)', flexShrink: 0 }}>
+        <Typography sx={{ flex: 1, ...COL_HEADER_SX }}>Issue</Typography>
+        {mode !== 'existing' && <Typography sx={{ width: 64, flexShrink: 0, textAlign: 'right', ...COL_HEADER_SX }}>Amount</Typography>}
+        <Typography sx={{ width: 92, flexShrink: 0, textAlign: 'right', ...COL_HEADER_SX }}>Deadline</Typography>
+        <Box sx={{ width: 88, flexShrink: 0 }} />
+      </Box>
+
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
+        {grouped.flatMap(({ category, records: groupRecords }, gIdx) => {
+          const catStyle = REVIEW_CATEGORY_STYLE[category] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
+          const isSystemError = category === 'System error'
+          const groupIds = groupRecords.map(r => r.id)
+          const groupAllChecked = inlinePanels ? groupIds.length > 0 && groupIds.every(id => selectedRowIds.has(id)) : false
+          const groupSomeChecked = inlinePanels ? groupIds.some(id => selectedRowIds.has(id)) && !groupAllChecked : false
+          const groupInSelectionMode = groupAllChecked || groupSomeChecked
+          const selectedInGroup = groupIds.filter(id => selectedRowIds.has(id))
+
+          return [
+            <Box key={`header-${category}`} sx={{
+              px: 3, py: 0.5,
+              display: 'flex', alignItems: 'center', gap: 2,
+              bgcolor: 'var(--colors-grey-2)',
+              borderBottom: '1px solid', borderColor: 'divider',
+              borderTop: gIdx > 0 ? '1px solid' : 'none', borderTopColor: 'divider',
+            }}>
+              {inlinePanels && (
+                <Checkbox
+                  size="small"
+                  checked={groupAllChecked}
+                  indeterminate={groupSomeChecked}
+                  onClick={e => { e.stopPropagation(); handleGroupHeaderCheck(groupIds) }}
+                  sx={{ p: 0.25, width: 28, height: 28, m: 0 }}
+                />
+              )}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <Typography sx={{ fontSize: 'var(--font-sizes-10)', fontWeight: 'var(--font-weights-bold)', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                  {category}
+                </Typography>
+                <Typography sx={{ fontSize: 'var(--font-sizes-10)', color: 'text.disabled' }}>
+                  ({groupRecords.length})
+                </Typography>
+              </Box>
+              {inlinePanels ? (
+                groupInSelectionMode && (
+                  <>
+                    <Box sx={{ flex: 1 }} />
+                    <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary' }}>
+                      {selectedInGroup.length} selected
+                    </Typography>
+                    {isSystemError && (
+                      <Button size="small" variant="contained"
+                        onClick={e => { e.stopPropagation(); handleRetry(selectedInGroup) }}
+                        sx={{ fontSize: 'var(--font-sizes-12)', py: 0.375, px: 1.5, height: 28 }}>
+                        Re-run
+                      </Button>
+                    )}
+                    <Button size="small" variant={isSystemError ? 'outlined' : 'contained'}
+                      onClick={e => { e.stopPropagation(); handleArchive(selectedInGroup) }}
+                      sx={{ fontSize: 'var(--font-sizes-12)', py: 0.375, px: 1.5, height: 28 }}>
+                      Archive
+                    </Button>
+                  </>
+                )
+              ) : (
+                <>
+                  <Box sx={{ flex: 1 }} />
+                  {isSystemError ? (
+                    <Button size="small" variant="contained"
+                      onClick={e => { e.stopPropagation(); handleRetry(groupIds) }}
+                      sx={{ fontSize: 'var(--font-sizes-12)', py: 0.375, px: 1.5, height: 28 }}>
+                      Re-run all
+                    </Button>
+                  ) : (
+                    <Button size="small" variant="outlined"
+                      onClick={e => { e.stopPropagation(); handleArchive(groupIds) }}
+                      sx={{ fontSize: 'var(--font-sizes-12)', py: 0.375, px: 1.5, height: 28 }}>
+                      Archive all
+                    </Button>
+                  )}
+                </>
+              )}
+            </Box>,
+            ...groupRecords.map(record => {
+              const deadline = getDeadline(record)
+              const refDate = new Date('2026-04-03T00:00:00')
+              const daysUntil = deadline ? Math.ceil((deadline.getTime() - refDate.getTime()) / 86400000) : null
+              const isOverdue = daysUntil !== null && daysUntil <= 0
+              const isUrgent  = daysUntil !== null && daysUntil >= 1 && daysUntil <= 2
+              const isSoon    = daysUntil !== null && daysUntil >= 3 && daysUntil <= 5
+              const firstReason = record.reviewReasons[0]
+              const secondary = firstReason
+                ? ((mode === 'existing' ? EXISTING_REVIEW_SECONDARY[firstReason] : undefined) ?? REVIEW_SECONDARY[firstReason])
+                : null
+              const isSelected = inlinePanels && selectedRowIds.has(record.id)
+
+              return (
+                <Box
+                  key={record.id}
+                  onClick={() => openReview(record.id)}
+                  sx={{
+                    px: 3, py: 1.25, position: 'relative',
+                    display: 'flex', alignItems: 'center', gap: 2,
+                    borderBottom: '1px solid', borderColor: 'divider',
+                    cursor: 'pointer',
+                    bgcolor: isSelected ? 'var(--colors-ocean-1)' : 'var(--colors-grey-1)',
+                    '&:hover': { bgcolor: isSelected ? 'var(--colors-ocean-2)' : 'var(--colors-grey-2)' },
+                  }}
+                >
+                  <Box sx={{
+                    position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
+                    bgcolor: isOverdue ? 'var(--colors-badge-variant-error-icon)' : isUrgent ? 'var(--colors-badge-variant-warning-icon)' : isSoon ? 'var(--colors-badge-variant-warning-border)' : 'var(--colors-grey-5)',
+                  }} />
+                  {inlinePanels && (
+                    groupInSelectionMode
+                      ? <Checkbox size="small" checked={isSelected} onClick={e => handleRowCheck(e, record.id)} sx={{ p: 0.25, width: 28, height: 28, m: 0, flexShrink: 0 }} />
+                      : <Box sx={{ width: 28, flexShrink: 0 }} />
+                  )}
+
+                  {/* Issue + patient */}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.625, mb: 0.375 }}>
+                      <Chip label={category} size="small" sx={{ height: 20, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number, bgcolor: catStyle.bg, color: catStyle.color, border: catStyle.border, '& .MuiChip-label': { px: 0.875 }, flexShrink: 0 }} />
+                      {secondary && (
+                        <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {secondary}
+                        </Typography>
+                      )}
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {record.patientName
+                          ? formatPatientName(record.patientName)
+                          : <span style={{ color: 'var(--colors-grey-5)', fontStyle: 'italic' }}>Unknown patient</span>}
+                      </Typography>
+                      {record.payer && (
+                        <>
+                          <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.disabled' }}>·</Typography>
+                          <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.secondary', flexShrink: 0 }}>{record.payer}</Typography>
+                        </>
+                      )}
+                    </Box>
+                  </Box>
+
+                  {/* Amount */}
+                  {mode !== 'existing' && (
+                    <Typography sx={{ width: 64, flexShrink: 0, fontSize: 'var(--font-sizes-14)', fontVariantNumeric: 'tabular-nums', color: record.amount ? 'text.primary' : 'text.disabled', textAlign: 'right' }}>
+                      {record.amount ? formatCurrency(record.amount) : '—'}
+                    </Typography>
+                  )}
+
+                  {/* Deadline */}
+                  <Box sx={{ width: 92, flexShrink: 0, textAlign: 'right' }}>
+                    {deadline ? (
+                      <Typography sx={{ fontSize: 'var(--font-sizes-12)', fontVariantNumeric: 'tabular-nums', color: isOverdue ? 'var(--colors-badge-variant-error-text)' : isUrgent ? 'var(--colors-badge-variant-warning-icon)' : 'text.secondary', fontWeight: isOverdue || isUrgent ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)' }}>
+                        {isOverdue ? `${Math.abs(daysUntil!)}d overdue` : daysUntil === 0 ? 'Due today' : `${daysUntil}d left`}
+                      </Typography>
+                    ) : (
+                      <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'text.disabled' }}>—</Typography>
+                    )}
+                  </Box>
+
+                  {/* Review button */}
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={e => { e.stopPropagation(); openReview(record.id) }}
+                    sx={{ width: 88, flexShrink: 0, fontSize: 'var(--font-sizes-12)', py: 0.25 }}
+                  >
+                    Review →
+                  </Button>
+                </Box>
+              )
+            })
+          ]
+        })}
+      </Box>
+
+      <Snackbar
+        open={toast !== null}
+        autoHideDuration={3000}
+        onClose={() => setToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={toast?.kind === 'archived' ? 'Record archived' : 'Re-running — check back shortly'}
+      />
+    </Box>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, archivedStagingIds }: IngestPageProps) {
-  const [activeTab, setActiveTab] = useState(initialOpenDrawer?.tab === 'in-progress' ? 1 : 0)
+export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, onReviewFailuresFullPage, archivedStagingIds, showDropZoneAbove, hideProcessingFailures, flatExceptions }: IngestPageProps) {
+  const failuresTabInitial = hideProcessingFailures ? 99 : (mode === 'existing' ? 2 : 1)
+  const [activeTab, setActiveTab] = useState(
+    (!hideProcessingFailures && initialOpenDrawer?.tab === 'processing-failures') ? failuresTabInitial :
+    initialOpenDrawer?.tab === 'in-progress' ? 1 : 0
+  )
   const [records, setRecords] = useState<StagingRecord[]>(SEED_STAGING)
   const [showUploadInternal, setShowUploadInternal] = useState(false)
   const showUpload = showUploadProp !== undefined ? showUploadProp : showUploadInternal
@@ -2588,18 +2891,49 @@ export default function IngestPage({ features: _features, onNavigate, mode, init
 
   const exceptionCount = records.filter(r =>
     r.status === 'needs_review' &&
+    !isTerminalRecord(r, mode) &&
     (mode !== 'existing' || !r.reviewReasons.includes('possible_duplicate'))
   ).length
 
   const inProgressCount = records.filter(r => r.status === 'processing').length
 
-  // In existing mode: tabs are Exceptions(0), In Progress(1), History(2)
-  // In new mode: tabs are Exceptions(0), History(1) — unchanged
-  const historyTabIndex = mode === 'existing' ? 2 : 1
+  const blockedCount = records.filter(r =>
+    r.status === 'needs_review' && isTerminalRecord(r, mode)
+  ).length
+
+  // In existing mode: Exceptions(0), In Progress(1), Processing Failures(2), History(3)
+  // In existing mode + hideProcessingFailures: Exceptions(0), In Progress(1), History(2)
+  // In new mode: Exceptions(0), Processing Failures(1), History(2)
+  const failuresTabIndex = hideProcessingFailures ? 99 : (mode === 'existing' ? 2 : 1)
+  const historyTabIndex = hideProcessingFailures ? 2 : (mode === 'existing' ? 3 : 2)
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      {/* Tab bar + upload button — hidden while upload zone is open in V3 */}
+      {/* Persistent PDF drop zone (V1 only) */}
+      {showDropZoneAbove && (
+        <Box
+          sx={{
+            mx: 3, mt: 2, mb: 1, flexShrink: 0,
+            border: '2px dashed var(--colors-grey-5)', borderRadius: 2,
+            p: 3, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 0.75,
+            cursor: 'pointer', bgcolor: 'var(--colors-grey-2)',
+            '&:hover': { bgcolor: 'var(--colors-grey-3)', borderColor: 'var(--colors-ocean-3)' },
+          }}
+        >
+          <UploadFileOutlined sx={{ fontSize: 32, color: 'var(--colors-grey-6)' }} />
+          <Typography sx={{ fontWeight: 'var(--font-weights-semibold)', fontSize: 'var(--font-sizes-14)', color: 'var(--colors-grey-9)' }}>
+            Drop files here or click to browse
+          </Typography>
+          <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'var(--colors-grey-7)', textAlign: 'center' }}>
+            Appeal letters are created using patient data. Data availability varies per location.
+          </Typography>
+          <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'var(--colors-grey-7)' }}>
+            Accepted formats: <strong>.pdf</strong> and <strong>.docx</strong>
+          </Typography>
+        </Box>
+      )}
+      {/* Tab bar + upload button — hidden while upload zone is open in V1/V2 */}
       {!(inlinePanels && showUpload) && <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
         <Tabs
           value={activeTab}
@@ -2631,6 +2965,23 @@ export default function IngestPage({ features: _features, onNavigate, mode, init
                       label={inProgressCount}
                       size="small"
                       sx={{ height: 18, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)', bgcolor: 'var(--colors-ocean-1)', color: 'var(--colors-ocean-4)', '& .MuiChip-label': { px: 0.75 } }}
+                    />
+                  )}
+                </Box>
+              }
+              sx={{ minHeight: 40, py: 0, px: 2 }}
+            />
+          )}
+          {!hideProcessingFailures && (
+            <Tab
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                  Processing Failures
+                  {blockedCount > 0 && (
+                    <Chip
+                      label={blockedCount}
+                      size="small"
+                      sx={{ height: 18, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number, '& .MuiChip-label': { px: 0.75 }, bgcolor: 'var(--colors-badge-variant-error-background)', color: 'var(--colors-badge-variant-error-text)' }}
                     />
                   )}
                 </Box>
@@ -2705,10 +3056,14 @@ export default function IngestPage({ features: _features, onNavigate, mode, init
               onNewDenialPanelClose={onNewDenialPanelClose}
               onReviewExceptionFullPage={onReviewExceptionFullPage}
               archivedStagingIds={archivedStagingIds}
+              flatList={flatExceptions}
             />
           )}
           {mode === 'existing' && activeTab === 1 && (
             <InProgressTab records={records} mode={mode} onNavigate={onNavigate} initialDrawerRecordId={initialOpenDrawer?.tab === 'in-progress' ? initialOpenDrawer.recordId : null} inlinePanels={inlinePanels} />
+          )}
+          {activeTab === failuresTabIndex && (
+            <ProcessingFailuresTab records={records} onUpdate={setRecords} mode={mode} inlinePanels={inlinePanels} onReviewFailuresFullPage={onReviewFailuresFullPage} />
           )}
           {activeTab === historyTabIndex && <HistoryTab records={records} mode={mode} inlinePanels={inlinePanels} />}
         </>

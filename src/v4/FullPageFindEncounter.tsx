@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
 import { Box, Typography, Button, TextField, Alert, CircularProgress } from '@mui/material'
-import { ArrowBackOutlined, AddOutlined, InfoOutlined, ManageSearchOutlined, ExpandLessOutlined, ExpandMoreOutlined } from '@mui/icons-material'
+import { ArrowBackOutlined, AddOutlined, InfoOutlined, ManageSearchOutlined, ExpandLessOutlined, ExpandMoreOutlined, DescriptionOutlined } from '@mui/icons-material'
 import SmarterSelect from './SmarterSelect'
+import { SourcePanel, type SourceData } from './FullPageEditDenialDetails'
 
 const GHOST_BTN_SX = {
   fontSize: 'var(--font-sizes-14)' as const,  // btn size sm = 14px (design system ghost default)
@@ -34,6 +35,7 @@ interface Props {
   initialIdentifierValue?: string
   onSelect: (result: EncounterResult) => void
   onMarkUnavailable?: () => void
+  sourceData?: SourceData
 }
 
 // ── Mock patient pool ─────────────────────────────────────────────────────────
@@ -179,40 +181,66 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 }) {
   )
 }
 
-function ChangeEncounterChrome({ onBack }: { onBack: () => void }) {
+function ChangeEncounterChrome({ onBack, onToggleSource, sourcePanelOpen }: {
+  onBack: () => void
+  onToggleSource?: () => void
+  sourcePanelOpen?: boolean
+}) {
   return (
     <Box sx={{
       bgcolor: 'background.paper',
       borderBottom: '1px solid', borderColor: 'divider',
       flexShrink: 0,
+      px: 3, py: 1,
+      display: 'flex', alignItems: 'center', gap: 2,
     }}>
-      <Box sx={{ px: 3, pt: 1, pb: 0.5 }}>
+      <Button
+        size="small"
+        startIcon={<ArrowBackOutlined sx={{ fontSize: '14px !important' }} />}
+        onClick={onBack}
+        sx={{ ...GHOST_BTN_SX, flexShrink: 0 }}
+      >
+        Back
+      </Button>
+      <Box sx={{ width: '1px', height: 28, bgcolor: 'var(--colors-grey-3)', flexShrink: 0 }} />
+      <Typography sx={{ fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)', flex: 1 }}>
+        Find Encounter
+      </Typography>
+      {onToggleSource && (
         <Button
           size="small"
-          startIcon={<ArrowBackOutlined sx={{ fontSize: '14px !important' }} />}
-          onClick={onBack}
-          sx={{ ...GHOST_BTN_SX, p: 0, minWidth: 0 }}
+          startIcon={<DescriptionOutlined sx={{ fontSize: '13px !important' }} />}
+          onClick={onToggleSource}
+          sx={{
+            fontSize: 'var(--font-sizes-12)',
+            textTransform: 'none',
+            flexShrink: 0,
+            px: 1, py: 0.375,
+            color: sourcePanelOpen ? 'var(--colors-ocean-4)' : 'var(--colors-grey-6)',
+            bgcolor: sourcePanelOpen ? 'var(--colors-ocean-1)' : 'transparent',
+            border: '1px solid',
+            borderColor: sourcePanelOpen ? 'var(--colors-ocean-3)' : 'var(--colors-grey-4)',
+            borderRadius: 'var(--radii-sm)',
+            '&:hover': { bgcolor: sourcePanelOpen ? 'var(--colors-ocean-2)' : 'var(--colors-grey-2)', borderColor: 'var(--colors-grey-5)' },
+            '& .MuiButton-startIcon': { mr: 0.5 },
+          }}
         >
-          Back
+          View source
         </Button>
-      </Box>
-      <Box sx={{ px: 3, pb: 1.5, pt: 0.75 }}>
-        <Typography sx={{ fontSize: 'var(--font-sizes-16)', fontWeight: 'var(--font-weights-semibold)' }}>
-          Change Encounter
-        </Typography>
-      </Box>
+      )}
     </Box>
   )
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function FullPageFindEncounter({ chrome, initialIdentifierValue = '', onSelect, onMarkUnavailable }: Props) {
+export default function FullPageFindEncounter({ chrome, initialIdentifierValue = '', onSelect, onMarkUnavailable, sourceData }: Props) {
   const [identifier, setIdentifier] = useState('HAR')
   const [value, setValue] = useState(initialIdentifierValue)
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [sourcePanelOpen, setSourcePanelOpen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const results = searched ? searchPatients(value) : []
@@ -235,9 +263,14 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
     }}>
       {chrome.kind === 'wizard'
         ? <WizardChrome onBackToList={chrome.onBackToList} />
-        : <ChangeEncounterChrome onBack={chrome.onBack} />
+        : <ChangeEncounterChrome
+            onBack={chrome.onBack}
+            onToggleSource={sourceData ? () => setSourcePanelOpen(p => !p) : undefined}
+            sourcePanelOpen={sourcePanelOpen}
+          />
       }
 
+      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         <Box sx={{ maxWidth: 1100, mx: 'auto', py: 2, px: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
 
@@ -480,6 +513,10 @@ export default function FullPageFindEncounter({ chrome, initialIdentifierValue =
           )}
 
         </Box>
+      </Box>
+      {sourcePanelOpen && sourceData && (
+        <SourcePanel sourceData={sourceData} onClose={() => setSourcePanelOpen(false)} />
+      )}
       </Box>
     </Box>
   )
