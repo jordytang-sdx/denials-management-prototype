@@ -967,7 +967,8 @@ function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = nu
               ...(hideCompleteReview && caseData.status === 'Ready for Review' ? ['Send to SFTP'] : []),
               ...STATUS_WORKFLOW_ACTIONS.filter(a =>
                 !(a === 'Retry Letter' && caseData.status === 'Ready for Review') &&
-                !(a === 'Complete Review' && hideCompleteReview)
+                !(a === 'Complete Review' && hideCompleteReview) &&
+                !(a === 'Archive' && hideCompleteReview)
               ).map(a =>
                 a === 'Submit' && hideCompleteReview && caseData.status === 'Ready for Review'
                   ? 'Mark as Submitted'

@@ -1498,6 +1498,7 @@ export default function App() {
               onReviewExceptionFullPage={(records, index) => setV4Screen({ type: 'edit-queue', records, index })}
               onReviewFailuresFullPage={(records, index) => setV4Screen({ type: 'edit-queue', records, index, backLabel: 'Back to Processing Failures' })}
               archivedStagingIds={archivedStagingIds}
+              processingFailuresLabel="Processing Errors"
               />
             )}
             {systemMode === 'new' && showingWorklist && (

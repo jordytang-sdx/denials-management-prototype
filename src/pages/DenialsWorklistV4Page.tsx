@@ -774,6 +774,7 @@ const displayed = useMemo(() => {
         assignedToMe={assignedToMeProp}
         onAssignedToMeChange={onAssignedToMeChange}
         onAssign={onAssign}
+        hideArchivedChip
       />
     )
   }

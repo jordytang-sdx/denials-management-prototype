@@ -44,6 +44,8 @@ interface IngestPageProps {
   hideProcessingFailures?: boolean
   /** V1: render the Exceptions list as a flat list instead of grouped by category. */
   flatExceptions?: boolean
+  /** Override the label for the Processing Failures tab. */
+  processingFailuresLabel?: string
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -2874,7 +2876,7 @@ function ProcessingFailuresTab({ records, onUpdate, mode, inlinePanels, onReview
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, onReviewFailuresFullPage, archivedStagingIds, showDropZoneAbove, hideProcessingFailures, flatExceptions }: IngestPageProps) {
+export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, onReviewFailuresFullPage, archivedStagingIds, showDropZoneAbove, hideProcessingFailures, flatExceptions, processingFailuresLabel = 'Processing Failures' }: IngestPageProps) {
   const failuresTabInitial = hideProcessingFailures ? 99 : (mode === 'existing' ? 2 : 1)
   const [activeTab, setActiveTab] = useState(
     (!hideProcessingFailures && initialOpenDrawer?.tab === 'processing-failures') ? failuresTabInitial :
@@ -2976,7 +2978,7 @@ export default function IngestPage({ features: _features, onNavigate, mode, init
             <Tab
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                  Processing Failures
+                  {processingFailuresLabel}
                   {blockedCount > 0 && (
                     <Chip
                       label={blockedCount}

@@ -452,9 +452,10 @@ interface Props {
   assignedToMe?: boolean
   onAssignedToMeChange?: (v: boolean) => void
   onAssign?: (denialId: string, member: TeamMember | null) => void
+  hideArchivedChip?: boolean
 }
 
-export default function DenialsAllRecordsView({ denials, onSelectDenial, reviewCompleteIds, assignedToMe: assignedToMeProp, onAssignedToMeChange, onAssign }: Props) {
+export default function DenialsAllRecordsView({ denials, onSelectDenial, reviewCompleteIds, assignedToMe: assignedToMeProp, onAssignedToMeChange, onAssign, hideArchivedChip }: Props) {
   const [stageFilter, setStageFilter] = useState<StageChip[]>([])
   const [sort, setSort] = useState<Sort>(null)
   const [search, setSearch] = useState('')
@@ -775,7 +776,7 @@ export default function DenialsAllRecordsView({ denials, onSelectDenial, reviewC
 
       {/* Quick-filter chips + Assigned to me toggle */}
       <Box sx={{ px: 2, py: 0.875, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
-        {STAGE_CHIPS.map(chip => {
+        {STAGE_CHIPS.filter(chip => !(hideArchivedChip && chip === 'Archived')).map(chip => {
           const active = stageFilter.includes(chip)
           return (
             <Chip

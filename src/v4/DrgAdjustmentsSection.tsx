@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Box, Typography, Button, Chip, IconButton, Divider } from '@mui/material'
-import { AddOutlined, CloseOutlined } from '@mui/icons-material'
+import { AddOutlined, CloseOutlined, SwapHoriz } from '@mui/icons-material'
 import SmarterSelect from './SmarterSelect'
 import SmarterRadioGroup from './SmarterRadio'
 import SmarterComboBox from './SmarterComboBox'
@@ -56,14 +56,9 @@ const ADD_BTN_SX = {
 
 // ── Severity / Billed-role badges ─────────────────────────────────────────────
 
-function SeverityBadge({ severity, emphasized }: { severity: DrgSeverity; emphasized?: boolean }) {
+function SeverityBadge({ severity }: { severity: DrgSeverity }) {
   if (!severity || severity === 'Base') return null
-
-  // SOI 4 on the payer-adjusted (emphasized) row uses orange; SOI 1 is too minor to badge
   if (severity === 'SOI 1') return null
-
-  // Orange only on the payer-adjusted row (emphasized), never on the billed row
-  const useOrange = emphasized
 
   return (
     <Chip
@@ -75,9 +70,8 @@ function SeverityBadge({ severity, emphasized }: { severity: DrgSeverity; emphas
         fontWeight: 'var(--font-weights-medium)',
         borderRadius: 'var(--radii-badge-radius)',
         '& .MuiChip-label': { px: 1 },
-        ...(useOrange
-          ? { bgcolor: 'var(--colors-badge-variant-warning-emphasized-background)', color: 'var(--colors-badge-variant-warning-emphasized-text)' }
-          : { bgcolor: 'var(--colors-badge-variant-default-subtle-background)', color: 'var(--colors-badge-variant-default-subtle-text)' }),
+        bgcolor: 'var(--colors-badge-variant-default-subtle-background)',
+        color: 'var(--colors-badge-variant-default-subtle-text)',
       }}
     />
   )
@@ -108,25 +102,27 @@ function BilledRoleBadge({ label }: { label: DrgBilledLabel }) {
 
 // ── DRG row — editable input ─────────────────────────────────────────────────
 
-function DrgRowInput({ label, variant = 'default', value, onChange, isAprDrg }: {
+function DrgRowInput({ label, value, onChange, isAprDrg, icon }: {
   label: string
-  variant?: 'default' | 'adjusted'
   value: string
   onChange: (v: string) => void
   isAprDrg?: boolean
+  icon?: React.ReactNode
 }) {
-  const isAdjusted = variant === 'adjusted'
   const severity = value ? parseDrgSeverity(value) : null
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-      <Typography sx={{
-        fontSize: 'var(--font-sizes-12)',
-        fontWeight: 'var(--font-weights-medium)',
-        color: isAdjusted ? 'var(--colors-badge-variant-warning-text)' : 'text.secondary',
-      }}>
-        {label}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        {icon}
+        <Typography sx={{
+          fontSize: 'var(--font-sizes-12)',
+          fontWeight: 'var(--font-weights-medium)',
+          color: 'text.secondary',
+        }}>
+          {label}
+        </Typography>
+      </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <SmarterComboBox
@@ -138,7 +134,7 @@ function DrgRowInput({ label, variant = 'default', value, onChange, isAprDrg }: 
         </Box>
         {/* Fixed-width slot keeps the input the same width whether or not a badge is shown */}
         <Box sx={{ width: 52, flexShrink: 0, display: 'flex', justifyContent: 'flex-start' }}>
-          {severity && <SeverityBadge severity={severity} emphasized={isAdjusted} />}
+          {severity && <SeverityBadge severity={severity} />}
         </Box>
       </Box>
     </Box>
@@ -151,19 +147,18 @@ function AdjustmentSelect({ value, onChange }: {
   value: DiagnosisAdjustment
   onChange: (v: DiagnosisAdjustment) => void
 }) {
-  const isChanged = value !== 'Unchanged'
   return (
     <Box sx={{
       '& > button': {
         height: 28,
         borderRadius: 'var(--radii-badge-radius)',
-        borderColor: isChanged ? 'var(--colors-badge-variant-warning-border)' : 'var(--colors-grey-4)',
-        color: isChanged ? 'var(--colors-badge-variant-warning-text)' : 'var(--colors-select-trigger-text)',
+        borderColor: 'var(--colors-grey-4)',
+        color: 'var(--colors-select-trigger-text)',
         fontSize: 'var(--font-sizes-12)',
         px: 1.25,
       },
       '& > button svg': {
-        color: isChanged ? 'var(--colors-badge-variant-warning-text)' : 'var(--colors-select-trigger-icon-color)',
+        color: 'var(--colors-select-trigger-icon-color)',
       },
     }}>
       <SmarterSelect
@@ -386,8 +381,10 @@ export default function DrgAdjustmentsSection({ adjustments, onDxCodesChanged }:
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            <DrgRowInput label="Billed DRG"         value={billedDrg} onChange={setBilledDrg} isAprDrg={isAprDrg} />
-            <DrgRowInput label="Payer-Adjusted DRG"  variant="adjusted" value={payerDrg} onChange={setPayerDrg} isAprDrg={isAprDrg} />
+            <DrgRowInput label="Billed DRG"        value={billedDrg} onChange={setBilledDrg} isAprDrg={isAprDrg} />
+            <DrgRowInput label="Payer-Adjusted DRG" value={payerDrg}  onChange={setPayerDrg}  isAprDrg={isAprDrg}
+              icon={<SwapHoriz sx={{ fontSize: 14, color: 'text.secondary' }} />}
+            />
           </Box>
         </Box>
       </Box>
