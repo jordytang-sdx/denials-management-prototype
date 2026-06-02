@@ -1432,6 +1432,23 @@ export default function App() {
               <V3DetailConceptC
                 caseRecord={visibleDenials.find(d => d.id === selectedV2CaseId) ?? undefined}
                 onBack={() => setSelectedV2CaseId(null)}
+                onStatusAction={(action) => {
+                  // V2 keeps the case open after a status change so the user
+                  // sees the badge update in place; they navigate back to the
+                  // worklist themselves. Mirrors handleV2StatusAction for the
+                  // status-picker actions but skips setSelectedV2CaseId(null).
+                  const id = selectedV2CaseId
+                  if (!id) return
+                  if (action === 'submit' || action === 'send-to-sftp') {
+                    setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Submitted' as DenialState, status: 'Awaiting Payer Decision' as const, submissionDate: todayISO() } : d))
+                    setV2ReturnTab('Submitted')
+                  } else if (action === 'will-not-submit') {
+                    setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Closed' as DenialState, status: 'Will Not Appeal' as const } : d))
+                    setV2ReturnTab('Closed')
+                  } else {
+                    handleV2StatusAction(action)
+                  }
+                }}
               />
             )}
             {/* V3 — Denial detail page explorations. Auto-loads the first denial; no worklist click required. */}

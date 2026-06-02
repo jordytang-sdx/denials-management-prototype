@@ -6,7 +6,7 @@
 // All visual values come from the SmarterDx design system tokens. No hardcoded
 // hex / rgba / px font sizes / numeric weights. See design-system-tokens.css.
 
-import { Box, Typography, IconButton, Button, Tooltip, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material'
+import { Box, Typography, IconButton, Button, Tooltip, Menu, MenuItem, ListItemIcon, ListItemText, Divider, CircularProgress } from '@mui/material'
 // Icons: lucide-react matches the SmarterDx DS (see packages/react peerDeps).
 // Do NOT add @mui/icons-material imports to V3 files.
 import {
@@ -18,6 +18,9 @@ import {
   Pencil,
   MessageSquare,
   FileText,
+  Send,
+  CheckCircle2,
+  Ban,
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import type { DenialRecord, DenialState, TeamMember } from '../data/denials'
@@ -54,6 +57,10 @@ interface V3CaseHeaderProps {
   // Back-to-worklist handler. When provided (e.g. from V2 case-page route),
   // the back arrow becomes interactive. V3's standalone explorations omit it.
   onBack?: () => void
+  // Status transition handler. V2 wires this to App.handleV2StatusAction so
+  // the status badge picker drives the denial state machine. When omitted
+  // (V3 standalone explorations), the badge renders as a static chip.
+  onStatusAction?: (action: string) => void
 }
 
 // ─── Reusable token-styled primitives ────────────────────────────────────────
@@ -122,7 +129,7 @@ function isoToMDY(iso: string | undefined): string {
 //   > 5d                       → default (subtle)
 // Label format is always "Due <Mon> <day>" so the absolute date is legible —
 // urgency lives in the color, not the wording.
-function DeadlineChip({ deadlineISO }: { deadlineISO: string }) {
+export function DeadlineChip({ deadlineISO }: { deadlineISO: string }) {
   const parsed = useMemo(() => {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(deadlineISO || '')
     if (!m) return null
@@ -320,12 +327,12 @@ function levelVariant(level: string): DsBadgeVariant {
 
 // Mirrors the worklist's AppealLevelCell — routes through the DS Badge primitive
 // so the subtle (borderless) treatment stays in lockstep with the worklist.
-function AppealLevelChip({ level }: { level: string }) {
+export function AppealLevelChip({ level }: { level: string }) {
   return <DsBadge variant={levelVariant(level)}>{level}</DsBadge>
 }
 
 // Status → DS badge variant. Surface case lifecycle without coining colors.
-function statusVariant(status: string): DsBadgeVariant {
+export function statusVariant(status: string): DsBadgeVariant {
   switch (status) {
     case 'Submitted':
     case 'Overturned':
@@ -346,7 +353,7 @@ function statusVariant(status: string): DsBadgeVariant {
 // Mirrors the V2 mapping in CasePageAiEditing.stateToDisplayStatus so a case
 // whose internal status is 'Appeal Drafting' surfaces as 'Ready for Review' in
 // the workflow chrome — the workflow-facing label, not the internal sub-status.
-function displayStatusFromState(state: DenialState | undefined): string {
+export function displayStatusFromState(state: DenialState | undefined): string {
   switch (state) {
     case 'Queue':
     case 'InProgress': return 'Ready for Review'
@@ -358,9 +365,25 @@ function displayStatusFromState(state: DenialState | undefined): string {
   }
 }
 
-export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, commentCount = 0, commentsOpen = false, hideAvatar = false, lastNameFirst = false, appealLevelAsChip = false, onEditDenialDetails, onViewSource, onDeleteDenial, onBack }: V3CaseHeaderProps) {
+export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, commentCount = 0, commentsOpen = false, hideAvatar = false, lastNameFirst = false, appealLevelAsChip = false, onEditDenialDetails, onViewSource, onDeleteDenial, onBack, onStatusAction }: V3CaseHeaderProps) {
   const [statusAnchor, setStatusAnchor] = useState<HTMLElement | null>(null)
   const [kebabAnchor, setKebabAnchor] = useState<HTMLElement | null>(null)
+  // Pending-transition state. Set when the user picks a state-change option;
+  // we keep the badge in a "Submitting…"/"Closing…" loading treatment for a
+  // beat before committing the underlying state change via onStatusAction.
+  const [pendingAction, setPendingAction] = useState<'submit' | 'send-to-sftp' | 'will-not-submit' | null>(null)
+
+  function fireStatusAction(action: 'submit' | 'send-to-sftp' | 'will-not-submit') {
+    setStatusAnchor(null)
+    if (!onStatusAction) return
+    setPendingAction(action)
+    window.setTimeout(() => {
+      onStatusAction(action)
+      setPendingAction(null)
+    }, 1200)
+  }
+
+  const pendingLabel = pendingAction === 'will-not-submit' ? 'Closing…' : 'Submitting…'
 
   const rawPatientName = caseRecord?.patient.name ?? '—'
   // Concept C uses "Last, First" — clinical convention. Falls back to the raw
@@ -441,76 +464,140 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-3)', flexShrink: 0 }}>
           <DeadlineChip deadlineISO={caseRecord?.deadline ?? ''} />
 
-          {/* Status badge — DS Badge, variant by status */}
-          <DsBadge variant={statusVariant(status)}>{status}</DsBadge>
+          {/* Status picker — the badge IS the affordance. Clicking it opens a
+              menu of valid next-state transitions for the current state. The
+              trigger mirrors DsBadge's visual treatment (same subtle-variant
+              tokens, same dimensions) so a non-interactive badge and the
+              picker sit identically in the layout. When onStatusAction isn't
+              provided (V3 standalone explorations) the picker degrades to a
+              plain DsBadge.
 
-          {/* CTA + split chevron — DS action button */}
-          <Box sx={{ display: 'inline-flex' }}>
-            <Button
-              variant="contained"
-              size="small"
-              sx={{
-                bgcolor: 'var(--colors-interactive-action-background)',
-                color: 'var(--colors-interactive-action-text)',
-                textTransform: 'none',
-                fontWeight: 'var(--font-weights-semibold)',
-                fontSize: 'var(--font-sizes-btn-size-md-font-size)',
-                height: 32,
-                px: 'var(--spacing-3)',
-                boxShadow: 'none',
-                borderRadius: 'var(--radii-sm) 0 0 var(--radii-sm)',
-                '&:hover': {
-                  bgcolor: 'var(--colors-interactive-hover-action-background, var(--colors-ocean-5))',
-                  boxShadow: 'none',
-                },
-                '&:focus-visible': { boxShadow: 'var(--shadows-interactive-focus-focus-ring)' },
-              }}
-            >
-              Mark as Submitted
-            </Button>
-            <Tooltip title="Other status changes">
-              <Button
-                variant="contained"
-                size="small"
-                onClick={(e) => setStatusAnchor(e.currentTarget)}
-                sx={{
-                  bgcolor: 'var(--colors-interactive-action-background)',
-                  color: 'var(--colors-interactive-action-text)',
-                  minWidth: 0, px: 'var(--spacing-1)', height: 32,
-                  boxShadow: 'none',
-                  borderRadius: '0 var(--radii-sm) var(--radii-sm) 0',
-                  borderLeft: 'var(--border-widths-thin) solid var(--colors-ocean-6)',
-                  '&:hover': {
-                    bgcolor: 'var(--colors-interactive-hover-action-background, var(--colors-ocean-5))',
-                    boxShadow: 'none',
-                  },
-                  '&:focus-visible': { boxShadow: 'var(--shadows-interactive-focus-focus-ring)' },
-                }}
-              >
-                <Box component="span" sx={{ display: 'inline-flex', color: 'var(--colors-interactive-action-text)' }}>
-                  <ChevronDown size={16} />
-                </Box>
-              </Button>
-            </Tooltip>
-          </Box>
-          <Menu
-            anchorEl={statusAnchor}
-            open={Boolean(statusAnchor)}
-            onClose={() => setStatusAnchor(null)}
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-            PaperProps={{ sx: {
-              minWidth: 200,
-              mt: 'var(--spacing-1)',
-              border: 'var(--border-widths-menu-content-border-width) solid var(--colors-menu-content-border-color)',
-              boxShadow: 'var(--shadows-menu-content-shadow)',
-              borderRadius: 'var(--radii-md)',
-              bgcolor: 'var(--colors-menu-content-background)',
-            } }}
-          >
-            <MenuItem onClick={() => setStatusAnchor(null)} sx={{ fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))', color: 'var(--colors-menu-item-default-text)' }}>Send to SFTP</MenuItem>
-            <MenuItem onClick={() => setStatusAnchor(null)} sx={{ fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))', color: 'var(--colors-text-secondary)' }}>Will Not Submit</MenuItem>
-          </Menu>
+              Loading state: while a transition is committing, the badge label
+              swaps to "Submitting…"/"Closing…" with a small spinner, and the
+              trigger is disabled so the user can't fire a second action. */}
+          {onStatusAction ? (() => {
+            const variant = pendingAction ? 'default' : statusVariant(status)
+            const label = pendingAction ? pendingLabel : status
+            const bg = `var(--colors-badge-variant-${variant}-subtle-background)`
+            const text = `var(--colors-badge-variant-${variant}-subtle-text)`
+            const border = `var(--colors-badge-variant-${variant}-subtle-border)`
+            const isDisabled = Boolean(pendingAction)
+            return (
+              <>
+                <Tooltip title={isDisabled ? '' : 'Change status'}>
+                  <Box
+                    component="button"
+                    type="button"
+                    disabled={isDisabled}
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => setStatusAnchor(e.currentTarget)}
+                    sx={{
+                      // Reset native button. Inherit token-driven badge styles.
+                      all: 'unset',
+                      boxSizing: 'border-box',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 'var(--spacing-badge-gap)',
+                      px: 'var(--spacing-badge-padding-x)',
+                      py: 'var(--spacing-badge-padding-y)',
+                      borderRadius: 'var(--radii-badge-radius)',
+                      bgcolor: bg,
+                      color: text,
+                      border: 'var(--border-widths-badge-border-width) solid',
+                      borderColor: border,
+                      fontSize: 'var(--font-sizes-12)',
+                      fontWeight: 'var(--font-weights-regular)',
+                      lineHeight: 1.25,
+                      whiteSpace: 'nowrap',
+                      fontVariantNumeric: 'tabular-nums',
+                      flexShrink: 0,
+                      cursor: isDisabled ? 'default' : 'pointer',
+                      opacity: isDisabled ? 0.85 : 1,
+                      transition: 'filter 120ms ease, box-shadow 120ms ease',
+                      '&:hover': isDisabled ? {} : { filter: 'brightness(0.96)' },
+                      '&:focus-visible': { boxShadow: 'var(--shadows-interactive-focus-focus-ring)' },
+                    }}
+                  >
+                    {pendingAction && (
+                      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', color: 'currentColor' }}>
+                        <CircularProgress size={10} thickness={6} sx={{ color: 'currentColor' }} />
+                      </Box>
+                    )}
+                    <span>{label}</span>
+                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', color: 'currentColor', opacity: 0.7 }}>
+                      <ChevronDown size={12} strokeWidth={2} />
+                    </Box>
+                  </Box>
+                </Tooltip>
+                <Menu
+                  anchorEl={statusAnchor}
+                  open={Boolean(statusAnchor)}
+                  onClose={() => setStatusAnchor(null)}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                  PaperProps={{ sx: {
+                    minWidth: 220,
+                    mt: 'var(--spacing-1)',
+                    border: 'var(--border-widths-menu-content-border-width) solid var(--colors-menu-content-border-color)',
+                    boxShadow: 'var(--shadows-menu-content-shadow)',
+                    borderRadius: 'var(--radii-md)',
+                    bgcolor: 'var(--colors-menu-content-background)',
+                  } }}
+                >
+                  <MenuItem
+                    onClick={() => fireStatusAction('send-to-sftp')}
+                    sx={{
+                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                      color: 'var(--colors-interactive-menu-item-text)',
+                      gap: 'var(--spacing-2)',
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
+                      <Send size={14} strokeWidth={2} />
+                    </ListItemIcon>
+                    <ListItemText primaryTypographyProps={{ sx: {
+                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                      color: 'inherit',
+                    } }}>Send to SFTP</ListItemText>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => fireStatusAction('submit')}
+                    sx={{
+                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                      color: 'var(--colors-interactive-menu-item-text)',
+                      gap: 'var(--spacing-2)',
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
+                      <CheckCircle2 size={14} strokeWidth={2} />
+                    </ListItemIcon>
+                    <ListItemText primaryTypographyProps={{ sx: {
+                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                      color: 'inherit',
+                    } }}>Mark as Submitted</ListItemText>
+                  </MenuItem>
+                  <Divider sx={{ my: 'var(--spacing-1)', borderColor: 'var(--colors-menu-content-border-color)' }} />
+                  <MenuItem
+                    onClick={() => fireStatusAction('will-not-submit')}
+                    sx={{
+                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                      color: 'var(--colors-text-error)',
+                      gap: 'var(--spacing-2)',
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
+                      <Ban size={14} strokeWidth={2} />
+                    </ListItemIcon>
+                    <ListItemText primaryTypographyProps={{ sx: {
+                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                      color: 'inherit',
+                    } }}>Close without submitting</ListItemText>
+                  </MenuItem>
+                </Menu>
+              </>
+            )
+          })() : (
+            <DsBadge variant={statusVariant(status)}>{status}</DsBadge>
+          )}
 
           {/* Kebab */}
           <GhostIconButton

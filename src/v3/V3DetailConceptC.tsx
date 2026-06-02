@@ -122,6 +122,9 @@ interface V3DetailConceptCProps {
   // Optional back-to-worklist handler. Wired in V2 case-page route; V3
   // standalone explorations omit it (header back arrow stays inert there).
   onBack?: () => void
+  // Status transition handler. V2 wires this to App.handleV2StatusAction so
+  // the header status picker drives the denial state machine.
+  onStatusAction?: (action: string) => void
 }
 
 function isoToMDY(iso: string | undefined): string {
@@ -214,7 +217,7 @@ function strengthTokens(strength: string) {
   }
 }
 
-export default function V3DetailConceptC({ caseRecord, onBack }: V3DetailConceptCProps) {
+export default function V3DetailConceptC({ caseRecord, onBack, onStatusAction }: V3DetailConceptCProps) {
   const [activeTab, setActiveTab] = useState<TabId>(() => defaultTabForState(caseRecord?.state))
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [sourceOpen, setSourceOpen] = useState(false)
@@ -285,6 +288,7 @@ export default function V3DetailConceptC({ caseRecord, onBack }: V3DetailConcept
         onEditDenialDetails={caseRecord ? () => setEditingDetails(true) : undefined}
         onViewSource={caseRecord ? () => setSourceOpen(true) : undefined}
         onBack={onBack}
+        onStatusAction={onStatusAction}
       />
 
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
