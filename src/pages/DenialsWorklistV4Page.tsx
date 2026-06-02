@@ -10,10 +10,11 @@ import {
   StickyNote2Outlined, NoteAltOutlined, SearchOutlined,
   KeyboardArrowDown, FilterAltOutlined, ViewColumnOutlined,
 } from '@mui/icons-material'
-import { type DenialRecord, type DenialState, type TeamMember, TEAM_MEMBERS, KRISTA } from '../data/denials'
+import { type DenialRecord, type DenialState, type TeamMember, TEAM_MEMBERS, KRISTA, TODAY } from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
 import DenialsAllRecordsView from './DenialsAllRecordsView'
 import SmarterSelect from '../v4/SmarterSelect'
+import DsBadge, { type DsBadgeVariant } from '../ds/DsBadge'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,14 @@ const TAB_LABELS: Record<DenialState, string> = {
   Overturned: 'Overturned', Closed: 'Closed', Archive: 'Archived',
 }
 
-const OUTCOME_CHIPS = ['Overturned', 'Upheld - Will Appeal', 'Upheld - Will Not Appeal', 'Will Not Appeal'] as const
+const OUTCOME_CHIPS = [
+  'Overturned',
+  'Upheld - Will Appeal',
+  'Upheld - Will Not Appeal',
+  'Will Not Appeal',
+  'Dismissed',
+  'Closed - Unknown Outcome',
+] as const
 
 function matchesOutcome(d: DenialRecord, chip: string): boolean {
   if (chip === 'Overturned') return d.state === 'Overturned'
@@ -62,32 +70,42 @@ function matchesOutcome(d: DenialRecord, chip: string): boolean {
   return d.status === chip
 }
 
-const TODAY = new Date('2026-04-02')
-
 const ALLOWED_DENIAL_TYPES = ['DRG Downgrade', 'Medical Necessity']
 
 const ASSIGNABLE_MEMBERS = TEAM_MEMBERS
 
-const APPEAL_LEVEL_COLORS: Record<string, { bg: string; color: string; border: string }> = {
-  L1: { bg: 'var(--colors-badge-variant-info-background)',    color: 'var(--colors-badge-variant-info-text)',    border: '1px solid var(--colors-badge-variant-info-border)' },
-  L2: { bg: 'var(--colors-badge-variant-warning-background)', color: 'var(--colors-badge-variant-warning-text)', border: '1px solid var(--colors-badge-variant-warning-border)' },
-  L3: { bg: 'var(--colors-badge-variant-error-background)',   color: 'var(--colors-badge-variant-error-text)',   border: '1px solid var(--colors-badge-variant-error-border)' },
-  L4: { bg: 'var(--colors-badge-variant-error-background)',   color: 'var(--colors-badge-variant-error-text)',   border: '1px solid var(--colors-badge-variant-error-border)' },
-  L5: { bg: 'var(--colors-badge-variant-error-background)',   color: 'var(--colors-badge-variant-error-text)',   border: '1px solid var(--colors-badge-variant-error-border)' },
+function appealLevelVariant(level: string): DsBadgeVariant {
+  switch (level) {
+    case 'L1': return 'info'
+    case 'L2': return 'warning'
+    case 'L3':
+    case 'L4':
+    case 'L5': return 'error'
+    default:   return 'default'
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Parse a YYYY-MM-DD string as a local-midnight Date so day-count math doesn't
+// drift across timezones. (Plain `new Date('2026-06-06')` is UTC, which renders
+// as June 5 in PST and inflates daysUntil by a fraction of a day.)
+function parseLocalDate(dateStr: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr)
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return new Date(dateStr)
+}
+
 function daysUntil(dateStr: string): number {
-  return Math.ceil((new Date(dateStr).getTime() - TODAY.getTime()) / (1000 * 60 * 60 * 24))
+  return Math.round((parseLocalDate(dateStr).getTime() - TODAY.getTime()) / 86400000)
 }
 
 function daysSince(dateStr: string): number {
-  return Math.max(0, Math.floor((TODAY.getTime() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)))
+  return Math.max(0, Math.round((TODAY.getTime() - parseLocalDate(dateStr).getTime()) / 86400000))
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return parseLocalDate(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function formatCurrency(n: number): string {
@@ -205,18 +223,9 @@ function DeniedCell({ d }: { d: DenialRecord }) {
 }
 
 function AppealLevelCell({ d }: { d: DenialRecord }) {
-  const colors = APPEAL_LEVEL_COLORS[d.appealLevel] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
   return (
     <TableCell>
-      <Chip
-        label={d.appealLevel}
-        size="small"
-        sx={{
-          height: 22, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number,
-          bgcolor: colors.bg, color: colors.color, border: colors.border,
-          '& .MuiChip-label': { px: 0.875 },
-        }}
-      />
+      <DsBadge variant={appealLevelVariant(d.appealLevel)}>{d.appealLevel}</DsBadge>
     </TableCell>
   )
 }
@@ -836,7 +845,13 @@ const displayed = useMemo(() => {
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                   {TAB_LABELS[tab]}
-                  {(tab !== 'Closed' || hasActiveFiltersOrSearch) && (
+                  {/*
+                    V2: badges hidden during legacy-customer rollout (first ~30 days).
+                    Stale items in Ready/Submitted from the pre-tab UI would otherwise
+                    show counts in the thousands and misleadingly imply active work.
+                    Closed badge intentionally only appears when filters/search narrow the view.
+                  */}
+                  {tab === 'Closed' && hasActiveFiltersOrSearch && (
                     <Chip
                       label={tabCounts[tab] ?? 0}
                       size="small"

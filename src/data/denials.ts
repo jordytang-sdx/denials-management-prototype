@@ -29,7 +29,25 @@ export type OverturnedStatus =
   | 'Corrected Claim Paid'
   | 'Secondary Payer Paid'
 
-export type ClosedStatus = 'Upheld by Payer' | 'Will Not Appeal' | 'Dismissed' | 'Escalated to DRG Dispute' | 'Closed'
+export type ClosedStatus =
+  | 'Upheld by Payer'
+  | 'Upheld - Will Appeal'
+  | 'Upheld - Will Not Appeal'
+  | 'Will Not Appeal'
+  | 'Dismissed'
+  | 'Escalated to DRG Dispute'
+  | 'Closed - Unknown Outcome'
+  | 'Closed'
+
+// V2: audit log entry for state/status transitions (backend-only in MVP)
+export interface AuditEntry {
+  at: string           // ISO timestamp
+  actor: string        // user id or 'system'
+  action: string       // e.g. 'state-change', 'spawn-l-plus-1', 'reopen', 'move-back-to-ready'
+  from?: { state: DenialState; status: DenialStatus }
+  to?:   { state: DenialState; status: DenialStatus }
+  note?: string
+}
 
 export type ArchiveStatus = 'Archived'
 
@@ -128,6 +146,9 @@ export interface DenialRecord {
   nextAction?: string
   notes: string
   archivedFrom?: { state: DenialState; status: DenialStatus }
+  // V2 audit + lineage
+  auditLog?: AuditEntry[]
+  parentDenialId?: string        // set on L+1 instances spawned from a prior round
   // Instance model fields
   source?: InstanceSource
   denialLetterOnFile?: boolean
@@ -149,11 +170,19 @@ export const REVERSE_RELATIONSHIP: Record<RelationshipType, RelationshipType> = 
   escalated_from:         'escalated_from',
 }
 
-// Reference date: 2026-04-02
+// Single source of truth for "today" in the prototype. Used by the worklist's
+// daysUntil/daysOverdue helpers and the V3 detail-page DeadlineChip so all
+// surfaces report the same urgency.
+export const TODAY_ISO = '2026-06-02'
+export const TODAY = new Date(2026, 5, 2) // June 2, 2026 — local midnight
+
 function d(offset: number): string {
-  const base = new Date('2026-04-02')
+  const base = new Date(TODAY)
   base.setDate(base.getDate() + offset)
-  return base.toISOString().split('T')[0]!
+  const y = base.getFullYear()
+  const m = String(base.getMonth() + 1).padStart(2, '0')
+  const dd = String(base.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
 }
 
 export const SEED_DENIALS: DenialRecord[] = [
@@ -310,11 +339,11 @@ export const SEED_DENIALS: DenialRecord[] = [
     denialSubtype: 'Claim Received After 90-Day Limit',
     carc: 'CARC-29',
     deniedAmount: 2130.00,
-    deadline: d(2), createdAt: d(-22), dos: '2025-11-18',
+    deadline: d(-3), createdAt: d(-25), dos: '2025-11-18',
     state: 'InProgress', status: 'Appeal Drafting',
     appealLevel: 'L1', priorityScore: 74, packetStatus: 'Assembling',
     assignedTo: TEAM_MEMBERS[3]!,
-    notes: 'Clearinghouse confirmed 11/18 transmission. Pulling 277 report to attach to appeal.',
+    notes: 'Clearinghouse confirmed 11/18 transmission. Pulling 277 report to attach to appeal — filing deadline has passed; requesting good-cause extension.',
   },
   {
     id: 'DN-2026-0292',

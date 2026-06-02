@@ -40,7 +40,7 @@ import IngestPage from './pages/IngestPage'
 import RoutingRulesPage from './pages/RoutingRulesPage'
 import UnderpaymentWorklistPage from './pages/UnderpaymentWorklistPage'
 import UnderpaymentDetailPage from './pages/UnderpaymentDetailPage'
-import { SEED_DENIALS, type DenialRecord, type DenialState, type TeamMember } from './data/denials'
+import { SEED_DENIALS, type DenialRecord, type DenialState, type DenialStatus, type AppealLevel, type AuditEntry, type TeamMember } from './data/denials'
 import { SEED_UNDERPAYMENTS } from './data/underpayments'
 import { SEED_AUDITS, type AuditRecord } from './data/audits'
 import { SEED_STAGING, type StagingRecord } from './data/staging'
@@ -53,6 +53,8 @@ import DenialsWorklistV4Page from './pages/DenialsWorklistV4Page'
 import DenialsWorklistFutureScopePage from './pages/DenialsWorklistFutureScopePage'
 import NewDenialFlow from './pages/NewDenialFlow'
 import CasePageAiEditing from './case-page/CasePageAiEditing'
+import V3DetailConceptB from './v3/V3DetailConceptB'
+import V3DetailConceptC from './v3/V3DetailConceptC'
 import FullPageEditDenialDetails, { type DenialDraft, type ExceptionIssue } from './v4/FullPageEditDenialDetails'
 import FullPageFindEncounter from './v4/FullPageFindEncounter'
 import { getDrgAdjustmentsForSubtype } from './v4/drgMockData'
@@ -374,7 +376,8 @@ function ExistingSystemSidebar({
 
 // ── Prototype Controls ────────────────────────────────────────────────────────
 
-type DenialsViewId = 'v1' | 'v2' | 'future-scope'
+type DenialsViewId = 'v1' | 'v2' | 'v3' | 'future-scope'
+type V3Concept = 'A' | 'B' | 'C'
 
 interface ScenarioConfig {
   label: string
@@ -393,11 +396,23 @@ interface VersionConfig {
 const VERSIONS: VersionConfig[] = [
   { id: 'v1',           label: 'V1',           hasPause: false, scenarios: [] },
   { id: 'v2',           label: 'V2',           description: 'Full-page Edit Denial Details', hasPause: false, scenarios: [] },
+  {
+    id: 'v3',
+    label: 'Denial detail page explorations',
+    hasPause: false,
+    scenarios: [
+      { label: 'Concept A — current V2 detail page', view: 'v3-concept-a' },
+      { label: 'Concept B — no-tabs scaffold',       view: 'v3-concept-b' },
+      { label: 'Concept C — tabbed scaffold',        view: 'v3-concept-c' },
+    ],
+  },
   { id: 'future-scope', label: 'Future scope', hasPause: false, scenarios: [] },
 ]
 
 interface PrototypeControlsProps {
   activeVersion: DenialsViewId
+  activeView?: string
+  activeHasAttachments?: boolean
   onVersionChange: (id: DenialsViewId) => void
   onNavigate: (view: string, hasAttachments?: boolean) => void
   onTogglePause: () => void
@@ -405,7 +420,7 @@ interface PrototypeControlsProps {
   onReset: () => void
 }
 
-function PrototypeControls({ activeVersion, onVersionChange, onNavigate, onTogglePause, isPaused, onReset }: PrototypeControlsProps) {
+function PrototypeControls({ activeVersion, activeView, activeHasAttachments, onVersionChange, onNavigate, onTogglePause, isPaused, onReset }: PrototypeControlsProps) {
   const [expanded, setExpanded] = useState(true)
   const [visible, setVisible] = useState(true)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -510,13 +525,16 @@ function PrototypeControls({ activeVersion, onVersionChange, onNavigate, onToggl
 
               {activeVersion === version.id && (
                 <div style={{ marginTop: 2, marginBottom: 4 }}>
-                  {version.scenarios.map(scenario => (
+                  {version.scenarios.map(scenario => {
+                    const isActive = activeView === scenario.view && !!activeHasAttachments === !!scenario.hasAttachments
+                    return (
                     <button
                       key={scenario.label}
                       onClick={() => onNavigate(scenario.view, scenario.hasAttachments)}
                       onMouseEnter={() => setHovered(scenario.label)}
                       onMouseLeave={() => setHovered(null)}
                       style={{
+                        position: 'relative',
                         display: 'flex', alignItems: 'center',
                         width: '100%',
                         padding: '6px 8px 6px 18px',
@@ -528,11 +546,21 @@ function PrototypeControls({ activeVersion, onVersionChange, onNavigate, onToggl
                         transition: 'background 0.15s',
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 400, color: 'rgba(255,255,255,0.65)', letterSpacing: '-0.01em', lineHeight: 1.4 }}>
+                      {isActive && (
+                        <span style={{
+                          position: 'absolute',
+                          left: 8, top: 6, bottom: 6,
+                          width: 2,
+                          background: 'rgba(255,255,255,0.7)',
+                          borderRadius: 1,
+                        }} />
+                      )}
+                      <span style={{ fontSize: 12, fontWeight: isActive ? 500 : 400, color: isActive ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.65)', letterSpacing: '-0.01em', lineHeight: 1.4 }}>
                         {scenario.label}
                       </span>
                     </button>
-                  ))}
+                    )
+                  })}
 
                   {version.hasPause && (
                     <button
@@ -557,9 +585,7 @@ function PrototypeControls({ activeVersion, onVersionChange, onNavigate, onToggl
                     </button>
                   )}
 
-                  {(version.scenarios.length > 0 || version.hasPause) && (
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', margin: '5px 0 3px' }} />
-                  )}
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', margin: '5px 0 3px' }} />
                   <button
                     onClick={onReset}
                     onMouseEnter={() => setHovered('reset')}
@@ -616,6 +642,9 @@ export default function App() {
   const [features, setFeatures] = useState<FeatureFlags>(DEFAULT_FLAGS)
   const [systemMode, setSystemMode] = useState<'new' | 'existing'>('existing')
   const [denialsView, setDenialsView] = useState<DenialsViewId>('v2')
+  // V3 detail-page explorations: which concept (A/B/C) is selected.
+  // Only meaningful when denialsView === 'v3'; ignored otherwise.
+  const [v3Concept, setV3Concept] = useState<V3Concept>('A')
   const [existingNav, setExistingNav] = useState<'worklist' | 'ingest' | 'new-denial' | 'new-denial-details'>('worklist')
   const [transitionDir, setTransitionDir] = useState<'forward' | 'back'>('forward')
   const [transitionKey, setTransitionKey] = useState(0)
@@ -661,10 +690,25 @@ export default function App() {
     setV2ReturnTab('InProgress')
     setV3ShowUpload(false)
     setV4Screen(null)
+    if (versionId === 'v3') setV3Concept('A')
     setPageKey(k => k + 1)
   }
 
-  function handlePrototypeNavigate(_view: string, _hasAttachments?: boolean) {
+  function handlePrototypeNavigate(view: string, _hasAttachments?: boolean) {
+    // V3 scenarios route to a specific detail-page concept (A/B/C). Other versions
+    // ignore the scenario string and just reset to the worklist.
+    if (view === 'v3-concept-a' || view === 'v3-concept-b' || view === 'v3-concept-c') {
+      const concept: V3Concept = view === 'v3-concept-a' ? 'A' : view === 'v3-concept-b' ? 'B' : 'C'
+      setSystemMode('existing')
+      setDenialsView('v3')
+      setExistingNav('worklist')
+      setSelectedV2CaseId(null)
+      setV3ShowUpload(false)
+      setV4Screen(null)
+      setV3Concept(concept)
+      setPageKey(k => k + 1)
+      return
+    }
     setSystemMode('existing')
     setExistingNav('worklist')
     setSelectedV2CaseId(null)
@@ -794,9 +838,140 @@ export default function App() {
     return new Date().toISOString().slice(0, 10)
   }
 
-  function handleV2StatusAction(action: string) {
+  // V2: append an audit-log entry to a denial. Stored on the record; not yet
+  // surfaced in UI but available for inspection or future timeline rendering.
+  function appendAudit(d: DenialRecord, action: string, to?: { state: DenialState; status: DenialStatus }, note?: string): DenialRecord {
+    const entry: AuditEntry = {
+      at: new Date().toISOString(),
+      actor: 'ks',
+      action,
+      from: { state: d.state, status: d.status },
+      to,
+      note,
+    }
+    return { ...d, auditLog: [...(d.auditLog ?? []), entry] }
+  }
+
+  // V2: spawn a fresh next-level instance for the upheld parent. The parent
+  // stays Closed with "Upheld - Will Appeal" so the prior round is preserved;
+  // the new instance enters the Ready (InProgress) queue at level++.
+  function spawnNextLevel(parent: DenialRecord): DenialRecord {
+    const nextLevelMap: Record<AppealLevel, AppealLevel> = { L1: 'L2', L2: 'L3', L3: 'L3' }
+    const nextLevel = nextLevelMap[parent.appealLevel]
+    const today = new Date()
+    const deadline = new Date(today); deadline.setDate(deadline.getDate() + 30)
+    const newId = `${parent.id}-${nextLevel.toLowerCase()}-${Date.now().toString(36)}`
+    return {
+      ...parent,
+      id: newId,
+      state: 'InProgress',
+      status: 'In Progress',
+      appealLevel: nextLevel,
+      createdAt: today.toISOString().slice(0, 10),
+      deadline: deadline.toISOString().slice(0, 10),
+      submissionDate: undefined,
+      responseDueDate: undefined,
+      overturnDate: undefined,
+      closedDate: undefined,
+      closeReason: undefined,
+      parentDenialId: parent.id,
+      auditLog: [{
+        at: today.toISOString(),
+        actor: 'system',
+        action: 'spawn-l-plus-1',
+        to: { state: 'InProgress', status: 'In Progress' },
+        note: `Spawned from ${parent.id} (${parent.appealLevel} → ${nextLevel})`,
+      }],
+    }
+  }
+
+  function handleV2StatusAction(action: string, payload?: { outcome?: string; intent?: string }) {
     if (!selectedV2CaseId) return
     const id = selectedV2CaseId
+    // V2: structured "Record Decision" from the two-step modal.
+    if (action === 'record-decision' && payload) {
+      const { outcome, intent } = payload
+      const parent = denials.find(x => x.id === id)
+      if (!parent) return
+      let nextState: DenialState = parent.state
+      let nextStatus: DenialStatus = parent.status
+      let shouldSpawn = false
+      let returnTab: DenialState = 'Closed'
+
+      if (outcome === 'overturned_full') {
+        nextState = 'Overturned'; nextStatus = 'Overturned — Full Payment'; returnTab = 'Closed'
+      } else if (outcome === 'overturned_corrected') {
+        nextState = 'Overturned'; nextStatus = 'Corrected Claim Paid'; returnTab = 'Closed'
+      } else if (outcome === 'overturned_partial' && intent === 'close_out') {
+        nextState = 'Overturned'; nextStatus = 'Overturned — Partial Payment'; returnTab = 'Closed'
+      } else if (outcome === 'overturned_partial' && intent === 'appeal_again') {
+        nextState = 'Closed'; nextStatus = 'Upheld - Will Appeal'; shouldSpawn = true; returnTab = 'InProgress'
+      } else if (outcome === 'upheld' && intent === 'close_out') {
+        nextState = 'Closed'; nextStatus = 'Upheld - Will Not Appeal'; returnTab = 'Closed'
+      } else if (outcome === 'upheld' && intent === 'appeal_again') {
+        nextState = 'Closed'; nextStatus = 'Upheld - Will Appeal'; shouldSpawn = true; returnTab = 'InProgress'
+      } else if (outcome === 'dismissed') {
+        nextState = 'Closed'; nextStatus = 'Dismissed'; returnTab = 'Closed'
+      }
+
+      const dateField = nextState === 'Overturned'
+        ? { overturnDate: todayISO() }
+        : { closedDate: todayISO() }
+
+      setDenials(prev => {
+        const updated = prev.map(d => {
+          if (d.id !== id) return d
+          return appendAudit(
+            { ...d, state: nextState, status: nextStatus, ...dateField },
+            'record-decision',
+            { state: nextState, status: nextStatus },
+            `outcome=${outcome}${intent ? `, intent=${intent}` : ''}`,
+          )
+        })
+        if (shouldSpawn && parent) {
+          updated.push(spawnNextLevel({ ...parent, state: nextState, status: nextStatus, ...dateField }))
+        }
+        return updated
+      })
+      setV2ReturnTab(returnTab)
+      setSelectedV2CaseId(null)
+      return
+    }
+    // V2: un-submit a Submitted denial back to Ready (fat-finger recovery).
+    if (action === 'move-back-to-ready') {
+      setDenials(prev => prev.map(d => d.id === id ? appendAudit(
+        { ...d, state: 'InProgress', status: 'In Progress', submissionDate: undefined },
+        'move-back-to-ready',
+        { state: 'InProgress', status: 'In Progress' },
+      ) : d))
+      setV2ReturnTab('InProgress')
+      setSelectedV2CaseId(null)
+      return
+    }
+    // V2: reopen a Closed/Overturned denial back into the Ready queue.
+    // Role-gated in real product; in the prototype any user can do it.
+    if (action === 'reopen') {
+      setDenials(prev => prev.map(d => d.id === id ? appendAudit(
+        { ...d, state: 'InProgress', status: 'In Progress', overturnDate: undefined, closedDate: undefined, closeReason: undefined },
+        'reopen',
+        { state: 'InProgress', status: 'In Progress' },
+      ) : d))
+      setV2ReturnTab('InProgress')
+      setSelectedV2CaseId(null)
+      return
+    }
+    // V2: user-applied "Closed - Unknown Outcome" — bury an irrecoverable case
+    // without recording a real payer decision. Not auto-applied to anyone.
+    if (action === 'mark-unknown-outcome') {
+      setDenials(prev => prev.map(d => d.id === id ? appendAudit(
+        { ...d, state: 'Closed', status: 'Closed - Unknown Outcome', closedDate: todayISO(), closeReason: 'Unknown Outcome' },
+        'mark-unknown-outcome',
+        { state: 'Closed', status: 'Closed - Unknown Outcome' },
+      ) : d))
+      setV2ReturnTab('Closed')
+      setSelectedV2CaseId(null)
+      return
+    }
     if (action === 'submit' || action === 'send-to-sftp') {
       setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Submitted' as DenialState, status: 'Awaiting Payer Decision' as const, submissionDate: todayISO() } : d))
       setV2ReturnTab('Submitted')
@@ -1115,7 +1290,7 @@ export default function App() {
           )}
 
           {/* Existing system page sub-header */}
-          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && !v4Screen && !(denialsView === 'v2' && existingNav === 'ingest' && v3ShowUpload) && (
+          {systemMode === 'existing' && (existingNav === 'ingest' || existingNav === 'worklist') && !selectedV2CaseId && !v4Screen && !(denialsView === 'v2' && existingNav === 'ingest' && v3ShowUpload) && denialsView !== 'v3' && (
             <Box sx={{ px: 3, height: 56, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
               <Box sx={{ flex: 1 }}>
                 <Typography sx={{ fontSize: '1.125rem', fontWeight: 600, lineHeight: 1.2, color: 'text.primary' }}>
@@ -1241,17 +1416,45 @@ export default function App() {
                 }),
               }}
             >
-            {systemMode === 'existing' && existingNav === 'worklist' && (denialsView === 'v1' || denialsView === 'v2') && selectedV2CaseId && v4Screen === null && (
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v1' && selectedV2CaseId && v4Screen === null && (
               <CasePageAiEditing
                 hideNav
                 onBack={() => setSelectedV2CaseId(null)}
                 caseRecord={visibleDenials.find(d => d.id === selectedV2CaseId) ?? undefined}
                 onStatusAction={handleV2StatusAction}
-                useInlineEditPanel={denialsView === 'v1'}
-                onEditDenialDetails={denialsView === 'v2' ? () => setV4Screen({ type: 'edit-case', denialId: selectedV2CaseId }) : null}
-                hideCompleteReview={denialsView === 'v2'}
+                useInlineEditPanel
+                onEditDenialDetails={null}
+                denialsView="v1"
               />
             )}
+            {/* V2 — Denial detail page uses Concept C from V3 explorations. Reflects whichever case was clicked on the worklist; kebab → Edit denial details opens FullPageEditDenialDetails inline (handled inside V3DetailConceptC). */}
+            {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v2' && selectedV2CaseId && v4Screen === null && (
+              <V3DetailConceptC
+                caseRecord={visibleDenials.find(d => d.id === selectedV2CaseId) ?? undefined}
+                onBack={() => setSelectedV2CaseId(null)}
+              />
+            )}
+            {/* V3 — Denial detail page explorations. Auto-loads the first denial; no worklist click required. */}
+            {systemMode === 'existing' && denialsView === 'v3' && (() => {
+              const caseRecord = visibleDenials[0]
+              if (v3Concept === 'A') {
+                // Concept A: render the live V2 detail page for honest comparison.
+                return (
+                  <CasePageAiEditing
+                    hideNav
+                    onBack={() => { /* V3 mode: stay on the page; widget controls navigation */ }}
+                    caseRecord={caseRecord}
+                    onStatusAction={() => {}}
+                    onEditDenialDetails={null}
+                    hideCompleteReview
+                    useTwoStepDecision
+                    denialsView="v2"
+                  />
+                )
+              }
+              if (v3Concept === 'B') return <V3DetailConceptB caseRecord={caseRecord} />
+              return <V3DetailConceptC caseRecord={caseRecord} />
+            })()}
             {systemMode === 'existing' && existingNav === 'worklist' && denialsView === 'v1' && !selectedV2CaseId && (
               <DenialsWorklistV3Page
                 denials={visibleDenials}
@@ -1662,6 +1865,7 @@ export default function App() {
       {/* ── PrototypeControls (worklist version switcher) ────────────────────── */}
       <PrototypeControls
         activeVersion={denialsView}
+        activeView={denialsView === 'v3' ? `v3-concept-${v3Concept.toLowerCase()}` : undefined}
         onVersionChange={handlePrototypeVersionChange}
         onNavigate={handlePrototypeNavigate}
         onTogglePause={() => {}}

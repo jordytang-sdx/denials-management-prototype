@@ -151,12 +151,15 @@ function isTerminalRecord(record: StagingRecord, mode?: 'existing'): boolean {
   return TERMINAL_CATEGORIES.has(getRecordCategory(record, mode) ?? '')
 }
 
+// Subtle (no-border) treatment — matches the worklist + denial detail page so
+// the badge language stays consistent across V2 surfaces. Borders point at the
+// *-subtle-border tokens which resolve to the same hue as the background.
 const REVIEW_CATEGORY_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  'Data needs review':           { bg: 'var(--colors-badge-variant-warning-background)',  color: 'var(--colors-badge-variant-warning-text)',  border: '1px solid var(--colors-badge-variant-warning-border)'  },
-  'Classification needs review': { bg: 'var(--colors-badge-variant-info-background)',     color: 'var(--colors-badge-variant-info-text)',     border: '1px solid var(--colors-badge-variant-info-border)'     },
-  'Related denial needs review': { bg: 'var(--colors-badge-variant-info-background)',     color: 'var(--colors-badge-variant-info-text)',     border: '1px solid var(--colors-badge-variant-info-border)'     },
-  'Missing Data':                { bg: 'var(--colors-badge-variant-default-background)',  color: 'var(--colors-badge-variant-default-text)',  border: '1px solid var(--colors-badge-variant-default-border)'  },
-  'System error':                { bg: 'var(--colors-badge-variant-error-background)',    color: 'var(--colors-badge-variant-error-text)',    border: '1px solid var(--colors-badge-variant-error-border)'    },
+  'Data needs review':           { bg: 'var(--colors-badge-variant-warning-subtle-background)', color: 'var(--colors-badge-variant-warning-subtle-text)', border: '1px solid var(--colors-badge-variant-warning-subtle-border)' },
+  'Classification needs review': { bg: 'var(--colors-badge-variant-info-subtle-background)',    color: 'var(--colors-badge-variant-info-subtle-text)',    border: '1px solid var(--colors-badge-variant-info-subtle-border)'    },
+  'Related denial needs review': { bg: 'var(--colors-badge-variant-info-subtle-background)',    color: 'var(--colors-badge-variant-info-subtle-text)',    border: '1px solid var(--colors-badge-variant-info-subtle-border)'    },
+  'Missing Data':                { bg: 'var(--colors-badge-variant-default-subtle-background)', color: 'var(--colors-badge-variant-default-subtle-text)', border: '1px solid var(--colors-badge-variant-default-subtle-border)' },
+  'System error':                { bg: 'var(--colors-badge-variant-error-subtle-background)',   color: 'var(--colors-badge-variant-error-subtle-text)',   border: '1px solid var(--colors-badge-variant-error-subtle-border)'   },
 }
 
 const EXISTING_REVIEW_CATEGORY: Partial<Record<NeedsReviewReason, string>> = {

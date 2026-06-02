@@ -90,6 +90,7 @@ import {
   MOCK_DENIAL_LETTER_HTML,
 } from './mockData';
 import { AI_EDIT_SCENARIOS, QUICK_ACTIONS, SCOPE_TRANSFORMS, DEL_STYLE, INS_STYLE } from './aiMockDeltas';
+import DecisionModal from '../v4/DecisionModal';
 import CaseEditDenialDetailsPanel from './CaseEditDenialDetailsPanel';
 
 // ─── CodeValue ────────────────────────────────────────────────────────────────
@@ -839,7 +840,7 @@ function StarRating({ rating, onChange }) {
 
 // ─── CaseHeader ──────────────────────────────────────────────────────────────
 
-function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = null, useInlineEditPanel = false, onEditDenialDetails = null, hideCompleteReview = false }) {
+function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = null, useInlineEditPanel = false, onEditDenialDetails = null, hideCompleteReview = false, useTwoStepDecision = false }) {
   const { caseData, ui } = state;
   const statusCfg = STATUS_CONFIG[caseData.status] || STATUS_CONFIG.Archived;
   const ratingLabel = RATING_LABELS[caseData.rating] || 'Needs Rating';
@@ -960,9 +961,15 @@ function CaseHeader({ state, dispatch, onBack = () => {}, onStatusMenuClick = nu
       {/* ── Status Menu ── */}
       <Menu anchorEl={ui.statusMenuAnchor} open={Boolean(ui.statusMenuAnchor)} onClose={() => dispatch({ type: 'CLOSE_STATUS_MENU' })} PaperProps={{ sx: { minWidth: 220 } }}>
         {(caseData.status === 'Submitted'
-          ? ['Overturned', 'Upheld - Will Appeal', 'Upheld - Will Not Appeal', 'Will Not Submit', 'Return to Review']
+          ? (useTwoStepDecision
+              ? ['Record Decision', 'Move back to Ready']
+              : ['Overturned', 'Upheld - Will Appeal', 'Upheld - Will Not Appeal', 'Will Not Submit', 'Return to Review'])
           : caseData.status === 'Overturned'
-          ? ['Upheld - Will Not Appeal', 'Upheld - Will Appeal', 'Remove Outcome', 'Return to Review']
+          ? (useTwoStepDecision
+              ? ['Reopen']
+              : ['Upheld - Will Not Appeal', 'Upheld - Will Appeal', 'Remove Outcome', 'Return to Review'])
+          : (useTwoStepDecision && (caseData.status === 'Will Not Submit' || caseData.status === 'Closed'))
+          ? ['Reopen', 'Mark as Unknown Outcome']
           : [
               ...(hideCompleteReview && caseData.status === 'Ready for Review' ? ['Send to SFTP'] : []),
               ...STATUS_WORKFLOW_ACTIONS.filter(a =>
@@ -1153,7 +1160,8 @@ function formatRelativeTime(date) {
 
 // ─── LetterToolbar ────────────────────────────────────────────────────────────
 
-function LetterToolbar({ editorRef, saveStatus, savedAt, versionCount, letterMenuAnchor, onCopy, onCreateVersion, onViewVersionHistory, autosaveEnabled, viewOnly, onToggleAutosave, onToggleViewOnly, onManualSave, dispatch }) {
+function LetterToolbar({ editorRef, saveStatus, savedAt, versionCount, letterMenuAnchor, onCopy, onCreateVersion, onViewVersionHistory, autosaveEnabled, viewOnly, onToggleAutosave, onToggleViewOnly, onManualSave, dispatch, isV2 = false }) {
+  const [exportAnchor, setExportAnchor] = useState(null);
   const exec = (cmd, val = null) => {
     editorRef.current?.focus();
     document.execCommand(cmd, false, val);
@@ -1164,30 +1172,54 @@ function LetterToolbar({ editorRef, saveStatus, savedAt, versionCount, letterMen
       <IconButton
         size="small"
         onMouseDown={(e) => { e.preventDefault(); onClick(); }}
-        sx={{ width: 34, height: 34, borderRadius: '4px', border: '1px solid #D3D3D3', color: '#424242', '&:hover': { bgcolor: '#F5F5F5' } }}
+        sx={
+          isV2
+            ? {
+                width: 30, height: 30, borderRadius: '6px', border: 'none',
+                color: '#616161',
+                '&:hover': { bgcolor: 'rgba(0,0,0,0.05)', color: '#212121' },
+              }
+            : { width: 34, height: 34, borderRadius: '4px', border: '1px solid #D3D3D3', color: '#424242', '&:hover': { bgcolor: '#F5F5F5' } }
+        }
       >
         {children}
       </IconButton>
     </Tooltip>
   );
 
+  // V2 ghost-style action button — flat, no border, hover bg only (Linear/Notion pattern)
+  const ghostActionSx = {
+    fontSize: '0.75rem', fontWeight: 500, textTransform: 'none',
+    px: 1, height: 30, minWidth: 0, borderRadius: '6px',
+    color: '#424242', border: 'none', boxShadow: 'none',
+    '&:hover': { bgcolor: 'rgba(0,0,0,0.05)', color: '#212121', border: 'none', boxShadow: 'none' },
+  };
+
+  // V2 thin vertical group divider
+  const v2Divider = (
+    <Box sx={{ width: '1px', height: 18, bgcolor: '#E0E0E0', mx: 0.5, alignSelf: 'center' }} />
+  );
+
   return (
     <Box
       sx={{
-        display: 'flex', alignItems: 'center', gap: 0.5,
-        px: 2, py: 0.75,
-        bgcolor: '#fff', borderBottom: '1px solid #EEEEEE',
+        display: 'flex', alignItems: 'center', gap: isV2 ? 0.25 : 0.5,
+        px: 2, py: isV2 ? 0.625 : 0.75,
+        bgcolor: '#fff',
+        borderBottom: isV2 ? '1px solid #F0F0F0' : '1px solid #EEEEEE',
         flexShrink: 0, flexWrap: 'wrap',
       }}
     >
-      <FmtBtn title="Bold" onClick={() => exec('bold')}><FormatBoldIcon sx={{ fontSize: 21 }} /></FmtBtn>
-      <FmtBtn title="Italic" onClick={() => exec('italic')}><FormatItalicIcon sx={{ fontSize: 21 }} /></FmtBtn>
-      <FmtBtn title="Underline" onClick={() => exec('underline')}><FormatUnderlinedIcon sx={{ fontSize: 21 }} /></FmtBtn>
-      <FmtBtn title="Align left" onClick={() => exec('justifyLeft')}><FormatAlignLeftIcon sx={{ fontSize: 21 }} /></FmtBtn>
-      <FmtBtn title="Align center" onClick={() => exec('justifyCenter')}><FormatAlignCenterIcon sx={{ fontSize: 21 }} /></FmtBtn>
-      <FmtBtn title="Align right" onClick={() => exec('justifyRight')}><FormatAlignRightIcon sx={{ fontSize: 21 }} /></FmtBtn>
-      <FmtBtn title="Justify" onClick={() => exec('justifyFull')}><FormatAlignJustifyIcon sx={{ fontSize: 21 }} /></FmtBtn>
-      <FmtBtn title="Undo" onClick={() => exec('undo')}><UndoIcon sx={{ fontSize: 21 }} /></FmtBtn>
+      <FmtBtn title="Bold" onClick={() => exec('bold')}><FormatBoldIcon sx={{ fontSize: isV2 ? 18 : 21 }} /></FmtBtn>
+      <FmtBtn title="Italic" onClick={() => exec('italic')}><FormatItalicIcon sx={{ fontSize: isV2 ? 18 : 21 }} /></FmtBtn>
+      <FmtBtn title="Underline" onClick={() => exec('underline')}><FormatUnderlinedIcon sx={{ fontSize: isV2 ? 18 : 21 }} /></FmtBtn>
+      {isV2 && v2Divider}
+      <FmtBtn title="Align left" onClick={() => exec('justifyLeft')}><FormatAlignLeftIcon sx={{ fontSize: isV2 ? 18 : 21 }} /></FmtBtn>
+      <FmtBtn title="Align center" onClick={() => exec('justifyCenter')}><FormatAlignCenterIcon sx={{ fontSize: isV2 ? 18 : 21 }} /></FmtBtn>
+      <FmtBtn title="Align right" onClick={() => exec('justifyRight')}><FormatAlignRightIcon sx={{ fontSize: isV2 ? 18 : 21 }} /></FmtBtn>
+      <FmtBtn title="Justify" onClick={() => exec('justifyFull')}><FormatAlignJustifyIcon sx={{ fontSize: isV2 ? 18 : 21 }} /></FmtBtn>
+      {isV2 && v2Divider}
+      <FmtBtn title="Undo" onClick={() => exec('undo')}><UndoIcon sx={{ fontSize: isV2 ? 18 : 21 }} /></FmtBtn>
 
       <Box sx={{ flex: 1, minWidth: 8 }} />
 
@@ -1225,86 +1257,135 @@ function LetterToolbar({ editorRef, saveStatus, savedAt, versionCount, letterMen
           )}
         </Box>
 
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5, my: 0.5 }} />
+        {isV2 ? v2Divider : <Divider orientation="vertical" flexItem sx={{ mx: 0.5, my: 0.5 }} />}
         {!autosaveEnabled && !viewOnly && (
           <Button
             size="small"
-            startIcon={<SaveIcon sx={{ fontSize: '21px !important' }} />}
+            startIcon={<SaveIcon sx={{ fontSize: isV2 ? '16px !important' : '21px !important' }} />}
             onClick={onManualSave}
-            variant={saveStatus === 'unsaved' ? 'contained' : 'outlined'}
-            sx={{
-              fontSize: '0.7rem', px: 1.25, py: '6.5px', height: 34,
-            }}
+            variant={isV2 ? 'text' : (saveStatus === 'unsaved' ? 'contained' : 'outlined')}
+            sx={isV2 ? ghostActionSx : { fontSize: '0.7rem', px: 1.25, py: '6.5px', height: 34 }}
           >
             Save
           </Button>
         )}
         <Button
           size="small"
-          startIcon={<ContentCopyIcon sx={{ fontSize: '21px !important' }} />}
+          startIcon={<ContentCopyIcon sx={{ fontSize: isV2 ? '16px !important' : '21px !important' }} />}
           onClick={onCopy}
-          variant="outlined"
-          sx={{ fontSize: '0.7rem', px: 1.25, py: '6.5px', height: 34 }}
+          variant={isV2 ? 'text' : 'outlined'}
+          sx={isV2 ? ghostActionSx : { fontSize: '0.7rem', px: 1.25, py: '6.5px', height: 34 }}
         >
           Copy
         </Button>
         <Button
           size="small"
-          startIcon={<AutorenewIcon sx={{ fontSize: '21px !important' }} />}
+          startIcon={<AutorenewIcon sx={{ fontSize: isV2 ? '16px !important' : '21px !important' }} />}
           onClick={onCreateVersion}
-          variant="outlined"
-          sx={{ fontSize: '0.7rem', px: 1.25, py: '6.5px', height: 34 }}
+          variant={isV2 ? 'text' : 'outlined'}
+          sx={isV2 ? ghostActionSx : { fontSize: '0.7rem', px: 1.25, py: '6.5px', height: 34 }}
         >
-          Create New Version
+          {isV2 ? 'New Version' : 'Create New Version'}
         </Button>
-        <IconButton
-          size="small"
-          onClick={(e) => dispatch({ type: 'OPEN_LETTER_MENU', payload: e.currentTarget })}
-          sx={{ border: '1px solid var(--colors-interactive-default-border)', color: 'var(--colors-interactive-ghost-text)', width: 34, height: 34, borderRadius: '4px' }}
-        >
-          <MoreHorizIcon sx={{ fontSize: 17.5 }} />
-        </IconButton>
+
+        {isV2 ? (
+          <>
+            <Button
+              size="small"
+              startIcon={<HistoryIcon sx={{ fontSize: '16px !important' }} />}
+              onClick={onViewVersionHistory}
+              variant="text"
+              sx={ghostActionSx}
+            >
+              History
+            </Button>
+            <Button
+              size="small"
+              startIcon={<InsertDriveFileIcon sx={{ fontSize: '16px !important' }} />}
+              endIcon={<ArrowDropDownIcon sx={{ fontSize: '18px !important', ml: '-2px' }} />}
+              onClick={(e) => setExportAnchor(e.currentTarget)}
+              variant="text"
+              sx={ghostActionSx}
+            >
+              Export
+            </Button>
+          </>
+        ) : (
+          <IconButton
+            size="small"
+            onClick={(e) => dispatch({ type: 'OPEN_LETTER_MENU', payload: e.currentTarget })}
+            sx={{ border: '1px solid var(--colors-interactive-default-border)', color: 'var(--colors-interactive-ghost-text)', width: 34, height: 34, borderRadius: '4px' }}
+          >
+            <MoreHorizIcon sx={{ fontSize: 17.5 }} />
+          </IconButton>
+        )}
       </Box>
 
-      <Menu
-        anchorEl={letterMenuAnchor}
-        open={Boolean(letterMenuAnchor)}
-        onClose={() => dispatch({ type: 'CLOSE_LETTER_MENU' })}
-        PaperProps={{ sx: { minWidth: 210 } }}
-      >
-        <MenuItem onClick={() => { dispatch({ type: 'CLOSE_LETTER_MENU' }); window.open(window.location.href, '_blank'); }} sx={{ fontSize: '0.875rem' }}>
-          <ListItemIcon><OpenInNewIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Open letter in new tab</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={() => dispatch({ type: 'CLOSE_LETTER_MENU' })} sx={{ fontSize: '0.875rem' }}>
-          <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Print</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={() => dispatch({ type: 'CLOSE_LETTER_MENU' })} sx={{ fontSize: '0.875rem' }}>
-          <ListItemIcon><InsertDriveFileIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Export</ListItemText>
-          <ChevronRightIcon sx={{ fontSize: 16, color: '#BDBDBD' }} />
-        </MenuItem>
-        <Divider />
-        <MenuItem onClick={() => { dispatch({ type: 'CLOSE_LETTER_MENU' }); onViewVersionHistory(); }} sx={{ fontSize: '0.875rem' }}>
-          <ListItemIcon><HistoryIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>See version history</ListItemText>
-        </MenuItem>
-        <Divider />
-        <Box sx={{ px: 2, pt: 1, pb: 0.25 }}>
-          <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: '#9E9E9E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Editor settings
-          </Typography>
-        </Box>
-        <MenuItem onClick={onToggleAutosave} sx={{ fontSize: '0.875rem', justifyContent: 'space-between', pr: 1 }}>
-          <ListItemText>Autosave</ListItemText>
-          <Switch size="small" checked={autosaveEnabled} onClick={e => e.stopPropagation()} onChange={onToggleAutosave} />
-        </MenuItem>
-        <MenuItem onClick={onToggleViewOnly} sx={{ fontSize: '0.875rem', justifyContent: 'space-between', pr: 1 }}>
-          <ListItemText>View only</ListItemText>
-          <Switch size="small" checked={viewOnly} onClick={e => e.stopPropagation()} onChange={onToggleViewOnly} />
-        </MenuItem>
-      </Menu>
+      {/* V2 Export menu — replaces the kebab. Open-in-tab + Print + PDF live here. */}
+      {isV2 && (
+        <Menu
+          anchorEl={exportAnchor}
+          open={Boolean(exportAnchor)}
+          onClose={() => setExportAnchor(null)}
+          PaperProps={{ sx: { minWidth: 200, border: '1px solid #E0E0E0', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', borderRadius: '8px' } }}
+        >
+          <MenuItem onClick={() => { setExportAnchor(null); window.open(window.location.href, '_blank'); }} sx={{ fontSize: '0.875rem' }}>
+            <ListItemIcon><OpenInNewIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Open in new tab</ListItemText>
+          </MenuItem>
+          <MenuItem onClick={() => setExportAnchor(null)} sx={{ fontSize: '0.875rem' }}>
+            <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Print</ListItemText>
+          </MenuItem>
+          <MenuItem onClick={() => setExportAnchor(null)} sx={{ fontSize: '0.875rem' }}>
+            <ListItemIcon><InsertDriveFileIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Download as PDF</ListItemText>
+          </MenuItem>
+        </Menu>
+      )}
+
+      {/* V1 legacy kebab menu — preserved for the V1 path */}
+      {!isV2 && (
+        <Menu
+          anchorEl={letterMenuAnchor}
+          open={Boolean(letterMenuAnchor)}
+          onClose={() => dispatch({ type: 'CLOSE_LETTER_MENU' })}
+          PaperProps={{ sx: { minWidth: 210 } }}
+        >
+          <MenuItem onClick={() => { dispatch({ type: 'CLOSE_LETTER_MENU' }); window.open(window.location.href, '_blank'); }} sx={{ fontSize: '0.875rem' }}>
+            <ListItemIcon><OpenInNewIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Open letter in new tab</ListItemText>
+          </MenuItem>
+          <MenuItem onClick={() => dispatch({ type: 'CLOSE_LETTER_MENU' })} sx={{ fontSize: '0.875rem' }}>
+            <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Print</ListItemText>
+          </MenuItem>
+          <MenuItem onClick={() => dispatch({ type: 'CLOSE_LETTER_MENU' })} sx={{ fontSize: '0.875rem' }}>
+            <ListItemIcon><InsertDriveFileIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Export</ListItemText>
+            <ChevronRightIcon sx={{ fontSize: 16, color: '#BDBDBD' }} />
+          </MenuItem>
+          <Divider />
+          <MenuItem onClick={() => { dispatch({ type: 'CLOSE_LETTER_MENU' }); onViewVersionHistory(); }} sx={{ fontSize: '0.875rem' }}>
+            <ListItemIcon><HistoryIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>See version history</ListItemText>
+          </MenuItem>
+          <Divider />
+          <Box sx={{ px: 2, pt: 1, pb: 0.25 }}>
+            <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: '#9E9E9E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Editor settings
+            </Typography>
+          </Box>
+          <MenuItem onClick={onToggleAutosave} sx={{ fontSize: '0.875rem', justifyContent: 'space-between', pr: 1 }}>
+            <ListItemText>Autosave</ListItemText>
+            <Switch size="small" checked={autosaveEnabled} onClick={e => e.stopPropagation()} onChange={onToggleAutosave} />
+          </MenuItem>
+          <MenuItem onClick={onToggleViewOnly} sx={{ fontSize: '0.875rem', justifyContent: 'space-between', pr: 1 }}>
+            <ListItemText>View only</ListItemText>
+            <Switch size="small" checked={viewOnly} onClick={e => e.stopPropagation()} onChange={onToggleViewOnly} />
+          </MenuItem>
+        </Menu>
+      )}
     </Box>
   );
 }
@@ -3609,9 +3690,627 @@ function VersionHistoryLayout({ selectedVersionId, onSelectVersion, onBack, onRe
   );
 }
 
+// ─── V2 components ────────────────────────────────────────────────────────────
+// V2 is a redesigned case workspace optimized for the clinical appeals writer.
+// Layout: single sticky object header strip + 2-pane (work surface + tabbed right rail).
+// The CaseInfoPanel metadata block above the letter is removed; identifiers and
+// case context are compressed into the header strip and a Details rail tab.
+
+function V2DeadlineChip({ deadline }) {
+  // Best-effort parse of "MM/DD/YYYY" → days until. Falls back to a neutral chip.
+  const days = (() => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(deadline || '');
+    if (!m) return null;
+    const target = new Date(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((target.getTime() - today.getTime()) / 86400000);
+  })();
+  const isOverdue = days != null && days < 0;
+  const isUrgent = days != null && days >= 0 && days <= 7;
+  const isWarn   = days != null && days > 7 && days <= 14;
+  // Filled badge palette — matches the new status/type badge family.
+  const palette = isOverdue
+    ? { bg: '#FCE8E8', color: '#B23B3B' }
+    : isUrgent
+      ? { bg: '#FCE8E8', color: '#B23B3B' }
+      : isWarn
+        ? { bg: '#FFF1DB', color: '#A8590A' }
+        : { bg: '#E6F4FA', color: '#1E6A88' };
+  const label = days == null
+    ? `Due ${deadline}`
+    : days < 0
+      ? `Overdue by ${Math.abs(days)}d`
+      : days === 0
+        ? 'Due today'
+        : `Due in ${days}d`;
+  return (
+    <Tooltip title={`Appeal deadline: ${deadline}`}>
+      <Box sx={{
+        display: 'inline-flex', alignItems: 'center', gap: 0.375,
+        height: 22, px: 0.875, borderRadius: '6px',
+        bgcolor: palette.bg, color: palette.color,
+        fontSize: '0.6875rem', fontWeight: 600,
+        fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+        letterSpacing: '0.01em',
+      }}>
+        <AccessTimeIcon sx={{ fontSize: 12 }} />
+        {label}
+      </Box>
+    </Tooltip>
+  );
+}
+
+function V2IdChip({ label, value }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e) => {
+    e.stopPropagation();
+    if (!value || value === 'N/A') return;
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    });
+  };
+  return (
+    <Tooltip title={copied ? 'Copied' : `Copy ${label}`}>
+      <Box
+        component="button"
+        onClick={handleCopy}
+        sx={{
+          all: 'unset', cursor: value && value !== 'N/A' ? 'pointer' : 'default',
+          display: 'inline-flex', alignItems: 'center', gap: 0.5,
+          height: 24, px: 1, borderRadius: '4px',
+          bgcolor: 'transparent', '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
+          fontSize: '0.75rem', color: '#616161',
+        }}
+      >
+        <Typography component="span" sx={{ fontSize: '0.6875rem', fontWeight: 500, color: '#9E9E9E', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          {label}
+        </Typography>
+        <Typography component="span" sx={{ fontSize: '0.8125rem', color: '#212121', fontVariantNumeric: 'tabular-nums' }}>
+          {value || '—'}
+        </Typography>
+      </Box>
+    </Tooltip>
+  );
+}
+
+function V2ObjectHeader({ state, dispatch, onBack, onStatusMenuClick, useInlineEditPanel, onEditDenialDetails, hideCompleteReview, useTwoStepDecision }) {
+  const { caseData, ui } = state;
+  const statusCfg = STATUS_CONFIG[caseData.status] || STATUS_CONFIG.Archived;
+
+  // Primary CTA depends on current status — what is the most likely next forward action?
+  const primaryAction = (() => {
+    if (caseData.status === 'Ready for Review') {
+      return hideCompleteReview
+        ? { label: 'Mark as Submitted', action: 'Mark as Submitted' }
+        : { label: 'Complete Review', action: 'Complete Review' };
+    }
+    if (caseData.status === 'Ready to Submit') return { label: 'Submit', action: 'Submit' };
+    if (caseData.status === 'Submitted')       return useTwoStepDecision
+      ? { label: 'Record Decision', action: 'Record Decision' }
+      : null;
+    return null;
+  })();
+
+  const handlePrimary = () => {
+    if (!primaryAction || !onStatusMenuClick) return;
+    onStatusMenuClick(primaryAction.action);
+  };
+
+  // Compute the full list of legal status transitions for this state, matching
+  // the existing menu logic. The split-button chevron (or fallback "Change Status")
+  // surfaces every transition EXCEPT the one already wired to the primary CTA.
+  const allStatusActions = (
+    caseData.status === 'Submitted'
+      ? (useTwoStepDecision ? ['Record Decision', 'Move back to Ready'] : ['Overturned', 'Upheld - Will Appeal', 'Upheld - Will Not Appeal', 'Will Not Submit', 'Return to Review'])
+      : caseData.status === 'Overturned'
+        ? (useTwoStepDecision ? ['Reopen'] : ['Upheld - Will Not Appeal', 'Upheld - Will Appeal', 'Remove Outcome', 'Return to Review'])
+        : (useTwoStepDecision && (caseData.status === 'Will Not Submit' || caseData.status === 'Closed'))
+          ? ['Reopen', 'Mark as Unknown Outcome']
+          : [
+              ...(hideCompleteReview && caseData.status === 'Ready for Review' ? ['Send to SFTP'] : []),
+              ...STATUS_WORKFLOW_ACTIONS.filter(a =>
+                !(a === 'Retry Letter' && caseData.status === 'Ready for Review') &&
+                !(a === 'Complete Review' && hideCompleteReview) &&
+                !(a === 'Archive' && hideCompleteReview)
+              ).map(a => a === 'Submit' && hideCompleteReview && caseData.status === 'Ready for Review' ? 'Mark as Submitted' : a),
+            ]
+  );
+  const alternateActions = allStatusActions.filter(a => a !== primaryAction?.action);
+
+  return (
+    <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid #EEEEEE', flexShrink: 0 }}>
+      {/* Row 1 — back · patient · status · type · stakes · CTA · kebab.
+          Children are nowrap + flexShrink:0; the inner container clips overflow so
+          a narrow viewport truncates context from the right instead of wrapping. */}
+      <Box sx={{ px: 2.5, pt: 1.25, pb: 0.75, display: 'flex', alignItems: 'center', gap: 1.25, justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          <Tooltip title="Back to Worklist">
+            <IconButton
+              size="small"
+              onClick={onBack}
+              sx={{
+                width: 28, height: 28, borderRadius: '6px', color: '#616161', flexShrink: 0,
+                '&:hover': { bgcolor: 'rgba(0,0,0,0.05)', color: '#212121' },
+              }}
+            >
+              <ChevronLeftIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </Tooltip>
+
+          <Typography sx={{ fontWeight: 600, fontSize: '1rem', color: '#272727', letterSpacing: '-0.01em', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {caseData.patientName}
+          </Typography>
+
+          {/* Status badge — quiet, display-only */}
+          <Box
+            sx={{
+              display: 'inline-flex', alignItems: 'center', gap: 0.5,
+              height: 22, px: 0.875, borderRadius: '6px',
+              bgcolor: statusCfg.bg, color: statusCfg.color,
+              fontSize: '0.6875rem', fontWeight: 600,
+              userSelect: 'none', letterSpacing: '0.01em',
+              whiteSpace: 'nowrap', flexShrink: 0,
+            }}
+          >
+            <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: statusCfg.color, flexShrink: 0 }} />
+            {caseData.status}
+          </Box>
+
+          {/* Denial type — same badge family as status, neutral palette */}
+          <Box sx={{
+            display: 'inline-flex', alignItems: 'center',
+            height: 22, px: 0.875, borderRadius: '6px',
+            bgcolor: '#EEF2F6', color: '#37536C',
+            fontSize: '0.6875rem', fontWeight: 600, letterSpacing: '0.01em',
+            whiteSpace: 'nowrap', flexShrink: 0,
+          }}>
+            {caseData.type || 'Denial'}
+          </Box>
+
+          <Box sx={{ width: '1px', height: 16, bgcolor: '#E0E0E0', mx: 0.5, flexShrink: 0 }} />
+
+          <Typography sx={{ fontSize: '0.875rem', fontWeight: 700, color: '#212121', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {caseData.totalBilledAmount}
+          </Typography>
+          <Typography sx={{ fontSize: '0.75rem', color: '#9E9E9E', whiteSpace: 'nowrap', flexShrink: 0 }}>at risk</Typography>
+          <V2DeadlineChip deadline={caseData.appealDeadline} />
+          <Typography sx={{ fontSize: '0.75rem', color: '#BDBDBD', flexShrink: 0 }}>·</Typography>
+          <Typography sx={{ fontSize: '0.8125rem', color: '#616161', whiteSpace: 'nowrap', flexShrink: 0 }}>{caseData.payer}</Typography>
+          <Typography sx={{ fontSize: '0.75rem', color: '#BDBDBD', flexShrink: 0 }}>·</Typography>
+          <Typography sx={{ fontSize: '0.8125rem', color: '#616161', whiteSpace: 'nowrap', flexShrink: 0 }}>{caseData.level}</Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
+
+          {/* Primary CTA + split chevron (GitHub PR pattern) */}
+          {primaryAction ? (
+            <Box sx={{ display: 'inline-flex' }}>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handlePrimary}
+                sx={{
+                  bgcolor: '#157d9d', textTransform: 'none', fontWeight: 600, fontSize: '0.8125rem',
+                  height: 32, px: 1.5, boxShadow: 'none',
+                  borderRadius: alternateActions.length > 0 ? '4px 0 0 4px' : '4px',
+                  '&:hover': { bgcolor: '#11647e', boxShadow: 'none' },
+                }}
+              >
+                {primaryAction.label}
+              </Button>
+              {alternateActions.length > 0 && (
+                <Tooltip title="Other status changes">
+                  <Button
+                    variant="contained"
+                    size="small"
+                    aria-label="Other status changes"
+                    onClick={(e) => dispatch({ type: 'OPEN_STATUS_MENU', payload: e.currentTarget })}
+                    sx={{
+                      bgcolor: '#157d9d', minWidth: 0, px: 0.5,
+                      height: 32, boxShadow: 'none',
+                      borderRadius: '0 4px 4px 0',
+                      borderLeft: '1px solid rgba(255,255,255,0.25)',
+                      '&:hover': { bgcolor: '#11647e', boxShadow: 'none' },
+                    }}
+                  >
+                    <ArrowDropDownIcon sx={{ fontSize: '20px !important', color: '#fff' }} />
+                  </Button>
+                </Tooltip>
+              )}
+            </Box>
+          ) : alternateActions.length > 0 ? (
+            <Button
+              variant="outlined"
+              size="small"
+              endIcon={<ArrowDropDownIcon sx={{ fontSize: '18px !important', ml: '-4px' }} />}
+              onClick={(e) => dispatch({ type: 'OPEN_STATUS_MENU', payload: e.currentTarget })}
+              sx={{
+                textTransform: 'none', fontWeight: 600, fontSize: '0.8125rem',
+                height: 32, px: 1.5, color: '#157d9d', borderColor: '#157d9d',
+                '&:hover': { borderColor: '#11647e', bgcolor: 'rgba(21,125,157,0.04)' },
+              }}
+            >
+              Change Status
+            </Button>
+          ) : null}
+
+          <Tooltip title="More options">
+            <IconButton
+              size="small"
+              onClick={(e) => dispatch({ type: 'OPEN_CASE_MENU', payload: e.currentTarget })}
+              sx={{
+                width: 28, height: 28, borderRadius: '6px',
+                border: 'none', color: '#9E9E9E',
+                '&:hover': { bgcolor: 'rgba(0,0,0,0.05)', color: '#212121' },
+              }}
+            >
+              <MoreHorizIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
+
+      {/* Row 2 — compressed identifier strip + edit-details icon. No timestamp here:
+          case-created audit info lives in the Activity tab where it belongs. */}
+      <Box sx={{ px: 2, pb: 0.625, display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, overflow: 'hidden' }}>
+        <V2IdChip label="HAR" value={caseData.har} />
+        <V2IdChip label="MRN" value={caseData.mrn} />
+        <V2IdChip label="Visit" value={caseData.visitId} />
+        <V2IdChip label="Account" value={caseData.patientAccount} />
+        <V2IdChip label="DRG" value={(caseData.denialDescription || '').match(/DRG\s+\d+/)?.[0] || '—'} />
+        <Box sx={{ flex: 1 }} />
+        <Tooltip title="Edit denial details">
+          <IconButton
+            size="small"
+            onClick={() => {
+              if (onEditDenialDetails) onEditDenialDetails();
+              else dispatch({ type: useInlineEditPanel ? 'OPEN_INLINE_EDIT_PANEL' : 'NAV_TO_EDIT' });
+            }}
+            sx={{
+              width: 24, height: 24, borderRadius: '4px', color: '#9E9E9E',
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.05)', color: '#212121' },
+            }}
+          >
+            <EditIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
+      {/* Status alternates menu — anchored to the split chevron (or to "Change Status"
+          when no primary action exists). Excludes the primary action to avoid duplication. */}
+      <Menu
+        anchorEl={ui.statusMenuAnchor}
+        open={Boolean(ui.statusMenuAnchor)}
+        onClose={() => dispatch({ type: 'CLOSE_STATUS_MENU' })}
+        PaperProps={{ sx: { minWidth: 220, border: '1px solid #E0E0E0', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', borderRadius: '8px' } }}
+      >
+        {alternateActions.map((a) => (
+          <MenuItem
+            key={a}
+            onClick={() => {
+              dispatch({ type: 'CLOSE_STATUS_MENU' });
+              if (onStatusMenuClick) onStatusMenuClick(a);
+              else dispatch({ type: 'SET_STATUS', payload: a });
+            }}
+            sx={{ fontSize: '0.875rem', color: (a === 'Upheld - Will Not Appeal' || a === 'Will Not Submit') ? '#616161' : undefined }}
+          >
+            {a}
+          </MenuItem>
+        ))}
+      </Menu>
+
+      {/* Case overflow — destructive-actions only. Edit details is hoisted to the
+          ID strip; Open-in-tab is left to native browser middle/right-click. */}
+      <Menu
+        anchorEl={ui.caseMenuAnchor}
+        open={Boolean(ui.caseMenuAnchor)}
+        onClose={() => dispatch({ type: 'CLOSE_CASE_MENU' })}
+        PaperProps={{ sx: { minWidth: 180, border: '1px solid #E0E0E0', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', borderRadius: '8px' } }}
+      >
+        <MenuItem onClick={() => dispatch({ type: 'OPEN_DELETE_DIALOG' })} sx={{ fontSize: '0.875rem', color: 'error.main' }}>
+          <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+          <ListItemText>Delete denial</ListItemText>
+        </MenuItem>
+      </Menu>
+    </Box>
+  );
+}
+
+function V2MainContent({ state, dispatch, view, selectedVersionId, onViewVersionHistory, onBack, onRestore, saveStatus, setSaveStatus, savedAt, setSavedAt, getEditorContentRef, autosaveEnabled, viewOnly, onToggleAutosave, onToggleViewOnly, onManualSave, onCreateVersion, scrollToDiff = false }) {
+  const editorRef = useRef(null);
+  const [selectedText, setSelectedText] = useState('');
+  const isVersionHistory = view === 'version-history';
+  const selectedVersion = state.letter.versions.find(v => v.id === selectedVersionId) || state.letter.versions[state.letter.versions.length - 1];
+  const { aiEdit, caseData } = state;
+  const prevAiStatusRef = useRef(aiEdit.status);
+  const autosaveTimer = useRef(null);
+
+  useEffect(() => {
+    getEditorContentRef.current = () => editorRef.current?.innerHTML ?? '';
+    return () => { getEditorContentRef.current = null; };
+  }, []);
+
+  useEffect(() => {
+    if (!scrollToDiff) return;
+    const timer = setTimeout(() => {
+      const firstDel = editorRef.current?.querySelector('del');
+      if (firstDel) firstDel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => () => clearTimeout(autosaveTimer.current), []);
+
+  useEffect(() => {
+    const prev = prevAiStatusRef.current;
+    prevAiStatusRef.current = aiEdit.status;
+    if (prev === 'loading' && aiEdit.status === 'pending-review') {
+      if (editorRef.current && aiEdit.pendingContent) {
+        editorRef.current.innerHTML = aiEdit.pendingContent;
+        setTimeout(() => {
+          const first = editorRef.current?.querySelector('del, ins');
+          if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+    }
+    if (prev !== 'idle' && aiEdit.status === 'idle') {
+      if (editorRef.current) editorRef.current.innerHTML = state.letter.content;
+    }
+  }, [aiEdit.status]);
+
+  const triggerAutosave = () => {
+    setSaveStatus('unsaved');
+    if (!autosaveEnabled) return;
+    clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      setSaveStatus('saving');
+      setTimeout(() => {
+        const content = editorRef.current?.innerHTML ?? '';
+        dispatch({ type: 'SAVE_LETTER', payload: content });
+        setSaveStatus('saved');
+        setSavedAt(new Date());
+      }, 400);
+    }, 4500);
+  };
+
+  useEffect(() => {
+    setSaveStatus('saved');
+    setSavedAt(new Date());
+    clearTimeout(autosaveTimer.current);
+  }, [state.letter.versions.find(v => v.isCurrentDraft)?.id]);
+
+  const handleCopy = async () => {
+    const text = editorRef.current?.innerText || '';
+    try { await navigator.clipboard.writeText(text); } catch { /* noop */ }
+    dispatch({ type: 'SHOW_SNACKBAR', payload: 'Letter copied to clipboard' });
+  };
+
+  const isAiLoading = aiEdit.status === 'loading';
+  const isAiPendingReview = aiEdit.status === 'pending-review';
+  const isAiActive = isAiLoading || isAiPendingReview;
+
+  return (
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: '#fff', position: 'relative' }}>
+      {isVersionHistory ? (
+        <>
+          <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid #E0E0E0', px: 3, py: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <Button variant="outlined" startIcon={<ChevronLeftIcon sx={{ fontSize: '18px !important', mr: '-4px' }} />} onClick={onBack} size="small" sx={{ fontSize: '0.8125rem', px: 1.5 }}>
+              Back to Current Draft
+            </Button>
+            <Button variant="contained" startIcon={<RestoreIcon sx={{ fontSize: '18px !important' }} />} onClick={() => onRestore(selectedVersion.id, selectedVersion.content)} disabled={selectedVersion.isCurrentDraft} size="small" sx={{ fontSize: '0.8125rem', px: 1.5 }}>
+              Restore This Draft
+            </Button>
+          </Box>
+          <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2.5, bgcolor: '#F6F8FA' }}>
+            <Box sx={{ bgcolor: '#fff', border: '1px solid #D3D3D3', borderRadius: '2px', px: '20px', py: '14px', maxWidth: 820, mx: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div dangerouslySetInnerHTML={{ __html: selectedVersion.content }} style={{ fontFamily: 'Roboto, sans-serif', fontSize: '14px', lineHeight: '1.5', color: '#616161', minHeight: 560 }} />
+            </Box>
+          </Box>
+        </>
+      ) : (
+        <>
+          {/* Denial-reason callout — persistent reminder of WHY we're writing this */}
+          {caseData.denialDescription && (
+            <Box sx={{ px: 3, py: 1.25, borderBottom: '1px solid #EEEEEE', bgcolor: '#fff', flexShrink: 0 }}>
+              <Typography sx={{ fontSize: '0.6875rem', fontWeight: 600, color: '#9E9E9E', textTransform: 'uppercase', letterSpacing: '0.04em', mb: 0.25 }}>
+                Denial Reason
+              </Typography>
+              <Typography sx={{ fontSize: '0.8125rem', color: '#424242', lineHeight: 1.5 }}>
+                {caseData.denialDescription}
+              </Typography>
+            </Box>
+          )}
+
+          {/* Scrollable letter body */}
+          <Box sx={{ flex: 1, overflowY: 'auto' }}>
+            <Box sx={{ position: 'sticky', top: 0, zIndex: 5 }}>
+              <LetterToolbar
+                editorRef={editorRef}
+                saveStatus={saveStatus}
+                savedAt={savedAt}
+                versionCount={state.letter.versions.length}
+                letterMenuAnchor={state.ui.letterMenuAnchor}
+                onCopy={handleCopy}
+                onCreateVersion={onCreateVersion}
+                onViewVersionHistory={onViewVersionHistory}
+                autosaveEnabled={autosaveEnabled}
+                viewOnly={viewOnly}
+                onToggleAutosave={onToggleAutosave}
+                onToggleViewOnly={onToggleViewOnly}
+                onManualSave={onManualSave}
+                dispatch={dispatch}
+                isV2
+              />
+            </Box>
+
+            <LetterEditor
+              editorRef={editorRef}
+              initialContent={state.letter.content}
+              onDirty={triggerAutosave}
+              viewOnly={viewOnly}
+              loading={isAiLoading}
+              disabled={isAiActive}
+              onSelectionChange={setSelectedText}
+            />
+            <Box sx={{ height: 140 }} />
+          </Box>
+
+          <AiPromptBar
+            prompt={aiEdit.prompt}
+            onPromptChange={(val) => dispatch({ type: 'SET_AI_PROMPT', payload: val })}
+            uploadedDocs={aiEdit.uploadedDocs}
+            onAddDoc={(file) => dispatch({ type: 'ADD_UPLOADED_DOC', payload: file })}
+            onRemoveDoc={(idx) => dispatch({ type: 'REMOVE_UPLOADED_DOC', payload: idx })}
+            onSubmit={() => runFakeAiEdit(aiEdit.prompt, aiEdit.uploadedDocs, selectedText, editorRef.current?.innerHTML || state.letter.content, dispatch)}
+            loading={isAiLoading}
+            pendingReview={isAiPendingReview}
+            onAccept={() => dispatch({ type: 'ACCEPT_AI_EDIT' })}
+            onReject={() => dispatch({ type: 'REJECT_AI_EDIT' })}
+            selectedText={selectedText}
+            onClearSelection={() => setSelectedText('')}
+          />
+        </>
+      )}
+    </Box>
+  );
+}
+
+function V2RightRail({ state, dispatch, isCollapsed, view, selectedVersionId, onSelectVersion }) {
+  const { activity, comments, caseData } = state;
+  const [activeTab, setActiveTab] = useState('evidence');
+  const isVersionHistory = view === 'version-history';
+
+  // In version-history view, defer to the existing RightRail behavior (versions list).
+  if (isVersionHistory) {
+    return (
+      <RightRail
+        state={state}
+        dispatch={dispatch}
+        isCollapsed={isCollapsed}
+        view={view}
+        selectedVersionId={selectedVersionId}
+        onSelectVersion={onSelectVersion}
+      />
+    );
+  }
+
+  const TABS = [
+    { id: 'evidence', label: 'Evidence', icon: <CheckCircleIcon sx={{ fontSize: 14 }} /> },
+    { id: 'comments', label: 'Comments', icon: <ChatBubbleOutlineIcon sx={{ fontSize: 14 }} /> },
+    { id: 'activity', label: 'Activity', icon: <AccessTimeIcon sx={{ fontSize: 14 }} /> },
+    { id: 'details',  label: 'Details',  icon: <InfoOutlinedIcon sx={{ fontSize: 14 }} /> },
+  ];
+
+  const tabBody = (() => {
+    if (activeTab === 'evidence') {
+      return (
+        <Box sx={{ px: 2, py: 1.5 }}>
+          <Typography sx={{ fontSize: '0.75rem', color: '#616161', mb: 1.25, lineHeight: 1.5 }}>
+            Chart-sourced evidence supporting this appeal. Click an item to cite it in the letter.
+          </Typography>
+          <Box>
+            {MOCK_EVIDENCE.map((item) => (
+              <EvidenceCard key={item.id} item={item} />
+            ))}
+          </Box>
+        </Box>
+      );
+    }
+    if (activeTab === 'comments') {
+      return (
+        <Box sx={{ px: 0, py: 0 }}>
+          <CommentsSection comments={comments} dispatch={dispatch} />
+        </Box>
+      );
+    }
+    if (activeTab === 'activity') {
+      return (
+        <Box sx={{ px: 0, py: 0 }}>
+          <HistorySection activity={activity} versions={state.letter.versions} dispatch={dispatch} />
+        </Box>
+      );
+    }
+    // details
+    const fields = [
+      { label: 'Payer',            value: caseData.payer },
+      { label: 'Denial Type',      value: caseData.type },
+      { label: 'Claim Number',     value: caseData.claimNumber },
+      { label: 'Member ID',        value: caseData.memberID },
+      { label: 'Date of Birth',    value: caseData.dob },
+      { label: 'Admit Date',       value: caseData.admitDate },
+      { label: 'Discharged',       value: caseData.dischargeDate },
+      { label: 'Location',         value: caseData.location },
+      { label: 'Denial Date',      value: caseData.denialDate },
+      { label: 'Appeal Deadline',  value: caseData.appealDeadline },
+      { label: 'Total Charge',     value: caseData.totalBilledAmount },
+    ];
+    return (
+      <Box sx={{ px: 2, py: 1.5 }}>
+        {fields.map((f) => (
+          <Box key={f.label} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', py: 0.75, borderBottom: '1px solid #EEEEEE' }}>
+            <Typography sx={{ fontSize: '0.75rem', color: '#9E9E9E' }}>{f.label}</Typography>
+            <Typography sx={{ fontSize: '0.8125rem', color: '#212121', fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
+              {f.value || '—'}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+    );
+  })();
+
+  return (
+    <Box
+      sx={{
+        width: isCollapsed ? 0 : 380,
+        flexShrink: 0,
+        borderLeft: '1px solid #E0E0E0',
+        bgcolor: '#FAFBFC',
+        overflowX: 'hidden',
+        overflowY: isCollapsed ? 'hidden' : 'auto',
+        opacity: isCollapsed ? 0 : 1,
+        display: 'flex', flexDirection: 'column',
+        transition: 'width 280ms ease-in-out, opacity 200ms ease',
+      }}
+    >
+      {/* Tab strip */}
+      <Box sx={{ display: 'flex', borderBottom: '1px solid #E0E0E0', bgcolor: '#fff', flexShrink: 0, position: 'sticky', top: 0, zIndex: 2 }}>
+        {TABS.map((t) => {
+          const active = activeTab === t.id;
+          return (
+            <ButtonBase
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              sx={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5,
+                py: 1.25, px: 0.5,
+                fontSize: '0.75rem', fontWeight: 600,
+                color: active ? '#157d9d' : '#616161',
+                borderBottom: active ? '2px solid #157d9d' : '2px solid transparent',
+                marginBottom: '-1px',
+                transition: 'color 160ms ease, border-color 160ms ease',
+                '&:hover': { color: active ? '#157d9d' : '#212121', bgcolor: 'rgba(0,0,0,0.02)' },
+              }}
+            >
+              {t.icon}
+              {t.label}
+            </ButtonBase>
+          );
+        })}
+      </Box>
+
+      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+        {tabBody}
+      </Box>
+    </Box>
+  );
+}
+
 // ─── CasePageAiEditing (root) ─────────────────────────────────────────────────
 
-export default function CasePageAiEditing({ onBack = () => {}, initialView = 'case', initialHasAttachments = false, isPaused = false, hideNav = false, caseRecord = null, onStatusAction = null, useInlineEditPanel = false, onEditDenialDetails = null, hideCompleteReview = false }) {
+export default function CasePageAiEditing({ onBack = () => {}, initialView = 'case', initialHasAttachments = false, isPaused = false, hideNav = false, caseRecord = null, onStatusAction = null, useInlineEditPanel = false, onEditDenialDetails = null, hideCompleteReview = false, useTwoStepDecision = false, denialsView = 'v1' }) {
+  const isV2 = denialsView === 'v2';
   const [state, dispatch] = useReducer(reducer, null, () => {
     const overrides = buildCaseOverrides(caseRecord);
     const base = {
@@ -3643,6 +4342,9 @@ export default function CasePageAiEditing({ onBack = () => {}, initialView = 'ca
   const [wnsReason, setWnsReason] = useState('');
   const [wnsComment, setWnsComment] = useState('');
 
+  // V2: two-step Record Decision modal
+  const [decisionModalOpen, setDecisionModalOpen] = useState(false);
+
   // Keep selectedVersionId pointing to current draft when a new version is generated
   useEffect(() => {
     if (currentDraft) setSelectedVersionId(currentDraft.id);
@@ -3660,6 +4362,27 @@ export default function CasePageAiEditing({ onBack = () => {}, initialView = 'ca
       setWnsOpen(true);
       return;
     }
+    // V2 two-step: 'Record Decision' opens the modal; 'Move back to Ready' is a
+    // direct un-submit action (no modal, no reason required).
+    if (actionLabel === 'Record Decision') {
+      setDecisionModalOpen(true);
+      return;
+    }
+    if (actionLabel === 'Move back to Ready') {
+      dispatch({ type: 'SET_STATUS', payload: 'Ready for Review' });
+      onStatusAction?.('move-back-to-ready');
+      return;
+    }
+    if (actionLabel === 'Reopen') {
+      dispatch({ type: 'SET_STATUS', payload: 'Ready for Review' });
+      onStatusAction?.('reopen');
+      return;
+    }
+    if (actionLabel === 'Mark as Unknown Outcome') {
+      dispatch({ type: 'SET_STATUS', payload: 'Will Not Submit' });
+      onStatusAction?.('mark-unknown-outcome');
+      return;
+    }
     dispatch({ type: 'SET_STATUS', payload: actionLabel });
     if (actionLabel === 'Submit')                   onStatusAction?.('submit');
     else if (actionLabel === 'Send to SFTP')        onStatusAction?.('send-to-sftp');
@@ -3671,6 +4394,23 @@ export default function CasePageAiEditing({ onBack = () => {}, initialView = 'ca
     else if (actionLabel === 'Upheld - Will Not Appeal') onStatusAction?.('upheld-will-not-appeal');
     else if (actionLabel === 'Remove Outcome')      onStatusAction?.('remove-outcome');
     else if (actionLabel === 'Return to Review')    onStatusAction?.('return-to-review');
+  }
+
+  function handleDecisionConfirm(result) {
+    // Map { outcome, intent? } → status action sent to App.tsx for V2.
+    const { outcome, intent } = result;
+    setDecisionModalOpen(false);
+    onStatusAction?.('record-decision', { outcome, intent });
+    // Set a local status label so the case page chip reflects the new state
+    // immediately (App.tsx is the source of truth on the underlying record).
+    const localLabel =
+      outcome === 'overturned_full'      ? 'Overturned' :
+      outcome === 'overturned_corrected' ? 'Overturned' :
+      outcome === 'overturned_partial'   ? (intent === 'appeal_again' ? 'Closed' : 'Overturned') :
+      outcome === 'upheld'               ? 'Closed' :
+      outcome === 'dismissed'            ? 'Closed' :
+                                           caseData.status;
+    dispatch({ type: 'SET_STATUS', payload: localLabel });
   }
 
   function handleWnsConfirm() {
@@ -3707,14 +4447,36 @@ export default function CasePageAiEditing({ onBack = () => {}, initialView = 'ca
     </Snackbar>
   );
 
+  const MainContentComp = isV2 ? V2MainContent : MainContent;
+  const RightRailComp   = isV2 ? V2RightRail   : RightRail;
+
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {!hideNav && <AppNav />}
-      <CaseHeader state={state} dispatch={dispatch} onBack={handleBack} onStatusMenuClick={handleStatusMenuClick} useInlineEditPanel={useInlineEditPanel} onEditDenialDetails={onEditDenialDetails} hideCompleteReview={hideCompleteReview} />
+      {isV2 ? (
+        <V2ObjectHeader
+          state={state}
+          dispatch={dispatch}
+          onBack={handleBack}
+          onStatusMenuClick={handleStatusMenuClick}
+          useInlineEditPanel={useInlineEditPanel}
+          onEditDenialDetails={onEditDenialDetails}
+          hideCompleteReview={hideCompleteReview}
+          useTwoStepDecision={useTwoStepDecision}
+        />
+      ) : (
+        <CaseHeader state={state} dispatch={dispatch} onBack={handleBack} onStatusMenuClick={handleStatusMenuClick} useInlineEditPanel={useInlineEditPanel} onEditDenialDetails={onEditDenialDetails} hideCompleteReview={hideCompleteReview} useTwoStepDecision={useTwoStepDecision} />
+      )}
+      <DecisionModal
+        open={decisionModalOpen}
+        appealLevel={caseData.level}
+        onClose={() => setDecisionModalOpen(false)}
+        onConfirm={handleDecisionConfirm}
+      />
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {(ui.view === 'case' || ui.view === 'version-history') && (
-            <MainContent
+            <MainContentComp
               state={state}
               dispatch={dispatch}
               view={ui.view}
@@ -3741,7 +4503,7 @@ export default function CasePageAiEditing({ onBack = () => {}, initialView = 'ca
           {ui.view === 'restoring'          && <RestoringContent dispatch={dispatch} />}
           {ui.view === 'generating-version' && <GeneratingVersionContent dispatch={dispatch} hasAttachments={ui.hasAttachments} isPaused={isPaused} />}
         </Box>
-        <RightRail
+        <RightRailComp
           state={state}
           dispatch={dispatch}
           isCollapsed={ui.view === 'edit'}
