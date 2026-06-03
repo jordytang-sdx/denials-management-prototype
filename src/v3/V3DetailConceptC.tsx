@@ -551,8 +551,8 @@ function EmptyOutcomeState({ variant }: { variant: EmptyOutcomeVariant }) {
         }
       case 'closed-no-decision':
         return {
-          title: 'No payer decision was recorded',
-          body: <>This case was closed before a payer response was received. No outcome to display. The case's history is on the <strong>Overview</strong> tab.</>,
+          title: 'Appeal withdrawn',
+          body: <>This appeal was withdrawn before a payer response was received. No outcome to display. The case's history is on the <strong>Overview</strong> tab.</>,
         }
     }
   })()

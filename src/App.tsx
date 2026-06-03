@@ -1465,18 +1465,19 @@ export default function App() {
                     return
                   }
                   if (action === 'close-without-decision') {
-                    // Submitted → Closed without a payer response. Distinct
-                    // from Ready → Close without submitting: the case WAS
-                    // submitted; the payer just didn't respond (or the case
-                    // is being written off operationally). Lands in Closed
-                    // with status 'Closed - Unknown Outcome' so reporting can
-                    // separate these from cases that received a real decision.
+                    // Submitted → Closed via the user withdrawing the appeal.
+                    // Distinct from Ready → Close without submitting: the
+                    // case WAS submitted; the user is now withdrawing it
+                    // (payer went silent, case is being written off, etc.).
+                    // Lands in Closed with status 'Closed - Unknown Outcome'
+                    // so reporting can separate withdrawn submissions from
+                    // cases that received a real payer decision.
                     setDenials(prev => prev.map(d => d.id === id ? {
                       ...d,
                       state: 'Closed' as DenialState,
                       status: 'Closed - Unknown Outcome' as const,
                       closedDate: todayISO(),
-                      closeReason: 'No payer decision received',
+                      closeReason: 'Appeal withdrawn',
                     } : d))
                     setV2ReturnTab('Closed')
                     return

@@ -62,7 +62,7 @@ function pickerItemsForState(state: DenialState | undefined): PickerItem[] {
     return [
       { id: 'record-decision',          label: 'Record Decision', opensDecision: true },
       { id: 'return-to-review',         label: 'Return to Review' },
-      { id: 'close-without-decision',   label: 'Close without payer decision', destructive: true, dividerBefore: true },
+      { id: 'close-without-decision',   label: 'Withdraw Appeal', destructive: true, dividerBefore: true },
     ]
   }
   // Closed / Overturned / Archive → no picker actions in this iteration.
@@ -467,7 +467,7 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
   // user sees the system doing the specific thing they asked for.
   const pendingLabel =
     pendingAction === 'will-not-submit'        ? 'Closing…' :
-    pendingAction === 'close-without-decision' ? 'Closing…' :
+    pendingAction === 'close-without-decision' ? 'Withdrawing…' :
     pendingAction === 'return-to-review'       ? 'Returning…' :
     pendingAction === 'record-decision'        ? 'Recording…' :
                                                   'Submitting…'
