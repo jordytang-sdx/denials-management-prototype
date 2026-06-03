@@ -126,21 +126,26 @@ function WizardChrome({ onBackToList }: { onBackToList: () => void }) {
       bgcolor: 'background.paper',
       borderBottom: '1px solid', borderColor: 'divider',
       flexShrink: 0,
+      px: 3,
+      height: 52,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 2,
     }}>
-      <Box sx={{ px: 3, py: 1, display: 'flex', alignItems: 'center' }}>
-        <Button
-          size="small"
-          startIcon={<ArrowBackOutlined sx={{ fontSize: '14px !important' }} />}
-          onClick={onBackToList}
-          sx={GHOST_BTN_SX}
-        >
-          Back to Intake
-        </Button>
-      </Box>
-      <Box sx={{ px: 3, py: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <Typography sx={{ fontSize: 'var(--font-sizes-16)', fontWeight: 'var(--font-weights-semibold)' }}>
-          Start New Denial Manually
-        </Typography>
+      <Button
+        size="small"
+        startIcon={<ArrowBackOutlined sx={{ fontSize: '14px !important' }} />}
+        onClick={onBackToList}
+        sx={{ ...GHOST_BTN_SX, flexShrink: 0 }}
+      >
+        Back to Intake
+      </Button>
+      <Box sx={{ width: '1px', height: 28, bgcolor: 'var(--colors-grey-3)', flexShrink: 0 }} />
+      <Typography sx={{ fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)', whiteSpace: 'nowrap' }}>
+        Start New Denial Manually
+      </Typography>
+      <Box sx={{ width: '1px', height: 28, bgcolor: 'var(--colors-grey-3)', flexShrink: 0 }} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
         <WizardStepper currentStep={1} />
       </Box>
     </Box>
@@ -153,11 +158,11 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 }) {
     { n: 2, label: 'Denial Details' },
   ]
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
       {steps.map((s, i) => (
-        <Box key={s.n} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Box key={s.n} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
           <Box sx={{
-            width: 22, height: 22, borderRadius: '50%',
+            width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)',
             bgcolor: currentStep >= s.n ? 'var(--colors-ocean-4)' : 'var(--colors-grey-3)',
@@ -169,11 +174,12 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 }) {
             fontSize: 'var(--font-sizes-12)',
             fontWeight: currentStep === s.n ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)',
             color: currentStep === s.n ? 'text.primary' : 'text.secondary',
+            whiteSpace: 'nowrap',
           }}>
             {s.label}
           </Typography>
           {i < steps.length - 1 && (
-            <Box sx={{ width: 32, height: 1, bgcolor: 'var(--colors-grey-3)', mx: 0.5 }} />
+            <Box sx={{ width: 16, height: 1, bgcolor: 'var(--colors-grey-4)', flexShrink: 0 }} />
           )}
         </Box>
       ))}

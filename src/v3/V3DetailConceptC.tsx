@@ -283,13 +283,23 @@ export default function V3DetailConceptC({ caseRecord, onBack, onStatusAction, o
         chrome={{
           kind: 'case',
           patientName: caseRecord.patient.name,
-          deadlineLabel: formatDeadlineLabel(caseRecord.deadline),
+          deadline: caseRecord.deadline,
           level: caseRecord.appealLevel,
           status: caseRecord.status,
           onBackToList: () => setEditingDetails(false),
         }}
         onChangeEncounter={() => { /* V3 prototype: change-encounter flow not wired */ }}
         onSave={() => setEditingDetails(false)}
+        sourceData={{
+          sourceFile: `${caseRecord.payer.toLowerCase().replace(/[\s/]+/g, '_')}_denial_${caseRecord.dos.replace(/-/g, '')}.pdf`,
+          extraction: {
+            har: caseRecord.claim.har,
+            claimId: caseRecord.claim.claimId,
+            dos: caseRecord.dos,
+            deadline: caseRecord.deadline,
+            deniedAmount: caseRecord.deniedAmount,
+          },
+        }}
       />
     )
   }

@@ -46,6 +46,11 @@ interface IngestPageProps {
   flatExceptions?: boolean
   /** Override the label for the Processing Failures tab. */
   processingFailuresLabel?: string
+  /** V2 only: align review-category chip colors with the alert messaging on the edit-denial-details page —
+   *  "Classification needs review" and "Related denial needs review" use the warning (amber) palette to
+   *  match "Data needs review", and "Missing Data" uses the info (blue) palette. Default keeps the legacy
+   *  V1 colors. */
+  unifiedAlertColors?: boolean
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -154,12 +159,30 @@ function isTerminalRecord(record: StagingRecord, mode?: 'existing'): boolean {
 // Subtle (no-border) treatment — matches the worklist + denial detail page so
 // the badge language stays consistent across V2 surfaces. Borders point at the
 // *-subtle-border tokens which resolve to the same hue as the background.
-const REVIEW_CATEGORY_STYLE: Record<string, { bg: string; color: string; border: string }> = {
+const REVIEW_CATEGORY_STYLE_V1: Record<string, { bg: string; color: string; border: string }> = {
   'Data needs review':           { bg: 'var(--colors-badge-variant-warning-subtle-background)', color: 'var(--colors-badge-variant-warning-subtle-text)', border: '1px solid var(--colors-badge-variant-warning-subtle-border)' },
   'Classification needs review': { bg: 'var(--colors-badge-variant-info-subtle-background)',    color: 'var(--colors-badge-variant-info-subtle-text)',    border: '1px solid var(--colors-badge-variant-info-subtle-border)'    },
   'Related denial needs review': { bg: 'var(--colors-badge-variant-info-subtle-background)',    color: 'var(--colors-badge-variant-info-subtle-text)',    border: '1px solid var(--colors-badge-variant-info-subtle-border)'    },
   'Missing Data':                { bg: 'var(--colors-badge-variant-default-subtle-background)', color: 'var(--colors-badge-variant-default-subtle-text)', border: '1px solid var(--colors-badge-variant-default-subtle-border)' },
   'System error':                { bg: 'var(--colors-badge-variant-error-subtle-background)',   color: 'var(--colors-badge-variant-error-subtle-text)',   border: '1px solid var(--colors-badge-variant-error-subtle-border)'   },
+}
+
+// V2 palette: chip color follows the alert-message variant used inside the edit-denial-details page
+// — warning (amber) for any "needs review" category, info (blue) for the "Missing Data" info alert.
+const REVIEW_CATEGORY_STYLE_V2: Record<string, { bg: string; color: string; border: string }> = {
+  'Data needs review':           { bg: 'var(--colors-badge-variant-warning-subtle-background)', color: 'var(--colors-badge-variant-warning-subtle-text)', border: '1px solid var(--colors-badge-variant-warning-subtle-border)' },
+  'Classification needs review': { bg: 'var(--colors-badge-variant-warning-subtle-background)', color: 'var(--colors-badge-variant-warning-subtle-text)', border: '1px solid var(--colors-badge-variant-warning-subtle-border)' },
+  'Related denial needs review': { bg: 'var(--colors-badge-variant-warning-subtle-background)', color: 'var(--colors-badge-variant-warning-subtle-text)', border: '1px solid var(--colors-badge-variant-warning-subtle-border)' },
+  'Missing Data':                { bg: 'var(--colors-badge-variant-info-subtle-background)',    color: 'var(--colors-badge-variant-info-subtle-text)',    border: '1px solid var(--colors-badge-variant-info-subtle-border)'    },
+  'System error':                { bg: 'var(--colors-badge-variant-error-subtle-background)',   color: 'var(--colors-badge-variant-error-subtle-text)',   border: '1px solid var(--colors-badge-variant-error-subtle-border)'   },
+}
+
+const FALLBACK_REVIEW_STYLE = { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
+
+function getReviewStyle(category: string | null | undefined, unified?: boolean) {
+  if (!category) return FALLBACK_REVIEW_STYLE
+  const map = unified ? REVIEW_CATEGORY_STYLE_V2 : REVIEW_CATEGORY_STYLE_V1
+  return map[category] ?? FALLBACK_REVIEW_STYLE
 }
 
 const EXISTING_REVIEW_CATEGORY: Partial<Record<NeedsReviewReason, string>> = {
@@ -397,7 +420,7 @@ const ICD10_OPTIONS = [
 // ── IssueCard ─────────────────────────────────────────────────────────────────
 
 function IssueCard({
-  reason, record, onResolved, onDecision, mode, onSearch,
+  reason, record, onResolved, onDecision, mode, onSearch, unifiedAlertColors,
 }: {
   reason: NeedsReviewReason
   record: StagingRecord
@@ -405,6 +428,7 @@ function IssueCard({
   onDecision?: (reason: NeedsReviewReason, decision: string) => void
   mode?: 'existing'
   onSearch?: () => void
+  unifiedAlertColors?: boolean
 }) {
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null)
   const [manualEntry, setManualEntry] = useState('')
@@ -416,7 +440,7 @@ function IssueCard({
   const [diagnosisRows, setDiagnosisRows] = useState<Array<{ code: string; adjustment: string }>>([{ code: '', adjustment: '' }])
   const ext = record.extraction
   const isRelatedInstance = reason === 'possible_duplicate' || reason === 'existing_instance_found'
-  const catColor = (REVIEW_CATEGORY_STYLE[REVIEW_CATEGORY[reason]] ?? { color: 'var(--colors-grey-6)' }).color
+  const catColor = getReviewStyle(REVIEW_CATEGORY[reason], unifiedAlertColors).color
 
   const resolved = (() => {
     switch (reason) {
@@ -839,7 +863,7 @@ function CompletionPanel({
 function ReviewPanel({
   record, reviewIndex, reviewTotal,
   onClose, onPrev, onNext,
-  onAccept, onAcceptAndNext, onDismiss, onSkip, mode, onNavigate, onEditDenialDetails,
+  onAccept, onAcceptAndNext, onDismiss, onSkip, mode, onNavigate, onEditDenialDetails, unifiedAlertColors,
 }: {
   record: StagingRecord
   reviewIndex: number
@@ -854,6 +878,7 @@ function ReviewPanel({
   mode?: 'existing'
   onNavigate?: (nav: string, returnContext?: ReturnContext) => void
   onEditDenialDetails?: () => void
+  unifiedAlertColors?: boolean
 }) {
   const [resolvedReasons, setResolvedReasons] = useState<Set<NeedsReviewReason>>(new Set())
   const [showDismiss, setShowDismiss] = useState(false)
@@ -961,7 +986,7 @@ function ReviewPanel({
         </Box>
         {record.reviewReasons.length > 0 && (() => {
           const cat = REVIEW_CATEGORY[record.reviewReasons[0]]
-          const catStyle = REVIEW_CATEGORY_STYLE[cat] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
+          const catStyle = getReviewStyle(cat, unifiedAlertColors)
           return (
             <Chip label={cat} size="small" sx={{ height: 20, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)' as unknown as number, bgcolor: catStyle.bg, color: catStyle.color, border: catStyle.border, '& .MuiChip-label': { px: 1 } }} />
           )
@@ -984,7 +1009,7 @@ function ReviewPanel({
             )}
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               {record.reviewReasons.map(r => (
-                <IssueCard key={`${record.id}-${r}`} reason={r} record={record} onResolved={handleResolved} onDecision={handleDecision} mode={mode} onSearch={onNavigate ? () => onNavigate('new-denial', { tab: 'exceptions', recordId: record.id }) : undefined} />
+                <IssueCard key={`${record.id}-${r}`} reason={r} record={record} onResolved={handleResolved} onDecision={handleDecision} mode={mode} onSearch={onNavigate ? () => onNavigate('new-denial', { tab: 'exceptions', recordId: record.id }) : undefined} unifiedAlertColors={unifiedAlertColors} />
               ))}
             </Box>
           </Box>
@@ -1907,7 +1932,7 @@ function InlineEditDenialDetailsPanel({
 
 function ExceptionsTab({
   records, onUpdate, onNavigate, onSwitchToHistory, mode, initialDrawerRecordId, inlinePanels,
-  newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, archivedStagingIds, flatList,
+  newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, archivedStagingIds, flatList, unifiedAlertColors,
 }: {
   records: StagingRecord[]
   onUpdate: (updated: StagingRecord[]) => void
@@ -1921,6 +1946,7 @@ function ExceptionsTab({
   onReviewExceptionFullPage?: (records: StagingRecord[], currentIndex: number) => void
   archivedStagingIds?: Set<string>
   flatList?: boolean
+  unifiedAlertColors?: boolean
 }) {
   type ToastState =
     | { kind: 'created'; instanceId: string; worklist: string }
@@ -2187,7 +2213,7 @@ function ExceptionsTab({
                     if (!firstReason) return null
                     const category = (mode === 'existing' ? EXISTING_REVIEW_CATEGORY[firstReason] : undefined) ?? REVIEW_CATEGORY[firstReason]
                     const secondary = (mode === 'existing' ? EXISTING_REVIEW_SECONDARY[firstReason] : undefined) ?? REVIEW_SECONDARY[firstReason]
-                    const catStyle = REVIEW_CATEGORY_STYLE[category] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
+                    const catStyle = getReviewStyle(category, unifiedAlertColors)
                     return (
                       <>
                         <Chip
@@ -2339,6 +2365,7 @@ function ExceptionsTab({
                 mode={mode}
                 onNavigate={onNavigate}
                 onEditDenialDetails={() => setEditDetailsOpen(true)}
+                unifiedAlertColors={unifiedAlertColors}
               />
             </Box>
           )}
@@ -2402,6 +2429,7 @@ function ExceptionsTab({
                 onSkip={handleSkip}
                 mode={mode}
                 onNavigate={onNavigate}
+                unifiedAlertColors={unifiedAlertColors}
               />
             )}
           </Drawer>
@@ -2614,12 +2642,13 @@ function HistoryTab({ records, mode, inlinePanels }: { records: StagingRecord[];
 
 // ── ProcessingFailuresTab ──────────────────────────────────────────────────────
 
-function ProcessingFailuresTab({ records, onUpdate, mode, inlinePanels, onReviewFailuresFullPage }: {
+function ProcessingFailuresTab({ records, onUpdate, mode, inlinePanels, onReviewFailuresFullPage, unifiedAlertColors }: {
   records: StagingRecord[]
   onUpdate: (updated: StagingRecord[]) => void
   mode?: 'existing'
   inlinePanels?: boolean
   onReviewFailuresFullPage?: (records: StagingRecord[], currentIndex: number) => void
+  unifiedAlertColors?: boolean
 }) {
   type ToastState = { kind: 'archived' } | { kind: 'retrying' } | null
   const [toast, setToast] = useState<ToastState>(null)
@@ -2698,7 +2727,7 @@ function ProcessingFailuresTab({ records, onUpdate, mode, inlinePanels, onReview
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         {grouped.flatMap(({ category, records: groupRecords }, gIdx) => {
-          const catStyle = REVIEW_CATEGORY_STYLE[category] ?? { bg: 'var(--colors-badge-variant-default-background)', color: 'var(--colors-badge-variant-default-text)', border: '1px solid var(--colors-badge-variant-default-border)' }
+          const catStyle = getReviewStyle(category, unifiedAlertColors)
           const isSystemError = category === 'System error'
           const groupIds = groupRecords.map(r => r.id)
           const groupAllChecked = inlinePanels ? groupIds.length > 0 && groupIds.every(id => selectedRowIds.has(id)) : false
@@ -2879,7 +2908,7 @@ function ProcessingFailuresTab({ records, onUpdate, mode, inlinePanels, onReview
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, onReviewFailuresFullPage, archivedStagingIds, showDropZoneAbove, hideProcessingFailures, flatExceptions, processingFailuresLabel = 'Processing Failures' }: IngestPageProps) {
+export default function IngestPage({ features: _features, onNavigate, mode, initialOpenDrawer, inlinePanels, showUpload: showUploadProp, onShowUploadChange, newDenialPanelOpen, onNewDenialPanelClose, onReviewExceptionFullPage, onReviewFailuresFullPage, archivedStagingIds, showDropZoneAbove, hideProcessingFailures, flatExceptions, processingFailuresLabel = 'Processing Failures', unifiedAlertColors }: IngestPageProps) {
   const failuresTabInitial = hideProcessingFailures ? 99 : (mode === 'existing' ? 2 : 1)
   const [activeTab, setActiveTab] = useState(
     (!hideProcessingFailures && initialOpenDrawer?.tab === 'processing-failures') ? failuresTabInitial :
@@ -3062,13 +3091,14 @@ export default function IngestPage({ features: _features, onNavigate, mode, init
               onReviewExceptionFullPage={onReviewExceptionFullPage}
               archivedStagingIds={archivedStagingIds}
               flatList={flatExceptions}
+              unifiedAlertColors={unifiedAlertColors}
             />
           )}
           {mode === 'existing' && activeTab === 1 && (
             <InProgressTab records={records} mode={mode} onNavigate={onNavigate} initialDrawerRecordId={initialOpenDrawer?.tab === 'in-progress' ? initialOpenDrawer.recordId : null} inlinePanels={inlinePanels} />
           )}
           {activeTab === failuresTabIndex && (
-            <ProcessingFailuresTab records={records} onUpdate={setRecords} mode={mode} inlinePanels={inlinePanels} onReviewFailuresFullPage={onReviewFailuresFullPage} />
+            <ProcessingFailuresTab records={records} onUpdate={setRecords} mode={mode} inlinePanels={inlinePanels} onReviewFailuresFullPage={onReviewFailuresFullPage} unifiedAlertColors={unifiedAlertColors} />
           )}
           {activeTab === historyTabIndex && <HistoryTab records={records} mode={mode} inlinePanels={inlinePanels} />}
         </>

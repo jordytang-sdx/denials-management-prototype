@@ -13,9 +13,8 @@ import {
 import SmarterSelect from './SmarterSelect'
 import DrgAdjustmentsSection from './DrgAdjustmentsSection'
 import { type DrgAdjustments } from './drgMockData'
-import { DeadlineChip, AppealLevelChip, statusVariant, displayStatusFromState } from '../v3/V3CaseHeader'
+import { DeadlineChip, AppealLevelChip, statusVariant } from '../v3/V3CaseHeader'
 import DsBadge from '../ds/DsBadge'
-import type { DenialState } from '../data/denials'
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -102,9 +101,9 @@ export interface SourceData {
 }
 
 export type EditChrome =
-  | { kind: 'wizard'; onCancel: () => void; onBackToFindEncounter: () => void }
-  | { kind: 'queue'; position: number; total: number; deadlineLabel: string; patientName?: string | null; payer?: string | null; claimId?: string | null; exceptionLabel?: string | null; backLabel?: string; onBackToList: () => void; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean }
-  | { kind: 'case'; patientName: string; deadlineISO: string | null; level: string; state: DenialState; onBackToList: () => void }
+  | { kind: 'wizard'; currentStep?: 1 | 2; onCancel: () => void; onBackToFindEncounter: () => void }
+  | { kind: 'queue'; position: number; total: number; patientName?: string | null; exceptionLabel?: string | null; backLabel?: string; onBackToList: () => void; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean }
+  | { kind: 'case'; patientName: string; deadline: string | null; level: string; status: string; onBackToList: () => void }
 
 interface Props {
   draft: DenialDraft
@@ -118,16 +117,19 @@ interface Props {
 
 // ── Exception category chip styles ───────────────────────────────────────────
 
+// Chip colors follow the alert-message variant used in the page body for the same exception type:
+// warning (amber) for any "needs review" category, info (blue) for the "Missing Data" info alert,
+// error (red) for system errors. Matches the V2 intake tabs.
 function exceptionChipSx(label: string) {
-  const styles: Record<string, { bgcolor: string; color: string; border: string }> = {
-    'Data needs review':           { bgcolor: 'var(--colors-badge-variant-warning-background)',  color: 'var(--colors-badge-variant-warning-text)',  border: '1px solid var(--colors-badge-variant-warning-border)'  },
-    'Classification needs review': { bgcolor: 'var(--colors-badge-variant-info-background)',     color: 'var(--colors-badge-variant-info-text)',     border: '1px solid var(--colors-badge-variant-info-border)'     },
-    'Related denial needs review':            { bgcolor: 'var(--colors-badge-variant-info-background)',     color: 'var(--colors-badge-variant-info-text)',     border: '1px solid var(--colors-badge-variant-info-border)'     },
-    'Missing Data':                { bgcolor: 'var(--colors-badge-variant-default-background)',  color: 'var(--colors-badge-variant-default-text)',  border: '1px solid var(--colors-badge-variant-default-border)'  },
-    'System error':                { bgcolor: 'var(--colors-badge-variant-error-background)',    color: 'var(--colors-badge-variant-error-text)',    border: '1px solid var(--colors-badge-variant-error-border)'    },
+  const styles: Record<string, { bgcolor: string; color: string }> = {
+    'Data needs review':           { bgcolor: 'var(--colors-badge-variant-warning-subtle-background)', color: 'var(--colors-badge-variant-warning-subtle-text)' },
+    'Classification needs review': { bgcolor: 'var(--colors-badge-variant-warning-subtle-background)', color: 'var(--colors-badge-variant-warning-subtle-text)' },
+    'Related denial needs review': { bgcolor: 'var(--colors-badge-variant-warning-subtle-background)', color: 'var(--colors-badge-variant-warning-subtle-text)' },
+    'Missing Data':                { bgcolor: 'var(--colors-badge-variant-info-subtle-background)',    color: 'var(--colors-badge-variant-info-subtle-text)'    },
+    'System error':                { bgcolor: 'var(--colors-badge-variant-error-subtle-background)',   color: 'var(--colors-badge-variant-error-subtle-text)'   },
   }
   const s = styles[label] ?? styles['Missing Data']
-  return { height: 20, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)', borderRadius: 'var(--radii-badge-radius)', '& .MuiChip-label': { px: 0.875 }, flexShrink: 0, ...s }
+  return { height: 20, fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-regular)', borderRadius: 'var(--radii-badge-radius)', '& .MuiChip-label': { px: 0.875 }, flexShrink: 0, border: 'none', ...s }
 }
 
 // ── Ghost nav button style — maps to design system "ghost" button variant ─────
@@ -158,31 +160,35 @@ function parseDenialTypeFromClassification(classifiedAs: string | null): 'drg_do
 }
 
 // ── Top-chrome variants ───────────────────────────────────────────────────────
+// All three chrome kinds share a single one-line layout so the page header
+// reads consistently regardless of where the user entered the editor from
+// (worklist case, intake exception, intake processing error, or manual wizard).
+//   [← Back to X] | [Title]  [optional inline chip]  ……  [right slot]
 
-function WizardChrome({ onBackToFindEncounter }: { onBackToFindEncounter: () => void }) {
+const CHROME_ROW_SX = {
+  bgcolor: 'background.paper',
+  borderBottom: '1px solid',
+  borderColor: 'divider',
+  flexShrink: 0,
+  px: 3,
+  height: 52,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 2,
+} as const
+
+const CHROME_DIVIDER_SX = { width: '1px', height: 28, bgcolor: 'var(--colors-grey-3)', flexShrink: 0 } as const
+
+function BackButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <Box sx={{
-      bgcolor: 'background.paper',
-      borderBottom: '1px solid', borderColor: 'divider',
-      flexShrink: 0,
-    }}>
-      <Box sx={{ px: 3, py: 1, display: 'flex', alignItems: 'center' }}>
-        <Button
-          size="small"
-          startIcon={<ArrowBackOutlined sx={{ fontSize: '14px !important' }} />}
-          onClick={onBackToFindEncounter}
-          sx={GHOST_BTN_SX}
-        >
-          Back to Find Encounter
-        </Button>
-      </Box>
-      <Box sx={{ px: 3, py: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <Typography sx={{ fontSize: 'var(--font-sizes-16)', fontWeight: 'var(--font-weights-semibold)' }}>
-          Start New Denial Manually
-        </Typography>
-        <WizardStepper currentStep={2} />
-      </Box>
-    </Box>
+    <Button
+      size="small"
+      startIcon={<ArrowBackOutlined sx={{ fontSize: '14px !important' }} />}
+      onClick={onClick}
+      sx={{ ...GHOST_BTN_SX, flexShrink: 0 }}
+    >
+      {label}
+    </Button>
   )
 }
 
@@ -190,13 +196,13 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 }) {
   const steps = [
     { n: 1, label: 'Find Encounter' },
     { n: 2, label: 'Denial Details' },
-  ]
+  ] as const
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
       {steps.map((s, i) => (
-        <Box key={s.n} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Box key={s.n} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
           <Box sx={{
-            width: 22, height: 22, borderRadius: '50%',
+            width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 'var(--font-sizes-12)', fontWeight: 'var(--font-weights-semibold)',
             bgcolor: currentStep >= s.n ? 'var(--colors-ocean-4)' : 'var(--colors-grey-3)',
@@ -208,11 +214,12 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 }) {
             fontSize: 'var(--font-sizes-12)',
             fontWeight: currentStep === s.n ? 'var(--font-weights-semibold)' : 'var(--font-weights-regular)',
             color: currentStep === s.n ? 'text.primary' : 'text.secondary',
+            whiteSpace: 'nowrap',
           }}>
             {s.label}
           </Typography>
           {i < steps.length - 1 && (
-            <Box sx={{ width: 32, height: 1, bgcolor: 'var(--colors-grey-3)', mx: 0.5 }} />
+            <Box sx={{ width: 16, height: 1, bgcolor: 'var(--colors-grey-4)', flexShrink: 0 }} />
           )}
         </Box>
       ))}
@@ -220,65 +227,53 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 }) {
   )
 }
 
+function WizardChrome({ currentStep = 2, onBackToIntake }: { currentStep?: 1 | 2; onBackToIntake: () => void }) {
+  return (
+    <Box sx={CHROME_ROW_SX}>
+      <BackButton label="Back to Intake" onClick={onBackToIntake} />
+      <Box sx={CHROME_DIVIDER_SX} />
+      <Typography sx={{
+        fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)',
+        whiteSpace: 'nowrap',
+      }}>
+        Start New Denial Manually
+      </Typography>
+      <Box sx={CHROME_DIVIDER_SX} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <WizardStepper currentStep={currentStep} />
+      </Box>
+    </Box>
+  )
+}
+
 function QueueChrome({
-  position, total, deadlineLabel, patientName, payer, claimId, exceptionLabel, backLabel,
+  position, total, patientName, exceptionLabel, backLabel,
   onBackToList, onPrev, onNext, canPrev, canNext, onToggleSource, sourcePanelOpen,
 }: {
-  position: number; total: number; deadlineLabel: string
-  patientName?: string | null; payer?: string | null; claimId?: string | null; exceptionLabel?: string | null; backLabel?: string
+  position: number; total: number
+  patientName?: string | null; exceptionLabel?: string | null; backLabel?: string
   onBackToList: () => void; onPrev: () => void; onNext: () => void
   canPrev: boolean; canNext: boolean
   onToggleSource?: () => void; sourcePanelOpen?: boolean
 }) {
-  const contextParts = [payer, claimId].filter(Boolean) as string[]
-
   return (
-    <Box sx={{
-      bgcolor: 'background.paper',
-      borderBottom: '1px solid', borderColor: 'divider',
-      flexShrink: 0,
-      px: 3, py: 1,
-      display: 'flex', alignItems: 'center', gap: 2,
-    }}>
-      {/* Left: back nav */}
-      <Button
-        size="small"
-        startIcon={<ArrowBackOutlined sx={{ fontSize: '14px !important' }} />}
-        onClick={onBackToList}
-        sx={{ ...GHOST_BTN_SX, flexShrink: 0 }}
-      >
-        {backLabel ?? 'Back to Exceptions'}
-      </Button>
+    <Box sx={CHROME_ROW_SX}>
+      <BackButton label={backLabel ?? 'Back to Exceptions'} onClick={onBackToList} />
+      <Box sx={CHROME_DIVIDER_SX} />
 
-      {/* Divider — separates nav from identity context */}
-      <Box sx={{ width: '1px', height: 28, bgcolor: 'var(--colors-grey-3)', flexShrink: 0 }} />
-
-      {/* Identity block — left-anchored after divider */}
-      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.25 }}>
-        {/* Line 1: patient name + exception label chip */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-          <Typography sx={{
-            fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)',
-            color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1,
-          }}>
-            {patientName ? formatPatientName(patientName) : '—'}
-          </Typography>
-          {exceptionLabel && (
-            <Chip label={exceptionLabel} size="small" sx={{ ...exceptionChipSx(exceptionLabel), flexShrink: 0 }} />
-          )}
-        </Box>
-        {/* Line 2: payer · claim · deadline — all plain text */}
-        {(payer || claimId || deadlineLabel) && (
-          <Typography sx={{
-            fontSize: 'var(--font-sizes-12)', color: 'text.secondary',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>
-            {[payer, claimId, deadlineLabel && deadlineLabel !== 'No deadline' ? `Due ${deadlineLabel}` : 'Unknown deadline'].filter(Boolean).join(' · ')}
-          </Typography>
+      {/* Identity — patient name + exception chip, inline */}
+      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography sx={{
+          fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)',
+          color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1, minWidth: 0,
+        }}>
+          {patientName ? formatPatientName(patientName) : '—'}
+        </Typography>
+        {exceptionLabel && (
+          <Chip label={exceptionLabel} size="small" sx={{ ...exceptionChipSx(exceptionLabel), flexShrink: 0 }} />
         )}
       </Box>
 
-      {/* View source — right of identity, left of nav */}
       {onToggleSource && (
         <Button
           size="small"
@@ -302,10 +297,9 @@ function QueueChrome({
         </Button>
       )}
 
-      {/* Divider before nav */}
-      <Box sx={{ width: '1px', height: 28, bgcolor: 'var(--colors-grey-3)', flexShrink: 0 }} />
+      <Box sx={CHROME_DIVIDER_SX} />
 
-      {/* Right: position counter + prev/next */}
+      {/* Position counter + prev/next */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
         <IconButton
           size="small"
@@ -334,49 +328,56 @@ function QueueChrome({
         >
           <ChevronRight sx={{ fontSize: 16 }} />
         </IconButton>
-
       </Box>
     </Box>
   )
 }
 
 function CaseChrome({
-  patientName, deadlineISO, level, state, onBackToList,
+  patientName, deadline, level, status, onBackToList, onToggleSource, sourcePanelOpen,
 }: {
-  patientName: string; deadlineISO: string | null; level: string; state: DenialState
+  patientName: string; deadline: string | null; level: string; status: string
   onBackToList: () => void
+  onToggleSource?: () => void; sourcePanelOpen?: boolean
 }) {
-  const status = displayStatusFromState(state)
   return (
-    <Box sx={{
-      bgcolor: 'background.paper',
-      borderBottom: '1px solid', borderColor: 'divider',
-      flexShrink: 0,
-    }}>
-      <Box sx={{ px: 3, pt: 1, pb: 0.5 }}>
+    <Box sx={CHROME_ROW_SX}>
+      <BackButton label="Back to Denial" onClick={onBackToList} />
+      <Box sx={CHROME_DIVIDER_SX} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography sx={{
+          fontSize: 'var(--font-sizes-14)', fontWeight: 'var(--font-weights-semibold)',
+          color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {formatPatientName(patientName)}
+        </Typography>
+      </Box>
+      {onToggleSource && (
         <Button
           size="small"
-          startIcon={<ArrowBackOutlined sx={{ fontSize: '14px !important' }} />}
-          onClick={onBackToList}
-          sx={{ ...GHOST_BTN_SX, p: 0, minWidth: 0 }}
+          startIcon={<DescriptionOutlined sx={{ fontSize: '13px !important' }} />}
+          onClick={onToggleSource}
+          sx={{
+            fontSize: 'var(--font-sizes-12)',
+            textTransform: 'none',
+            flexShrink: 0,
+            px: 1, py: 0.375,
+            color: sourcePanelOpen ? 'var(--colors-ocean-4)' : 'var(--colors-grey-6)',
+            bgcolor: sourcePanelOpen ? 'var(--colors-ocean-1)' : 'transparent',
+            border: '1px solid',
+            borderColor: sourcePanelOpen ? 'var(--colors-ocean-3)' : 'var(--colors-grey-4)',
+            borderRadius: 'var(--radii-sm)',
+            '&:hover': { bgcolor: sourcePanelOpen ? 'var(--colors-ocean-2)' : 'var(--colors-grey-2)', borderColor: 'var(--colors-grey-5)' },
+            '& .MuiButton-startIcon': { mr: 0.5 },
+          }}
         >
-          Back to Case
+          View source
         </Button>
-      </Box>
-      <Box sx={{
-        px: 3, pb: 1.5, pt: 0.75,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2,
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Typography sx={{ fontSize: 'var(--font-sizes-16)', fontWeight: 'var(--font-weights-semibold)' }}>
-            {formatPatientName(patientName)}
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <DeadlineChip deadlineISO={deadlineISO ?? ''} />
-          <AppealLevelChip level={level} />
-          <DsBadge variant={statusVariant(status)}>{status}</DsBadge>
-        </Box>
+      )}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+        <DeadlineChip deadlineISO={deadline ?? ''} />
+        <AppealLevelChip level={level} />
+        <DsBadge variant={statusVariant(status)}>{status}</DsBadge>
       </Box>
     </Box>
   )
@@ -1361,22 +1362,24 @@ export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncou
       height: '100%', overflow: 'hidden',
       bgcolor: 'var(--colors-grey-2)',
     }}>
-      {chrome.kind === 'wizard' && <WizardChrome onBackToFindEncounter={chrome.onBackToFindEncounter} />}
+      {chrome.kind === 'wizard' && <WizardChrome currentStep={chrome.currentStep} onBackToIntake={chrome.onCancel} />}
       {chrome.kind === 'queue' && (
         <QueueChrome
-          position={chrome.position} total={chrome.total} deadlineLabel={chrome.deadlineLabel}
+          position={chrome.position} total={chrome.total}
           onBackToList={chrome.onBackToList} onPrev={chrome.onPrev} onNext={chrome.onNext}
           canPrev={chrome.canPrev} canNext={chrome.canNext}
-          patientName={chrome.patientName} payer={chrome.payer} claimId={chrome.claimId} exceptionLabel={chrome.exceptionLabel} backLabel={chrome.backLabel}
+          patientName={chrome.patientName} exceptionLabel={chrome.exceptionLabel} backLabel={chrome.backLabel}
           onToggleSource={sourceData ? () => setSourcePanelOpen(o => !o) : undefined}
           sourcePanelOpen={sourcePanelOpen}
         />
       )}
       {chrome.kind === 'case' && (
         <CaseChrome
-          patientName={chrome.patientName} deadlineISO={chrome.deadlineISO}
-          level={chrome.level} state={chrome.state}
+          patientName={chrome.patientName} deadline={chrome.deadline}
+          level={chrome.level} status={chrome.status}
           onBackToList={chrome.onBackToList}
+          onToggleSource={sourceData ? () => setSourcePanelOpen(o => !o) : undefined}
+          sourcePanelOpen={sourcePanelOpen}
         />
       )}
 

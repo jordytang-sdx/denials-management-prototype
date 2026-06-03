@@ -1420,21 +1420,23 @@ export default function App() {
                   // sees the badge update in place; they navigate back to the
                   // worklist themselves. Mirrors handleV2StatusAction for the
                   // status-picker actions but skips setSelectedV2CaseId(null).
+                  //
+                  // v2ReturnTab is intentionally NOT updated here: the user is
+                  // typically working through a tab one case at a time, so Back
+                  // should return them to the tab they came from (set when the
+                  // case was opened), not the tab matching the new state.
                   const id = selectedV2CaseId
                   if (!id) return
                   if (action === 'submit' || action === 'send-to-sftp') {
                     setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Submitted' as DenialState, status: 'Awaiting Payer Decision' as const, submissionDate: todayISO() } : d))
-                    setV2ReturnTab('Submitted')
                     return
                   }
                   if (action === 'will-not-submit') {
                     setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Closed' as DenialState, status: 'Will Not Appeal' as const } : d))
-                    setV2ReturnTab('Closed')
                     return
                   }
                   if (action === 'return-to-review') {
                     setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'InProgress' as DenialState, status: 'In Progress' as const, submissionDate: undefined } : d))
-                    setV2ReturnTab('InProgress')
                     return
                   }
                   if (action === 'close-without-decision') {
@@ -1452,7 +1454,6 @@ export default function App() {
                       closedDate: todayISO(),
                       closeReason: 'Appeal withdrawn',
                     } : d))
-                    setV2ReturnTab('Closed')
                     return
                   }
                   if (action === 'record-decision' && payload) {
@@ -1466,21 +1467,20 @@ export default function App() {
                     let nextState: DenialState = parent.state
                     let nextStatus: DenialStatus = parent.status
                     let shouldSpawn = false
-                    let returnTab: DenialState = 'Closed'
                     if (outcome === 'overturned_full') {
-                      nextState = 'Overturned'; nextStatus = 'Overturned — Full Payment'; returnTab = 'Closed'
+                      nextState = 'Overturned'; nextStatus = 'Overturned — Full Payment'
                     } else if (outcome === 'overturned_corrected') {
-                      nextState = 'Overturned'; nextStatus = 'Corrected Claim Paid'; returnTab = 'Closed'
+                      nextState = 'Overturned'; nextStatus = 'Corrected Claim Paid'
                     } else if (outcome === 'overturned_partial' && intent === 'close_out') {
-                      nextState = 'Overturned'; nextStatus = 'Overturned — Partial Payment'; returnTab = 'Closed'
+                      nextState = 'Overturned'; nextStatus = 'Overturned — Partial Payment'
                     } else if (outcome === 'overturned_partial' && intent === 'appeal_again') {
-                      nextState = 'Closed'; nextStatus = 'Upheld - Will Appeal'; shouldSpawn = true; returnTab = 'InProgress'
+                      nextState = 'Closed'; nextStatus = 'Upheld - Will Appeal'; shouldSpawn = true
                     } else if (outcome === 'upheld' && intent === 'close_out') {
-                      nextState = 'Closed'; nextStatus = 'Upheld - Will Not Appeal'; returnTab = 'Closed'
+                      nextState = 'Closed'; nextStatus = 'Upheld - Will Not Appeal'
                     } else if (outcome === 'upheld' && intent === 'appeal_again') {
-                      nextState = 'Closed'; nextStatus = 'Upheld - Will Appeal'; shouldSpawn = true; returnTab = 'InProgress'
+                      nextState = 'Closed'; nextStatus = 'Upheld - Will Appeal'; shouldSpawn = true
                     } else if (outcome === 'dismissed') {
-                      nextState = 'Closed'; nextStatus = 'Dismissed'; returnTab = 'Closed'
+                      nextState = 'Closed'; nextStatus = 'Dismissed'
                     }
                     // Decision date from the modal overrides the workflow
                     // timestamp — it's when the *payer* decided, not when
@@ -1516,7 +1516,6 @@ export default function App() {
                       }
                       return updated
                     })
-                    setV2ReturnTab(returnTab)
                     return
                   }
                   // Fallback: delegate to the shared handler (which may close
@@ -1582,7 +1581,7 @@ export default function App() {
                   chrome={{
                     kind: 'case',
                     patientName: denial.patient.name,
-                    deadlineLabel: formatDeadlineLabel(denial.deadline),
+                    deadline: denial.deadline,
                     level: denial.appealLevel,
                     status: denial.status,
                     onBackToList: () => setV4Screen(null), // returns to the case page (selectedV2CaseId remains set)
@@ -1593,6 +1592,16 @@ export default function App() {
                     parentOverride: screen.encounterOverride,
                   })}
                   onSave={() => setV4Screen(null)}
+                  sourceData={{
+                    sourceFile: `${denial.payer.toLowerCase().replace(/[\s/]+/g, '_')}_denial_${denial.dos.replace(/-/g, '')}.pdf`,
+                    extraction: {
+                      har: denial.claim.har,
+                      claimId: denial.claim.claimId,
+                      dos: denial.dos,
+                      deadline: denial.deadline,
+                      deniedAmount: denial.deniedAmount,
+                    },
+                  }}
                 />
               )
             })()}
@@ -1611,10 +1620,7 @@ export default function App() {
                     kind: 'queue',
                     position: index + 1,
                     total: records.length,
-                    deadlineLabel: formatDeadlineLabel((ext.deadline as string) ?? null),
                     patientName: record.patientName,
-                    payer: record.payer,
-                    claimId: (ext.har as string) ?? null,
                     exceptionLabel: (() => {
                       if (exceptionIssueOverrides[record.id] === 'visit_unavailable') return 'Missing Data'
                       const reason = record.reviewReasons[0]
@@ -1635,7 +1641,7 @@ export default function App() {
                       return categories[reason] ?? 'Needs review'
                     })(),
                     backLabel: screen.backLabel,
-                    onBackToList: () => { setReturnContext(screen.backLabel === 'Back to Processing Failures' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest') },
+                    onBackToList: () => { setReturnContext(screen.backLabel === 'Back to Processing Errors' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest') },
                     onPrev: () => index > 0 && setV4Screen({ type: 'edit-queue', records, index: index - 1, backLabel: screen.backLabel }),
                     onNext: () => index < records.length - 1 && setV4Screen({ type: 'edit-queue', records, index: index + 1, backLabel: screen.backLabel }),
                     canPrev: index > 0,
@@ -1650,7 +1656,7 @@ export default function App() {
                     if (index < records.length - 1) {
                       setV4Screen({ type: 'edit-queue', records, index: index + 1, backLabel: screen.backLabel })
                     } else {
-                      setReturnContext(screen.backLabel === 'Back to Processing Failures' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest')
+                      setReturnContext(screen.backLabel === 'Back to Processing Errors' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest')
                     }
                   }}
                   onArchive={() => {
@@ -1660,14 +1666,14 @@ export default function App() {
                     } else if (index > 0) {
                       setV4Screen({ type: 'edit-queue', records, index: index - 1, backLabel: screen.backLabel })
                     } else {
-                      setReturnContext(screen.backLabel === 'Back to Processing Failures' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest')
+                      setReturnContext(screen.backLabel === 'Back to Processing Errors' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest')
                     }
                   }}
                   onRetry={() => {
                     if (index < records.length - 1) {
                       setV4Screen({ type: 'edit-queue', records, index: index + 1, backLabel: screen.backLabel })
                     } else {
-                      setReturnContext(screen.backLabel === 'Back to Processing Failures' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest')
+                      setReturnContext(screen.backLabel === 'Back to Processing Errors' ? { tab: 'processing-failures', recordId: '' } : null); setV4Screen(null); setExistingNav('ingest')
                     }
                   }}
                   sourceData={{ sourceFile: record.sourceFile, extraction: record.extraction }}
@@ -1790,9 +1796,10 @@ export default function App() {
               }} mode="existing" initialOpenDrawer={returnContext} inlinePanels showUpload={v3ShowUpload} onShowUploadChange={setV3ShowUpload}
               newDenialPanelOpen={v3NewDenialPanelOpen} onNewDenialPanelClose={() => setV3NewDenialPanelOpen(false)}
               onReviewExceptionFullPage={(records, index) => setV4Screen({ type: 'edit-queue', records, index })}
-              onReviewFailuresFullPage={(records, index) => setV4Screen({ type: 'edit-queue', records, index, backLabel: 'Back to Processing Failures' })}
+              onReviewFailuresFullPage={(records, index) => setV4Screen({ type: 'edit-queue', records, index, backLabel: 'Back to Processing Errors' })}
               archivedStagingIds={archivedStagingIds}
               processingFailuresLabel="Processing Errors"
+              unifiedAlertColors
               />
             )}
             {systemMode === 'new' && showingWorklist && (
