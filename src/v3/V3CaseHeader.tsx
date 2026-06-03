@@ -18,11 +18,6 @@ import {
   Pencil,
   MessageSquare,
   FileText,
-  Send,
-  CheckCircle2,
-  Ban,
-  RotateCcw,
-  Gavel,
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import type { DenialRecord, DenialState, TeamMember } from '../data/denials'
@@ -38,7 +33,6 @@ import DecisionModal, { type DecisionResult } from '../v4/DecisionModal'
 type PickerItem = {
   id: string
   label: string
-  icon: React.ReactNode
   destructive?: boolean
   dividerBefore?: boolean
   // When true, selecting this item opens the DecisionModal rather than
@@ -46,18 +40,22 @@ type PickerItem = {
   opensDecision?: boolean
 }
 
+// Picker items render text-only — no verb icons. Matches the convention in
+// Linear / Jira / GitHub Issues status pickers, which use plain text labels
+// (and at most a status-color indicator for the destination state) rather
+// than action icons. Keeps the menu scannable and avoids icon noise.
 function pickerItemsForState(state: DenialState | undefined): PickerItem[] {
   if (state === 'InProgress' || state === 'Queue') {
     return [
-      { id: 'send-to-sftp',    label: 'Send to SFTP',             icon: <Send size={14} strokeWidth={2} /> },
-      { id: 'submit',          label: 'Mark as Submitted',        icon: <CheckCircle2 size={14} strokeWidth={2} /> },
-      { id: 'will-not-submit', label: 'Close without submitting', icon: <Ban size={14} strokeWidth={2} />, destructive: true, dividerBefore: true },
+      { id: 'send-to-sftp',    label: 'Send to SFTP' },
+      { id: 'submit',          label: 'Mark as Submitted' },
+      { id: 'will-not-submit', label: 'Close without submitting', destructive: true, dividerBefore: true },
     ]
   }
   if (state === 'Submitted') {
     return [
-      { id: 'return-to-review', label: 'Return to Review', icon: <RotateCcw size={14} strokeWidth={2} /> },
-      { id: 'record-decision',  label: 'Record Decision',  icon: <Gavel size={14} strokeWidth={2} />, opensDecision: true },
+      { id: 'return-to-review', label: 'Return to Review' },
+      { id: 'record-decision',  label: 'Record Decision', opensDecision: true },
     ]
   }
   // Closed / Overturned / Archive → no picker actions in this iteration.
@@ -97,10 +95,20 @@ interface V3CaseHeaderProps {
   // the status badge picker drives the denial state machine. When omitted
   // (V3 standalone explorations), the badge renders as a static chip.
   //
-  // Some transitions (record-decision) carry structured payload from the
-  // DecisionModal. The payload shape matches handleV2StatusAction's contract
-  // in App.tsx — outcome (PayerOutcome) and optional intent (AppealIntent).
-  onStatusAction?: (action: string, payload?: { outcome?: string; intent?: string }) => void
+  // record-decision carries the full DecisionResult payload (outcome, optional
+  // intent, decision date, optional amount recovered, optional payer
+  // rationale, optional determination letter filename). Other actions don't
+  // carry payload.
+  onStatusAction?: (action: string, payload?: StatusActionPayload) => void
+}
+
+export type StatusActionPayload = {
+  outcome?: string
+  intent?: string
+  decisionDate?: string
+  recoveredAmount?: number
+  payerRationale?: string
+  determinationLetterFileName?: string
 }
 
 // ─── Reusable token-styled primitives ────────────────────────────────────────
@@ -438,7 +446,7 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [decisionOpen, setDecisionOpen] = useState(false)
 
-  function fireStatusAction(action: PendingAction, payload?: { outcome?: string; intent?: string }) {
+  function fireStatusAction(action: PendingAction, payload?: StatusActionPayload) {
     setStatusAnchor(null)
     if (!onStatusAction) return
     setPendingAction(action)
@@ -647,12 +655,11 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
                           sx={{
                             fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
                             color: itemColor,
-                            gap: 'var(--spacing-2)',
+                            // Text-only items; no leading icon column. Matches
+                            // Linear/Jira/GitHub status-picker convention.
+                            paddingInline: 'var(--spacing-menu-item-padding-x)',
                           }}
                         >
-                          <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
-                            {item.icon}
-                          </ListItemIcon>
                           <ListItemText primaryTypographyProps={{ sx: {
                             fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
                             color: 'inherit',
@@ -883,7 +890,14 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
         onClose={() => setDecisionOpen(false)}
         onConfirm={(result: DecisionResult) => {
           setDecisionOpen(false)
-          fireStatusAction('record-decision', { outcome: result.outcome, intent: result.intent })
+          fireStatusAction('record-decision', {
+            outcome: result.outcome,
+            intent: result.intent,
+            decisionDate: result.decisionDate,
+            recoveredAmount: result.recoveredAmount,
+            payerRationale: result.payerRationale,
+            determinationLetterFileName: result.determinationLetterFileName,
+          })
         }}
       />
     </Box>

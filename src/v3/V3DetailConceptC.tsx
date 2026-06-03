@@ -124,8 +124,16 @@ interface V3DetailConceptCProps {
   onBack?: () => void
   // Status transition handler. V2 wires this to App.handleV2StatusAction so
   // the header status picker drives the denial state machine. Some actions
-  // (record-decision) carry structured payload from the DecisionModal.
-  onStatusAction?: (action: string, payload?: { outcome?: string; intent?: string }) => void
+  // (record-decision) carry structured payload from the DecisionModal —
+  // outcome + intent + decision date + amount recovered + rationale + letter.
+  onStatusAction?: (action: string, payload?: {
+    outcome?: string
+    intent?: string
+    decisionDate?: string
+    recoveredAmount?: number
+    payerRationale?: string
+    determinationLetterFileName?: string
+  }) => void
   // Delete handler. V2 wires this to hard-remove the denial from the list and
   // close the case (MVP doesn't support restore). When omitted the kebab's
   // Delete item is hidden — V3 standalone explorations don't expose delete.
@@ -202,9 +210,16 @@ function buildSourceData(d: DenialRecord): SourceSheetData {
 
 function defaultTabForState(state: DenialRecord['state'] | undefined): TabId {
   switch (state) {
-    case 'Submitted':  return 'overview'
-    case 'Overturned': return 'outcome'
-    case 'Closed':     return 'outcome'
+    // Active cases route to the tab where the user's next action lives:
+    //   Submitted → Outcome (record the payer decision)
+    //   Queue / InProgress → Appeal (draft / finalize the letter)
+    // Closed cases route to Overview — the case is done, the user is reading
+    // not acting, and Overview gives the chronological "what happened" view.
+    // Outcome is still accessible as a tab; Overview just makes the bigger
+    // picture (status, activity log, summary) the default landing surface.
+    case 'Submitted':  return 'outcome'
+    case 'Overturned': return 'overview'
+    case 'Closed':     return 'overview'
     case 'Archive':    return 'overview'
     default:           return 'appeal'
   }
@@ -323,114 +338,7 @@ export default function V3DetailConceptC({ caseRecord, onBack, onStatusAction, o
           )}
 
           {activeTab === 'outcome' && (
-            <Box sx={{ p: 'var(--spacing-6)', overflowY: 'auto', bgcolor: 'var(--colors-grey-2)' }}>
-              <Box sx={{ maxWidth: 720, mx: 'auto' }}>
-                <SectionLabel>Record payer decision</SectionLabel>
-                <CardSurface sx={{ p: 'var(--spacing-5)', mb: 'var(--spacing-4)' }}>
-                  <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: 'var(--colors-text-tertiary)', mb: 'var(--spacing-4)' }}>
-                    Capture the payer's response. Recorded outcomes feed reporting and inform future appeal strategy.
-                  </Typography>
-
-                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-4)', mb: 'var(--spacing-4)' }}>
-                    <Box>
-                      <OverlineLabel>Decision *</OverlineLabel>
-                      <Box component="select" defaultValue="" sx={fieldSx}>
-                        <option value="" disabled>Select…</option>
-                        <option value="overturned_full">Overturned — full</option>
-                        <option value="overturned_partial">Overturned — partial</option>
-                        <option value="upheld">Upheld</option>
-                        <option value="dismissed">Dismissed</option>
-                      </Box>
-                    </Box>
-                    <Box>
-                      <OverlineLabel>Decision date *</OverlineLabel>
-                      <Box component="input" type="date" sx={fieldSx} />
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ mb: 'var(--spacing-4)' }}>
-                    <OverlineLabel>Amount recovered</OverlineLabel>
-                    <Box component="input" placeholder="$0.00" sx={{ ...fieldSx, fontVariantNumeric: 'tabular-nums' }} />
-                  </Box>
-
-                  <Box sx={{ mb: 'var(--spacing-4)' }}>
-                    <OverlineLabel>Payer's rationale</OverlineLabel>
-                    <Box component="textarea" rows={4} placeholder="Paste the payer's stated reasoning from the determination letter…" sx={{
-                      ...fieldSx,
-                      height: 'auto',
-                      py: 'var(--spacing-2)',
-                      resize: 'vertical',
-                    }} />
-                  </Box>
-
-                  <Box sx={{ mb: 'var(--spacing-4)' }}>
-                    <OverlineLabel>Next step</OverlineLabel>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-2)' }}>
-                      {[
-                        { v: 'close',   label: 'Close this case' },
-                        { v: 'level2',  label: 'Open Level 2 appeal' },
-                        { v: 'no_more', label: 'Will not appeal further' },
-                      ].map(o => (
-                        <Box key={o.v} component="label" sx={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)', cursor: 'pointer' }}>
-                          <Box component="input" type="radio" name="next-step" defaultChecked={o.v === 'close'} sx={{ m: 0, accentColor: 'var(--colors-ocean-4)' }} />
-                          <Typography sx={{ fontSize: 'var(--font-sizes-14)', color: 'var(--colors-text-primary)' }}>{o.label}</Typography>
-                        </Box>
-                      ))}
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ mb: 'var(--spacing-1)' }}>
-                    <OverlineLabel>Payer determination letter</OverlineLabel>
-                    <Box sx={{
-                      border: 'var(--border-widths-thin) dashed var(--colors-grey-5)',
-                      borderRadius: 'var(--radii-sm)',
-                      px: 'var(--spacing-4)', py: 'var(--spacing-3)',
-                      display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)',
-                      cursor: 'pointer',
-                      '&:hover': {
-                        borderColor: 'var(--colors-ocean-4)',
-                        bgcolor: 'var(--colors-ocean-1)',
-                      },
-                    }}>
-                      <Paperclip size={16} strokeWidth={2} style={{ color: 'var(--colors-text-tertiary)' }} />
-                      <Typography sx={{ fontSize: 'var(--font-sizes-14)', color: 'var(--colors-text-secondary)' }}>
-                        Drop the payer's response letter here, or{' '}
-                        <Box component="span" sx={{
-                          color: 'var(--colors-link-variant-default-text)',
-                          fontWeight: 'var(--font-weights-medium)',
-                        }}>
-                          browse
-                        </Box>
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardSurface>
-
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--spacing-2)' }}>
-                  <ButtonBase sx={{
-                    px: 'var(--spacing-4)', height: 34,
-                    borderRadius: 'var(--radii-sm)',
-                    fontSize: 'var(--font-sizes-14)',
-                    fontWeight: 'var(--font-weights-medium)',
-                    color: 'var(--colors-interactive-ghost-text)',
-                    '&:hover': { bgcolor: 'var(--colors-interactive-hover-ghost-background)', color: 'var(--colors-interactive-hover-ghost-text)' },
-                  }}>
-                    Cancel
-                  </ButtonBase>
-                  <ButtonBase sx={{
-                    px: 'var(--spacing-4)', height: 34,
-                    borderRadius: 'var(--radii-sm)',
-                    fontSize: 'var(--font-sizes-14)',
-                    fontWeight: 'var(--font-weights-semibold)',
-                    color: 'var(--colors-interactive-action-text)',
-                    bgcolor: 'var(--colors-interactive-action-background)',
-                    '&:hover': { bgcolor: 'var(--colors-ocean-5)' },
-                  }}>
-                    Save outcome
-                  </ButtonBase>
-                </Box>
-              </Box>
-            </Box>
+            <OutcomeTab caseRecord={caseRecord} />
           )}
 
           {activeTab === 'attachments' && (
@@ -502,22 +410,6 @@ export default function V3DetailConceptC({ caseRecord, onBack, onStatusAction, o
 
 // ─── Token-styled primitives ─────────────────────────────────────────────────
 
-const fieldSx = {
-  width: '100%', height: 36,
-  px: 'var(--spacing-2)',
-  borderRadius: 'var(--radii-sm)',
-  border: 'var(--border-widths-textarea-border-width, var(--border-widths-thin)) solid var(--colors-interactive-input-border)',
-  bgcolor: 'var(--colors-interactive-input-background)',
-  color: 'var(--colors-interactive-input-text)',
-  fontSize: 'var(--font-sizes-14)',
-  fontFamily: 'inherit', outline: 'none',
-  '&::placeholder': { color: 'var(--colors-interactive-input-placeholder)' },
-  '&:focus': {
-    borderColor: 'var(--colors-ocean-4)',
-    boxShadow: 'var(--shadows-interactive-focus-focus-ring)',
-  },
-} as const
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <Typography sx={{
@@ -558,6 +450,181 @@ function CardSurface({ children, sx }: { children: React.ReactNode; sx?: Paramet
       ...(Array.isArray(sx) ? sx : [sx]),
     ]}>
       {children}
+    </Box>
+  )
+}
+
+// ─── Outcome tab ──────────────────────────────────────────────────────────────
+//
+// Display-only surface. Workflow transitions (Submitted → Closed/Overturned)
+// happen at the status picker in the header — not here. This tab shows three
+// states:
+//   1. Submitted, no outcome yet → empty state pointing to the picker
+//   2. Closed without submitting → empty state explaining no payer decision
+//      was captured (case was abandoned pre-submission)
+//   3. Closed/Overturned with a recorded outcome → populated display of the
+//      payer decision: outcome, decision date, amount recovered, rationale,
+//      attached letter
+//
+// Keeping this tab read-only is the explicit design call — having a parallel
+// form here would create two competing entry points for the same transition
+// and divergent data. See V3CaseHeader for the status picker that owns the
+// workflow action.
+function hasRecordedOutcome(record: DenialRecord): boolean {
+  if (record.state === 'Overturned') return true
+  if (record.state === 'Closed') {
+    // Closed cases reach this state via two paths: Record Decision (which
+    // records a payer outcome) or Close without submitting (which doesn't).
+    // Distinguish via the status string set by the record-decision handler.
+    return record.status === 'Dismissed'
+      || record.status === 'Upheld by Payer'
+      || record.status === 'Upheld - Will Not Appeal'
+      || record.status === 'Upheld - Will Appeal'
+  }
+  return false
+}
+
+function payerOutcomeLabel(record: DenialRecord): string {
+  if (record.state === 'Overturned') {
+    if (record.status === 'Overturned — Partial Payment') return 'Overturned — partial payment'
+    if (record.status === 'Corrected Claim Paid')         return 'Overturned — corrected claim paid'
+    return 'Overturned — full payment'
+  }
+  if (record.status === 'Dismissed') return 'Dismissed'
+  if (record.status === 'Upheld by Payer'
+   || record.status === 'Upheld - Will Not Appeal'
+   || record.status === 'Upheld - Will Appeal') return 'Upheld'
+  return record.status
+}
+
+function formatOutcomeDate(iso: string | undefined): string {
+  if (!iso) return '—'
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  if (!m) return iso
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function OutcomeTab({ caseRecord }: { caseRecord?: DenialRecord }) {
+  if (!caseRecord) return null
+
+  // Variant selection. Submitted = awaiting; Closed without recorded outcome
+  // = abandoned; Closed/Overturned with recorded outcome = populated.
+  const recorded = hasRecordedOutcome(caseRecord)
+  const closedWithoutOutcome = caseRecord.state === 'Closed' && !recorded
+
+  return (
+    <Box sx={{ p: 'var(--spacing-6)', overflowY: 'auto', bgcolor: 'var(--colors-grey-2)' }}>
+      <Box sx={{ maxWidth: 720, mx: 'auto' }}>
+        {recorded ? (
+          <RecordedOutcomeDisplay caseRecord={caseRecord} />
+        ) : (
+          <EmptyOutcomeState
+            variant={closedWithoutOutcome ? 'closed-no-submission' : 'awaiting'}
+          />
+        )}
+      </Box>
+    </Box>
+  )
+}
+
+function EmptyOutcomeState({ variant }: { variant: 'awaiting' | 'closed-no-submission' }) {
+  const title = variant === 'awaiting'
+    ? 'No outcome recorded yet'
+    : 'No payer decision was recorded'
+  const body = variant === 'awaiting'
+    ? <>When the payer responds, use the <strong>status picker</strong> in the header above to record the decision. The outcome details will appear here once recorded.</>
+    : <>This case was closed without submitting an appeal, so there's no payer response to record. The case's history is on the <strong>Overview</strong> tab.</>
+
+  return (
+    <CardSurface sx={{ p: 'var(--spacing-6)', textAlign: 'center' }}>
+      <Typography sx={{
+        fontSize: 'var(--font-sizes-16)',
+        fontWeight: 'var(--font-weights-semibold)',
+        color: 'var(--colors-text-primary)',
+        mb: 'var(--spacing-2)',
+      }}>
+        {title}
+      </Typography>
+      <Typography sx={{
+        fontSize: 'var(--font-sizes-14)',
+        color: 'var(--colors-text-secondary)',
+        lineHeight: 1.5,
+        maxWidth: 480,
+        mx: 'auto',
+      }}>
+        {body}
+      </Typography>
+    </CardSurface>
+  )
+}
+
+function RecordedOutcomeDisplay({ caseRecord }: { caseRecord: DenialRecord }) {
+  const outcomeLabel = payerOutcomeLabel(caseRecord)
+  const decisionDate = caseRecord.state === 'Overturned' ? caseRecord.overturnDate : caseRecord.closedDate
+  const showRecovered = caseRecord.state === 'Overturned' && caseRecord.paidAmount !== undefined
+  const recoveredFormatted = caseRecord.paidAmount?.toLocaleString('en-US', {
+    style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }) ?? '—'
+
+  return (
+    <>
+      <SectionLabel>Payer decision</SectionLabel>
+      <CardSurface sx={{ p: 'var(--spacing-5)', mb: 'var(--spacing-4)' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: showRecovered ? '1fr 1fr 1fr' : '1fr 1fr', gap: 'var(--spacing-5)', mb: 'var(--spacing-4)' }}>
+          <Field label="Decision" value={outcomeLabel} />
+          <Field label="Decision date" value={formatOutcomeDate(decisionDate)} />
+          {showRecovered && <Field label="Amount recovered" value={recoveredFormatted} tabularNums />}
+        </Box>
+
+        {caseRecord.payerRationale && (
+          <Box sx={{ mb: 'var(--spacing-4)' }}>
+            <OverlineLabel>Payer's rationale</OverlineLabel>
+            <Typography sx={{
+              fontSize: 'var(--font-sizes-14)',
+              color: 'var(--colors-text-primary)',
+              lineHeight: 1.5,
+              whiteSpace: 'pre-wrap',
+            }}>
+              {caseRecord.payerRationale}
+            </Typography>
+          </Box>
+        )}
+
+        {caseRecord.determinationLetter && (
+          <Box>
+            <OverlineLabel>Payer determination letter</OverlineLabel>
+            <Box sx={{
+              display: 'inline-flex', alignItems: 'center', gap: 'var(--spacing-2)',
+              px: 'var(--spacing-3)', py: 'var(--spacing-2)',
+              border: 'var(--border-widths-thin) solid var(--colors-grey-4)',
+              borderRadius: 'var(--radii-sm)',
+              bgcolor: 'var(--colors-grey-1)',
+            }}>
+              <Paperclip size={16} strokeWidth={2} style={{ color: 'var(--colors-text-tertiary)' }} />
+              <Typography sx={{ fontSize: 'var(--font-sizes-14)', color: 'var(--colors-text-primary)' }}>
+                {caseRecord.determinationLetter.name}
+              </Typography>
+            </Box>
+          </Box>
+        )}
+      </CardSurface>
+    </>
+  )
+}
+
+function Field({ label, value, tabularNums = false }: { label: string; value: string; tabularNums?: boolean }) {
+  return (
+    <Box>
+      <OverlineLabel>{label}</OverlineLabel>
+      <Typography sx={{
+        fontSize: 'var(--font-sizes-14)',
+        fontWeight: 'var(--font-weights-medium)',
+        color: 'var(--colors-text-primary)',
+        ...(tabularNums ? { fontVariantNumeric: 'tabular-nums' } : {}),
+      }}>
+        {value}
+      </Typography>
     </Box>
   )
 }

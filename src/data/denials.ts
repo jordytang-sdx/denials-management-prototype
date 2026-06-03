@@ -141,6 +141,11 @@ export interface DenialRecord {
   responseDueDate?: string        // payer response deadline (Submitted tab)
   closeReason?: string            // reason case was closed
   closedDate?: string             // date case was closed
+  // Payer-decision fields, populated by the Record Decision modal. Reflects
+  // the receipt of the payer's response: their stated rationale and the
+  // determination letter attachment. Amount recovered uses paidAmount above.
+  payerRationale?: string
+  determinationLetter?: { name: string; uploadedAt: string }
   archiveReason?: string          // reason case was archived
   archivedBy?: string             // who archived it
   nextAction?: string

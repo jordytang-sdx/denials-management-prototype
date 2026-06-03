@@ -1491,21 +1491,37 @@ export default function App() {
                     } else if (outcome === 'dismissed') {
                       nextState = 'Closed'; nextStatus = 'Dismissed'; returnTab = 'Closed'
                     }
+                    // Decision date from the modal overrides the workflow
+                    // timestamp — it's when the *payer* decided, not when
+                    // the user recorded it. Falls back to today if the modal
+                    // didn't supply one (defensive).
+                    const decidedDate = payload.decisionDate || todayISO()
                     const dateField = nextState === 'Overturned'
-                      ? { overturnDate: todayISO() }
-                      : { closedDate: todayISO() }
+                      ? { overturnDate: decidedDate }
+                      : { closedDate: decidedDate }
+                    // Outcome data captured in the modal: amount recovered
+                    // (Overturned variants only), payer rationale (optional),
+                    // determination letter filename (optional). All flow onto
+                    // the denial record so the Outcome tab can display them.
+                    const outcomeFields: Partial<DenialRecord> = {
+                      ...(payload.recoveredAmount !== undefined ? { paidAmount: payload.recoveredAmount } : {}),
+                      ...(payload.payerRationale ? { payerRationale: payload.payerRationale } : {}),
+                      ...(payload.determinationLetterFileName
+                        ? { determinationLetter: { name: payload.determinationLetterFileName, uploadedAt: todayISO() } }
+                        : {}),
+                    }
                     setDenials(prev => {
                       const updated = prev.map(d => {
                         if (d.id !== id) return d
                         return appendAudit(
-                          { ...d, state: nextState, status: nextStatus, ...dateField },
+                          { ...d, state: nextState, status: nextStatus, ...dateField, ...outcomeFields },
                           'record-decision',
                           { state: nextState, status: nextStatus },
                           `outcome=${outcome}${intent ? `, intent=${intent}` : ''}`,
                         )
                       })
                       if (shouldSpawn && parent) {
-                        updated.push(spawnNextLevel({ ...parent, state: nextState, status: nextStatus, ...dateField }))
+                        updated.push(spawnNextLevel({ ...parent, state: nextState, status: nextStatus, ...dateField, ...outcomeFields }))
                       }
                       return updated
                     })
