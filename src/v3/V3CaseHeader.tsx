@@ -49,7 +49,7 @@ function pickerItemsForState(state: DenialState | undefined): PickerItem[] {
     return [
       { id: 'send-to-sftp',    label: 'Send to SFTP' },
       { id: 'submit',          label: 'Mark as Submitted' },
-      { id: 'will-not-submit', label: 'Close without submitting', destructive: true, dividerBefore: true },
+      { id: 'will-not-submit', label: 'Close Without Submitting', destructive: true, dividerBefore: true },
     ]
   }
   if (state === 'Submitted') {
@@ -62,7 +62,7 @@ function pickerItemsForState(state: DenialState | undefined): PickerItem[] {
     return [
       { id: 'record-decision',          label: 'Record Decision', opensDecision: true },
       { id: 'return-to-review',         label: 'Return to Review' },
-      { id: 'close-without-decision',   label: 'Withdraw Appeal', destructive: true, dividerBefore: true },
+      { id: 'close-without-decision',   label: 'Withdraw Appeal and Close', destructive: true, dividerBefore: true },
     ]
   }
   // Closed / Overturned / Archive → no picker actions in this iteration.
