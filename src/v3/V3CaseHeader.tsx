@@ -53,9 +53,16 @@ function pickerItemsForState(state: DenialState | undefined): PickerItem[] {
     ]
   }
   if (state === 'Submitted') {
+    // Record Decision first — it's the dominant happy path (payer responded,
+    // capture the outcome). Return to Review is a fat-finger recovery for
+    // premature submissions. Close without payer decision is the terminal
+    // abandon action when the payer goes silent or the case is being written
+    // off, separated by a divider in the destructive treatment — mirrors the
+    // Ready picker's Close without submitting.
     return [
-      { id: 'return-to-review', label: 'Return to Review' },
-      { id: 'record-decision',  label: 'Record Decision', opensDecision: true },
+      { id: 'record-decision',          label: 'Record Decision', opensDecision: true },
+      { id: 'return-to-review',         label: 'Return to Review' },
+      { id: 'close-without-decision',   label: 'Close without payer decision', destructive: true, dividerBefore: true },
     ]
   }
   // Closed / Overturned / Archive → no picker actions in this iteration.
@@ -442,7 +449,7 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
   // Pending-transition state. Set when the user picks a state-change option;
   // we keep the badge in a loading treatment ("Submitting…"/"Closing…"/etc.)
   // for a beat before committing the underlying state change via onStatusAction.
-  type PendingAction = 'submit' | 'send-to-sftp' | 'will-not-submit' | 'return-to-review' | 'record-decision'
+  type PendingAction = 'submit' | 'send-to-sftp' | 'will-not-submit' | 'return-to-review' | 'record-decision' | 'close-without-decision'
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [decisionOpen, setDecisionOpen] = useState(false)
 
@@ -459,10 +466,11 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
   // Loading-state label for the badge. Mirrors the verb of the action so the
   // user sees the system doing the specific thing they asked for.
   const pendingLabel =
-    pendingAction === 'will-not-submit'  ? 'Closing…' :
-    pendingAction === 'return-to-review' ? 'Returning…' :
-    pendingAction === 'record-decision'  ? 'Recording…' :
-                                            'Submitting…'
+    pendingAction === 'will-not-submit'        ? 'Closing…' :
+    pendingAction === 'close-without-decision' ? 'Closing…' :
+    pendingAction === 'return-to-review'       ? 'Returning…' :
+    pendingAction === 'record-decision'        ? 'Recording…' :
+                                                  'Submitting…'
 
   const rawPatientName = caseRecord?.patient.name ?? '—'
   // Concept C uses "Last, First" — clinical convention. Falls back to the raw

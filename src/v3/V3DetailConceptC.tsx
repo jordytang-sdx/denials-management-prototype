@@ -508,33 +508,54 @@ function formatOutcomeDate(iso: string | undefined): string {
 function OutcomeTab({ caseRecord }: { caseRecord?: DenialRecord }) {
   if (!caseRecord) return null
 
-  // Variant selection. Submitted = awaiting; Closed without recorded outcome
-  // = abandoned; Closed/Overturned with recorded outcome = populated.
+  // Variant selection:
+  //   Submitted (or any non-terminal state without recorded outcome) → awaiting
+  //   Closed with status 'Will Not Appeal' / 'Will Not Submit' → closed pre-submission
+  //   Closed with status 'Closed - Unknown Outcome' → closed post-submission, no payer response
+  //   Closed/Overturned with recorded outcome → populated
   const recorded = hasRecordedOutcome(caseRecord)
-  const closedWithoutOutcome = caseRecord.state === 'Closed' && !recorded
+  const isClosedNoDecision = caseRecord.state === 'Closed'
+    && caseRecord.status === 'Closed - Unknown Outcome'
+  const isClosedNoSubmission = caseRecord.state === 'Closed' && !recorded && !isClosedNoDecision
+
+  const variant: EmptyOutcomeVariant =
+    isClosedNoDecision   ? 'closed-no-decision' :
+    isClosedNoSubmission ? 'closed-no-submission' :
+                            'awaiting'
 
   return (
     <Box sx={{ p: 'var(--spacing-6)', overflowY: 'auto', bgcolor: 'var(--colors-grey-2)' }}>
       <Box sx={{ maxWidth: 720, mx: 'auto' }}>
-        {recorded ? (
-          <RecordedOutcomeDisplay caseRecord={caseRecord} />
-        ) : (
-          <EmptyOutcomeState
-            variant={closedWithoutOutcome ? 'closed-no-submission' : 'awaiting'}
-          />
-        )}
+        {recorded
+          ? <RecordedOutcomeDisplay caseRecord={caseRecord} />
+          : <EmptyOutcomeState variant={variant} />}
       </Box>
     </Box>
   )
 }
 
-function EmptyOutcomeState({ variant }: { variant: 'awaiting' | 'closed-no-submission' }) {
-  const title = variant === 'awaiting'
-    ? 'No outcome recorded yet'
-    : 'No payer decision was recorded'
-  const body = variant === 'awaiting'
-    ? <>When the payer responds, use the <strong>status picker</strong> in the header above to record the decision. The outcome details will appear here once recorded.</>
-    : <>This case was closed without submitting an appeal, so there's no payer response to record. The case's history is on the <strong>Overview</strong> tab.</>
+type EmptyOutcomeVariant = 'awaiting' | 'closed-no-submission' | 'closed-no-decision'
+
+function EmptyOutcomeState({ variant }: { variant: EmptyOutcomeVariant }) {
+  const { title, body } = (() => {
+    switch (variant) {
+      case 'awaiting':
+        return {
+          title: 'No outcome recorded yet',
+          body: <>When the payer responds, use the <strong>status picker</strong> in the header above to record the decision. The outcome details will appear here once recorded.</>,
+        }
+      case 'closed-no-submission':
+        return {
+          title: 'No payer decision was recorded',
+          body: <>This case was closed without submitting an appeal, so there's no payer response to record. The case's history is on the <strong>Overview</strong> tab.</>,
+        }
+      case 'closed-no-decision':
+        return {
+          title: 'No payer decision was recorded',
+          body: <>This case was closed before a payer response was received. No outcome to display. The case's history is on the <strong>Overview</strong> tab.</>,
+        }
+    }
+  })()
 
   return (
     <CardSurface sx={{ p: 'var(--spacing-6)', textAlign: 'center' }}>

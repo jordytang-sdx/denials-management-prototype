@@ -1464,6 +1464,23 @@ export default function App() {
                     setV2ReturnTab('InProgress')
                     return
                   }
+                  if (action === 'close-without-decision') {
+                    // Submitted → Closed without a payer response. Distinct
+                    // from Ready → Close without submitting: the case WAS
+                    // submitted; the payer just didn't respond (or the case
+                    // is being written off operationally). Lands in Closed
+                    // with status 'Closed - Unknown Outcome' so reporting can
+                    // separate these from cases that received a real decision.
+                    setDenials(prev => prev.map(d => d.id === id ? {
+                      ...d,
+                      state: 'Closed' as DenialState,
+                      status: 'Closed - Unknown Outcome' as const,
+                      closedDate: todayISO(),
+                      closeReason: 'No payer decision received',
+                    } : d))
+                    setV2ReturnTab('Closed')
+                    return
+                  }
                   if (action === 'record-decision' && payload) {
                     // Mirrors handleV2StatusAction's record-decision branch but
                     // keeps the user on the case after the transition. Spawn
