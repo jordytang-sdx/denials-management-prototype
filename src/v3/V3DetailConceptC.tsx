@@ -123,8 +123,9 @@ interface V3DetailConceptCProps {
   // standalone explorations omit it (header back arrow stays inert there).
   onBack?: () => void
   // Status transition handler. V2 wires this to App.handleV2StatusAction so
-  // the header status picker drives the denial state machine.
-  onStatusAction?: (action: string) => void
+  // the header status picker drives the denial state machine. Some actions
+  // (record-decision) carry structured payload from the DecisionModal.
+  onStatusAction?: (action: string, payload?: { outcome?: string; intent?: string }) => void
 }
 
 function isoToMDY(iso: string | undefined): string {

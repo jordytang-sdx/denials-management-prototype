@@ -1432,7 +1432,7 @@ export default function App() {
               <V3DetailConceptC
                 caseRecord={visibleDenials.find(d => d.id === selectedV2CaseId) ?? undefined}
                 onBack={() => setSelectedV2CaseId(null)}
-                onStatusAction={(action) => {
+                onStatusAction={(action, payload) => {
                   // V2 keeps the case open after a status change so the user
                   // sees the badge update in place; they navigate back to the
                   // worklist themselves. Mirrors handleV2StatusAction for the
@@ -1442,12 +1442,69 @@ export default function App() {
                   if (action === 'submit' || action === 'send-to-sftp') {
                     setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Submitted' as DenialState, status: 'Awaiting Payer Decision' as const, submissionDate: todayISO() } : d))
                     setV2ReturnTab('Submitted')
-                  } else if (action === 'will-not-submit') {
+                    return
+                  }
+                  if (action === 'will-not-submit') {
                     setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'Closed' as DenialState, status: 'Will Not Appeal' as const } : d))
                     setV2ReturnTab('Closed')
-                  } else {
-                    handleV2StatusAction(action)
+                    return
                   }
+                  if (action === 'return-to-review') {
+                    setDenials(prev => prev.map(d => d.id === id ? { ...d, state: 'InProgress' as DenialState, status: 'In Progress' as const, submissionDate: undefined } : d))
+                    setV2ReturnTab('InProgress')
+                    return
+                  }
+                  if (action === 'record-decision' && payload) {
+                    // Mirrors handleV2StatusAction's record-decision branch but
+                    // keeps the user on the case after the transition. Spawn
+                    // logic is identical — appealing again creates a new L+1
+                    // instance via spawnNextLevel.
+                    const { outcome, intent } = payload
+                    const parent = denials.find(x => x.id === id)
+                    if (!parent) return
+                    let nextState: DenialState = parent.state
+                    let nextStatus: DenialStatus = parent.status
+                    let shouldSpawn = false
+                    let returnTab: DenialState = 'Closed'
+                    if (outcome === 'overturned_full') {
+                      nextState = 'Overturned'; nextStatus = 'Overturned — Full Payment'; returnTab = 'Closed'
+                    } else if (outcome === 'overturned_corrected') {
+                      nextState = 'Overturned'; nextStatus = 'Corrected Claim Paid'; returnTab = 'Closed'
+                    } else if (outcome === 'overturned_partial' && intent === 'close_out') {
+                      nextState = 'Overturned'; nextStatus = 'Overturned — Partial Payment'; returnTab = 'Closed'
+                    } else if (outcome === 'overturned_partial' && intent === 'appeal_again') {
+                      nextState = 'Closed'; nextStatus = 'Upheld - Will Appeal'; shouldSpawn = true; returnTab = 'InProgress'
+                    } else if (outcome === 'upheld' && intent === 'close_out') {
+                      nextState = 'Closed'; nextStatus = 'Upheld - Will Not Appeal'; returnTab = 'Closed'
+                    } else if (outcome === 'upheld' && intent === 'appeal_again') {
+                      nextState = 'Closed'; nextStatus = 'Upheld - Will Appeal'; shouldSpawn = true; returnTab = 'InProgress'
+                    } else if (outcome === 'dismissed') {
+                      nextState = 'Closed'; nextStatus = 'Dismissed'; returnTab = 'Closed'
+                    }
+                    const dateField = nextState === 'Overturned'
+                      ? { overturnDate: todayISO() }
+                      : { closedDate: todayISO() }
+                    setDenials(prev => {
+                      const updated = prev.map(d => {
+                        if (d.id !== id) return d
+                        return appendAudit(
+                          { ...d, state: nextState, status: nextStatus, ...dateField },
+                          'record-decision',
+                          { state: nextState, status: nextStatus },
+                          `outcome=${outcome}${intent ? `, intent=${intent}` : ''}`,
+                        )
+                      })
+                      if (shouldSpawn && parent) {
+                        updated.push(spawnNextLevel({ ...parent, state: nextState, status: nextStatus, ...dateField }))
+                      }
+                      return updated
+                    })
+                    setV2ReturnTab(returnTab)
+                    return
+                  }
+                  // Fallback: delegate to the shared handler (which may close
+                  // the case — only relevant for actions V2 doesn't customize).
+                  handleV2StatusAction(action, payload)
                 }}
               />
             )}

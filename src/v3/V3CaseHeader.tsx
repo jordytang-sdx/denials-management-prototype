@@ -21,12 +21,48 @@ import {
   Send,
   CheckCircle2,
   Ban,
+  RotateCcw,
+  Gavel,
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import type { DenialRecord, DenialState, TeamMember } from '../data/denials'
 import { TEAM_MEMBERS, TODAY } from '../data/denials'
 import { getDenialTypeConfig } from '../data/denialTypeConfig'
 import DsBadge, { type DsBadgeVariant, type DsBadgeStyle } from '../ds/DsBadge'
+import DecisionModal, { type DecisionResult } from '../v4/DecisionModal'
+
+// Picker menu items keyed by current state. Drives the status-badge dropdown.
+// When the user picks an item, the consumer fires onStatusAction(id, payload?).
+// Destructive items are visually emphasized; record-decision opens a modal
+// rather than firing immediately (it needs structured payload).
+type PickerItem = {
+  id: string
+  label: string
+  icon: React.ReactNode
+  destructive?: boolean
+  dividerBefore?: boolean
+  // When true, selecting this item opens the DecisionModal rather than
+  // immediately firing the status action.
+  opensDecision?: boolean
+}
+
+function pickerItemsForState(state: DenialState | undefined): PickerItem[] {
+  if (state === 'InProgress' || state === 'Queue') {
+    return [
+      { id: 'send-to-sftp',    label: 'Send to SFTP',             icon: <Send size={14} strokeWidth={2} /> },
+      { id: 'submit',          label: 'Mark as Submitted',        icon: <CheckCircle2 size={14} strokeWidth={2} /> },
+      { id: 'will-not-submit', label: 'Close without submitting', icon: <Ban size={14} strokeWidth={2} />, destructive: true, dividerBefore: true },
+    ]
+  }
+  if (state === 'Submitted') {
+    return [
+      { id: 'return-to-review', label: 'Return to Review', icon: <RotateCcw size={14} strokeWidth={2} /> },
+      { id: 'record-decision',  label: 'Record Decision',  icon: <Gavel size={14} strokeWidth={2} />, opensDecision: true },
+    ]
+  }
+  // Closed / Overturned / Archive → no picker actions in this iteration.
+  return []
+}
 
 interface V3CaseHeaderProps {
   caseRecord?: DenialRecord
@@ -60,7 +96,11 @@ interface V3CaseHeaderProps {
   // Status transition handler. V2 wires this to App.handleV2StatusAction so
   // the status badge picker drives the denial state machine. When omitted
   // (V3 standalone explorations), the badge renders as a static chip.
-  onStatusAction?: (action: string) => void
+  //
+  // Some transitions (record-decision) carry structured payload from the
+  // DecisionModal. The payload shape matches handleV2StatusAction's contract
+  // in App.tsx — outcome (PayerOutcome) and optional intent (AppealIntent).
+  onStatusAction?: (action: string, payload?: { outcome?: string; intent?: string }) => void
 }
 
 // ─── Reusable token-styled primitives ────────────────────────────────────────
@@ -336,10 +376,15 @@ export function statusVariant(status: string): DsBadgeVariant {
   switch (status) {
     case 'Submitted':
     case 'Overturned':
+    case 'Overturned (partial)':
+    case 'Corrected Claim Paid':
       return 'success'
     case 'Ready for Review':
     case 'Appeal Drafting':
       return 'info'
+    case 'Upheld':
+    case 'Dismissed':
+      return 'warning'
     case 'Closed':
     case 'Will Not Submit':
     case 'Archived':
@@ -353,15 +398,28 @@ export function statusVariant(status: string): DsBadgeVariant {
 // Mirrors the V2 mapping in CasePageAiEditing.stateToDisplayStatus so a case
 // whose internal status is 'Appeal Drafting' surfaces as 'Ready for Review' in
 // the workflow chrome — the workflow-facing label, not the internal sub-status.
-export function displayStatusFromState(state: DenialState | undefined): string {
+//
+// When a status is provided, Closed and Overturned states differentiate by
+// underlying outcome so the badge tells the user *which* terminal state the
+// case landed in (Dismissed vs Upheld vs partial-overturn etc.) rather than
+// collapsing all closures to a single label.
+export function displayStatusFromState(state: DenialState | undefined, status?: string): string {
   switch (state) {
     case 'Queue':
     case 'InProgress': return 'Ready for Review'
     case 'Submitted':  return 'Submitted'
-    case 'Overturned': return 'Overturned'
-    case 'Closed':     return 'Will Not Submit'
-    case 'Archive':    return 'Archived'
-    default:           return 'Ready for Review'
+    case 'Overturned':
+      if (status === 'Overturned — Partial Payment') return 'Overturned (partial)'
+      if (status === 'Corrected Claim Paid')         return 'Corrected Claim Paid'
+      return 'Overturned'
+    case 'Closed':
+      if (status === 'Dismissed')                 return 'Dismissed'
+      if (status === 'Upheld - Will Appeal')      return 'Upheld'
+      if (status === 'Upheld - Will Not Appeal')  return 'Upheld'
+      if (status === 'Upheld by Payer')           return 'Upheld'
+      return 'Will Not Submit'
+    case 'Archive': return 'Archived'
+    default:        return 'Ready for Review'
   }
 }
 
@@ -369,21 +427,29 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
   const [statusAnchor, setStatusAnchor] = useState<HTMLElement | null>(null)
   const [kebabAnchor, setKebabAnchor] = useState<HTMLElement | null>(null)
   // Pending-transition state. Set when the user picks a state-change option;
-  // we keep the badge in a "Submitting…"/"Closing…" loading treatment for a
-  // beat before committing the underlying state change via onStatusAction.
-  const [pendingAction, setPendingAction] = useState<'submit' | 'send-to-sftp' | 'will-not-submit' | null>(null)
+  // we keep the badge in a loading treatment ("Submitting…"/"Closing…"/etc.)
+  // for a beat before committing the underlying state change via onStatusAction.
+  type PendingAction = 'submit' | 'send-to-sftp' | 'will-not-submit' | 'return-to-review' | 'record-decision'
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [decisionOpen, setDecisionOpen] = useState(false)
 
-  function fireStatusAction(action: 'submit' | 'send-to-sftp' | 'will-not-submit') {
+  function fireStatusAction(action: PendingAction, payload?: { outcome?: string; intent?: string }) {
     setStatusAnchor(null)
     if (!onStatusAction) return
     setPendingAction(action)
     window.setTimeout(() => {
-      onStatusAction(action)
+      onStatusAction(action, payload)
       setPendingAction(null)
     }, 1200)
   }
 
-  const pendingLabel = pendingAction === 'will-not-submit' ? 'Closing…' : 'Submitting…'
+  // Loading-state label for the badge. Mirrors the verb of the action so the
+  // user sees the system doing the specific thing they asked for.
+  const pendingLabel =
+    pendingAction === 'will-not-submit'  ? 'Closing…' :
+    pendingAction === 'return-to-review' ? 'Returning…' :
+    pendingAction === 'record-decision'  ? 'Recording…' :
+                                            'Submitting…'
 
   const rawPatientName = caseRecord?.patient.name ?? '—'
   // Concept C uses "Last, First" — clinical convention. Falls back to the raw
@@ -404,7 +470,12 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
   const deniedAmount = caseRecord ? `$${caseRecord.deniedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'
   const denialType = caseRecord?.denialType ?? 'Denial'
   const payer = caseRecord?.payer ?? '—'
-  const status = displayStatusFromState(caseRecord?.state)
+  const status = displayStatusFromState(caseRecord?.state, caseRecord?.status)
+  // Available transitions for the current state. Empty → render the badge as
+  // a static chip (no picker affordance). When this list grows for other
+  // states (e.g. Closed reopen flows), this is the only place to extend.
+  const pickerItems = pickerItemsForState(caseRecord?.state)
+  const hasPickerItems = pickerItems.length > 0
 
   return (
     <Box sx={{
@@ -468,14 +539,16 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
               menu of valid next-state transitions for the current state. The
               trigger mirrors DsBadge's visual treatment (same subtle-variant
               tokens, same dimensions) so a non-interactive badge and the
-              picker sit identically in the layout. When onStatusAction isn't
-              provided (V3 standalone explorations) the picker degrades to a
-              plain DsBadge.
+              picker sit identically in the layout.
+
+              Falls back to a static DsBadge when:
+              - onStatusAction isn't provided (V3 standalone explorations), or
+              - The current state has no available transitions (terminal states).
 
               Loading state: while a transition is committing, the badge label
-              swaps to "Submitting…"/"Closing…" with a small spinner, and the
-              trigger is disabled so the user can't fire a second action. */}
-          {onStatusAction ? (() => {
+              swaps to a verb-specific loading label with a small spinner, and
+              the trigger is disabled so the user can't fire a second action. */}
+          {onStatusAction && hasPickerItems ? (() => {
             const variant = pendingAction ? 'default' : statusVariant(status)
             const label = pendingAction ? pendingLabel : status
             const bg = `var(--colors-badge-variant-${variant}-subtle-background)`
@@ -543,55 +616,46 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
                     bgcolor: 'var(--colors-menu-content-background)',
                   } }}
                 >
-                  <MenuItem
-                    onClick={() => fireStatusAction('send-to-sftp')}
-                    sx={{
-                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-                      color: 'var(--colors-interactive-menu-item-text)',
-                      gap: 'var(--spacing-2)',
-                    }}
-                  >
-                    <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
-                      <Send size={14} strokeWidth={2} />
-                    </ListItemIcon>
-                    <ListItemText primaryTypographyProps={{ sx: {
-                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-                      color: 'inherit',
-                    } }}>Send to SFTP</ListItemText>
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => fireStatusAction('submit')}
-                    sx={{
-                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-                      color: 'var(--colors-interactive-menu-item-text)',
-                      gap: 'var(--spacing-2)',
-                    }}
-                  >
-                    <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
-                      <CheckCircle2 size={14} strokeWidth={2} />
-                    </ListItemIcon>
-                    <ListItemText primaryTypographyProps={{ sx: {
-                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-                      color: 'inherit',
-                    } }}>Mark as Submitted</ListItemText>
-                  </MenuItem>
-                  <Divider sx={{ my: 'var(--spacing-1)', borderColor: 'var(--colors-menu-content-border-color)' }} />
-                  <MenuItem
-                    onClick={() => fireStatusAction('will-not-submit')}
-                    sx={{
-                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-                      color: 'var(--colors-text-error)',
-                      gap: 'var(--spacing-2)',
-                    }}
-                  >
-                    <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
-                      <Ban size={14} strokeWidth={2} />
-                    </ListItemIcon>
-                    <ListItemText primaryTypographyProps={{ sx: {
-                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-                      color: 'inherit',
-                    } }}>Close without submitting</ListItemText>
-                  </MenuItem>
+                  {pickerItems.map((item, idx) => {
+                    const itemColor = item.destructive
+                      ? 'var(--colors-text-error)'
+                      : 'var(--colors-interactive-menu-item-text)'
+                    const onItemClick = () => {
+                      setStatusAnchor(null)
+                      if (item.opensDecision) {
+                        // Decision modal handles structured outcome capture;
+                        // we don't fire the action until the user confirms.
+                        setDecisionOpen(true)
+                        return
+                      }
+                      // Type assertion: pickerItemsForState only emits ids that
+                      // map to PendingAction. Anything else is a bug.
+                      fireStatusAction(item.id as PendingAction)
+                    }
+                    return (
+                      <Box key={item.id} component="span">
+                        {item.dividerBefore && idx > 0 && (
+                          <Divider sx={{ my: 'var(--spacing-1)', borderColor: 'var(--colors-menu-content-border-color)' }} />
+                        )}
+                        <MenuItem
+                          onClick={onItemClick}
+                          sx={{
+                            fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                            color: itemColor,
+                            gap: 'var(--spacing-2)',
+                          }}
+                        >
+                          <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
+                            {item.icon}
+                          </ListItemIcon>
+                          <ListItemText primaryTypographyProps={{ sx: {
+                            fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                            color: 'inherit',
+                          } }}>{item.label}</ListItemText>
+                        </MenuItem>
+                      </Box>
+                    )
+                  })}
                 </Menu>
               </>
             )
@@ -741,6 +805,21 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
       </Box>
 
       {subRow}
+
+      {/* Record Decision modal — opened from the Submitted-state picker. The
+          modal captures payer outcome and (when ambiguous) the user's intent
+          to appeal further. On confirm we fire 'record-decision' with the
+          structured payload; App.tsx applies the state transition and spawns
+          an L+1 case when the user opts to appeal again. */}
+      <DecisionModal
+        open={decisionOpen}
+        appealLevel={caseRecord?.appealLevel}
+        onClose={() => setDecisionOpen(false)}
+        onConfirm={(result: DecisionResult) => {
+          setDecisionOpen(false)
+          fireStatusAction('record-decision', { outcome: result.outcome, intent: result.intent })
+        }}
+      />
     </Box>
   )
 }
