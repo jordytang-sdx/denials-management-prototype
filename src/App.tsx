@@ -28,7 +28,7 @@ import {
   NotificationsOutlined, HelpOutlineOutlined, RestartAltOutlined,
   ChevronLeftOutlined, ChevronRightOutlined, ArchiveOutlined,
   PaymentsOutlined, GavelOutlined, ViewListOutlined,
-  ExpandMoreOutlined, UnfoldMoreOutlined,
+  ExpandMoreOutlined,
 } from '@mui/icons-material'
 import theme from './theme'
 import WorklistPage, {
@@ -342,33 +342,6 @@ function ExistingSystemSidebar({
           </Box>
         </Box>
 
-        {/* Footer */}
-        <Box sx={{ p: '8px', borderTop: '1px solid var(--colors-grey-4)' }}>
-          <Box
-            sx={{
-              display: 'flex', alignItems: 'center', gap: 1,
-              px: '8px', py: '4px', borderRadius: 'var(--radii-sm)', cursor: 'pointer',
-              '&:hover': { bgcolor: 'var(--colors-grey-3)' },
-            }}
-          >
-            <Box sx={{
-              width: 32, height: 32, borderRadius: '8px',
-              bgcolor: '#171717', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <Typography sx={{ fontSize: '0.6875rem', fontWeight: 700, color: '#fff', lineHeight: 1 }}>JT</Typography>
-            </Box>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontSize: '0.875rem', fontWeight: 600, color: '#0A0A0A', lineHeight: 1, display: 'block' }}>
-                Jordan Tang
-              </Typography>
-              <Typography sx={{ fontSize: '0.75rem', color: '#636A6F', lineHeight: 1, mt: '3px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                j.tang@memorialhealth.org
-              </Typography>
-            </Box>
-            <UnfoldMoreOutlined sx={{ fontSize: 16, color: '#636A6F', flexShrink: 0 }} />
-          </Box>
-        </Box>
       </Box>
     </Box>
   )

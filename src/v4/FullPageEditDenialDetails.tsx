@@ -13,6 +13,9 @@ import {
 import SmarterSelect from './SmarterSelect'
 import DrgAdjustmentsSection from './DrgAdjustmentsSection'
 import { type DrgAdjustments } from './drgMockData'
+import { DeadlineChip, AppealLevelChip, statusVariant, displayStatusFromState } from '../v3/V3CaseHeader'
+import DsBadge from '../ds/DsBadge'
+import type { DenialState } from '../data/denials'
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -101,7 +104,7 @@ export interface SourceData {
 export type EditChrome =
   | { kind: 'wizard'; onCancel: () => void; onBackToFindEncounter: () => void }
   | { kind: 'queue'; position: number; total: number; deadlineLabel: string; patientName?: string | null; payer?: string | null; claimId?: string | null; exceptionLabel?: string | null; backLabel?: string; onBackToList: () => void; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean }
-  | { kind: 'case'; patientName: string; deadlineLabel: string; level: string; status: string; onBackToList: () => void }
+  | { kind: 'case'; patientName: string; deadlineISO: string | null; level: string; state: DenialState; onBackToList: () => void }
 
 interface Props {
   draft: DenialDraft
@@ -338,11 +341,12 @@ function QueueChrome({
 }
 
 function CaseChrome({
-  patientName, deadlineLabel, level, status, onBackToList,
+  patientName, deadlineISO, level, state, onBackToList,
 }: {
-  patientName: string; deadlineLabel: string; level: string; status: string
+  patientName: string; deadlineISO: string | null; level: string; state: DenialState
   onBackToList: () => void
 }) {
+  const status = displayStatusFromState(state)
   return (
     <Box sx={{
       bgcolor: 'background.paper',
@@ -365,43 +369,13 @@ function CaseChrome({
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Typography sx={{ fontSize: 'var(--font-sizes-16)', fontWeight: 'var(--font-weights-semibold)' }}>
-            {patientName}
+            {formatPatientName(patientName)}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Chip
-            label={`Deadline: ${deadlineLabel}`}
-            size="small"
-            variant="outlined"
-            sx={{
-              fontSize: 'var(--font-sizes-12)',
-              color: 'var(--colors-ocean-4)',
-              borderColor: 'var(--colors-ocean-3)',
-              height: 24,
-            }}
-          />
-          <Chip
-            label={level}
-            size="small"
-            sx={{
-              fontSize: 'var(--font-sizes-12)',
-              bgcolor: 'var(--colors-badge-variant-default-background)',
-              color: 'var(--colors-badge-variant-default-text)',
-              border: '1px solid var(--colors-badge-variant-default-border)',
-              height: 24,
-            }}
-          />
-          <Chip
-            label={status}
-            size="small"
-            sx={{
-              fontSize: 'var(--font-sizes-12)',
-              bgcolor: 'var(--colors-badge-variant-success-background)',
-              color: 'var(--colors-badge-variant-success-text)',
-              border: '1px solid var(--colors-badge-variant-success-border)',
-              height: 24,
-            }}
-          />
+          <DeadlineChip deadlineISO={deadlineISO ?? ''} />
+          <AppealLevelChip level={level} />
+          <DsBadge variant={statusVariant(status)}>{status}</DsBadge>
         </Box>
       </Box>
     </Box>
@@ -1400,8 +1374,8 @@ export default function FullPageEditDenialDetails({ draft, chrome, onChangeEncou
       )}
       {chrome.kind === 'case' && (
         <CaseChrome
-          patientName={chrome.patientName} deadlineLabel={chrome.deadlineLabel}
-          level={chrome.level} status={chrome.status}
+          patientName={chrome.patientName} deadlineISO={chrome.deadlineISO}
+          level={chrome.level} state={chrome.state}
           onBackToList={chrome.onBackToList}
         />
       )}

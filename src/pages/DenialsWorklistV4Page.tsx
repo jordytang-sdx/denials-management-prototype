@@ -239,8 +239,8 @@ function DeadlineCell({ d }: { d: DenialRecord }) {
       <Typography variant="inherit" sx={{ color: overdue ? 'error.main' : urgent ? 'warning.dark' : 'text.primary' }}>
         {formatDate(d.deadline)}
       </Typography>
-      <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: overdue ? 'error.light' : 'text.secondary' }}>
-        {overdue ? `${Math.abs(left)}d overdue` : left === 0 ? 'Today' : `${left}d left`}
+      <Typography sx={{ fontSize: 'var(--font-sizes-12)', color: overdue ? 'var(--colors-badge-variant-error-icon)' : 'text.secondary' }}>
+        {overdue ? 'Overdue' : left === 0 ? 'Today' : `${left}d left`}
       </Typography>
     </TableCell>
   )
