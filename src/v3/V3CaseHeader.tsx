@@ -426,6 +426,11 @@ export function displayStatusFromState(state: DenialState | undefined, status?: 
 export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, commentCount = 0, commentsOpen = false, hideAvatar = false, lastNameFirst = false, appealLevelAsChip = false, onEditDenialDetails, onViewSource, onDeleteDenial, onBack, onStatusAction }: V3CaseHeaderProps) {
   const [statusAnchor, setStatusAnchor] = useState<HTMLElement | null>(null)
   const [kebabAnchor, setKebabAnchor] = useState<HTMLElement | null>(null)
+  // Delete confirm. Kept inline in the kebab popover (no new modal component
+  // — destructive, but the data spec says deletes are irreversible in MVP, so
+  // the confirm is a deliberate two-step *within* the kebab rather than a
+  // separate dialog. Avoids needing a Dialog primitive we don't have yet.
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   // Pending-transition state. Set when the user picks a state-change option;
   // we keep the badge in a loading treatment ("Submitting…"/"Closing…"/etc.)
   // for a beat before committing the underlying state change via onStatusAction.
@@ -673,7 +678,7 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
           <Menu
             anchorEl={kebabAnchor}
             open={Boolean(kebabAnchor)}
-            onClose={() => setKebabAnchor(null)}
+            onClose={() => { setKebabAnchor(null); setConfirmingDelete(false) }}
             anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
             transformOrigin={{ vertical: 'top', horizontal: 'right' }}
             PaperProps={{ sx: {
@@ -685,47 +690,108 @@ export default function V3CaseHeader({ caseRecord, subRow, onOpenComments, comme
               bgcolor: 'var(--colors-menu-content-background)',
             } }}
           >
-            <MenuItem onClick={() => { setKebabAnchor(null); onEditDenialDetails?.() }} sx={{
-              fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-              color: 'var(--colors-menu-item-default-text)',
-              gap: 'var(--spacing-2)',
-            }}>
-              <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
-                <Pencil size={16} strokeWidth={2} />
-              </ListItemIcon>
-              <ListItemText primaryTypographyProps={{ sx: {
-                fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-                color: 'inherit',
-              } }}>Edit denial details</ListItemText>
-            </MenuItem>
-            {onViewSource && (
-              <MenuItem onClick={() => { setKebabAnchor(null); onViewSource() }} sx={{
-                fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-                color: 'var(--colors-menu-item-default-text)',
-                gap: 'var(--spacing-2)',
-              }}>
-                <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
-                  <FileText size={16} strokeWidth={2} />
-                </ListItemIcon>
-                <ListItemText primaryTypographyProps={{ sx: {
+            {confirmingDelete ? (
+              // Two-step destructive confirm rendered inside the kebab popover.
+              // No new dialog component — the existing menu surface doubles as
+              // the confirm surface. MVP deletes cannot be restored, so the
+              // copy is explicit about that.
+              <Box sx={{ p: 'var(--spacing-3)', minWidth: 240, display: 'flex', flexDirection: 'column', gap: 'var(--spacing-2)' }}>
+                <Typography sx={{
+                  fontSize: 'var(--font-sizes-14)',
+                  fontWeight: 'var(--font-weights-semibold)',
+                  color: 'var(--colors-text-primary)',
+                }}>
+                  Delete this denial?
+                </Typography>
+                <Typography sx={{
+                  fontSize: 'var(--font-sizes-12)',
+                  color: 'var(--colors-text-secondary)',
+                }}>
+                  This cannot be undone. The denial will be permanently removed.
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--spacing-2)', mt: 'var(--spacing-1)' }}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setConfirmingDelete(false)}
+                    sx={{
+                      textTransform: 'none',
+                      fontSize: 'var(--font-sizes-btn-size-sm-font-size, var(--font-sizes-14))',
+                      fontWeight: 'var(--font-weights-medium)',
+                      color: 'var(--colors-text-secondary)',
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={() => {
+                      setKebabAnchor(null)
+                      setConfirmingDelete(false)
+                      onDeleteDenial?.()
+                    }}
+                    sx={{
+                      textTransform: 'none',
+                      fontSize: 'var(--font-sizes-btn-size-sm-font-size, var(--font-sizes-14))',
+                      fontWeight: 'var(--font-weights-semibold)',
+                      bgcolor: 'var(--colors-text-error)',
+                      color: 'var(--colors-grey-1)',
+                      boxShadow: 'none',
+                      '&:hover': { bgcolor: 'var(--colors-text-error)', filter: 'brightness(0.95)', boxShadow: 'none' },
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </Box>
+              </Box>
+            ) : (
+              <>
+                <MenuItem onClick={() => { setKebabAnchor(null); onEditDenialDetails?.() }} sx={{
                   fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-                  color: 'inherit',
-                } }}>View source</ListItemText>
-              </MenuItem>
+                  color: 'var(--colors-menu-item-default-text)',
+                  gap: 'var(--spacing-2)',
+                }}>
+                  <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
+                    <Pencil size={16} strokeWidth={2} />
+                  </ListItemIcon>
+                  <ListItemText primaryTypographyProps={{ sx: {
+                    fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                    color: 'inherit',
+                  } }}>Edit denial details</ListItemText>
+                </MenuItem>
+                {onViewSource && (
+                  <MenuItem onClick={() => { setKebabAnchor(null); onViewSource() }} sx={{
+                    fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                    color: 'var(--colors-menu-item-default-text)',
+                    gap: 'var(--spacing-2)',
+                  }}>
+                    <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
+                      <FileText size={16} strokeWidth={2} />
+                    </ListItemIcon>
+                    <ListItemText primaryTypographyProps={{ sx: {
+                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                      color: 'inherit',
+                    } }}>View source</ListItemText>
+                  </MenuItem>
+                )}
+                {onDeleteDenial && (
+                  <MenuItem onClick={() => setConfirmingDelete(true)} sx={{
+                    fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                    color: 'var(--colors-text-error)',
+                    gap: 'var(--spacing-2)',
+                  }}>
+                    <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
+                      <Trash2 size={16} strokeWidth={2} />
+                    </ListItemIcon>
+                    <ListItemText primaryTypographyProps={{ sx: {
+                      fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
+                      color: 'inherit',
+                    } }}>Delete denial</ListItemText>
+                  </MenuItem>
+                )}
+              </>
             )}
-            <MenuItem onClick={() => { setKebabAnchor(null); onDeleteDenial?.() }} sx={{
-              fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-              color: 'var(--colors-text-error)',
-              gap: 'var(--spacing-2)',
-            }}>
-              <ListItemIcon sx={{ minWidth: '0 !important', color: 'inherit' }}>
-                <Trash2 size={16} strokeWidth={2} />
-              </ListItemIcon>
-              <ListItemText primaryTypographyProps={{ sx: {
-                fontSize: 'var(--font-sizes-menu-item-font-size, var(--font-sizes-14))',
-                color: 'inherit',
-              } }}>Delete denial</ListItemText>
-            </MenuItem>
           </Menu>
         </Box>
       </Box>

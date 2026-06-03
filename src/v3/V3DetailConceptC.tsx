@@ -126,6 +126,10 @@ interface V3DetailConceptCProps {
   // the header status picker drives the denial state machine. Some actions
   // (record-decision) carry structured payload from the DecisionModal.
   onStatusAction?: (action: string, payload?: { outcome?: string; intent?: string }) => void
+  // Delete handler. V2 wires this to hard-remove the denial from the list and
+  // close the case (MVP doesn't support restore). When omitted the kebab's
+  // Delete item is hidden — V3 standalone explorations don't expose delete.
+  onDeleteDenial?: () => void
 }
 
 function isoToMDY(iso: string | undefined): string {
@@ -218,7 +222,7 @@ function strengthTokens(strength: string) {
   }
 }
 
-export default function V3DetailConceptC({ caseRecord, onBack, onStatusAction }: V3DetailConceptCProps) {
+export default function V3DetailConceptC({ caseRecord, onBack, onStatusAction, onDeleteDenial }: V3DetailConceptCProps) {
   const [activeTab, setActiveTab] = useState<TabId>(() => defaultTabForState(caseRecord?.state))
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [sourceOpen, setSourceOpen] = useState(false)
@@ -290,6 +294,7 @@ export default function V3DetailConceptC({ caseRecord, onBack, onStatusAction }:
         onViewSource={caseRecord ? () => setSourceOpen(true) : undefined}
         onBack={onBack}
         onStatusAction={onStatusAction}
+        onDeleteDenial={onDeleteDenial}
       />
 
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0, position: 'relative' }}>

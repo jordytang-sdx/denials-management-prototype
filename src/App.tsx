@@ -1432,6 +1432,16 @@ export default function App() {
               <V3DetailConceptC
                 caseRecord={visibleDenials.find(d => d.id === selectedV2CaseId) ?? undefined}
                 onBack={() => setSelectedV2CaseId(null)}
+                onDeleteDenial={() => {
+                  // Hard delete. MVP per spec doesn't support restore, so the
+                  // record is removed from the list entirely (not soft-flagged
+                  // to a Deleted state). The user returns to the worklist tab
+                  // they came from.
+                  const id = selectedV2CaseId
+                  if (!id) return
+                  setDenials(prev => prev.filter(d => d.id !== id))
+                  setSelectedV2CaseId(null)
+                }}
                 onStatusAction={(action, payload) => {
                   // V2 keeps the case open after a status change so the user
                   // sees the badge update in place; they navigate back to the
